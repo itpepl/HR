@@ -1,0 +1,104 @@
+import frappe
+from frappe import _
+from frappe.utils import cint
+from frappe.query_builder import DocType
+
+
+
+@frappe.whitelist()
+def get_users_with_role(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Custom query method for user link field filtered by role.
+    Returns list of tuples: [(user_name, full_name), ...]
+    """
+    role = filters.get("role")
+    
+    if not role:
+        return []
+
+    # get usernames from Has Role
+    users = frappe.get_all("Has Role", filters={"role": role}, pluck="parent") or []
+    if not users:
+        return []
+
+    # get enabled users and return as list of tuples
+    user_list = frappe.get_all(
+        "User",
+        filters=[["User", "name", "in", users], ["User", "enabled", "=", 1], ["User", "name", "!=", "Administrator"]],
+        fields=["name", "full_name"],
+        order_by="full_name asc"
+    )
+    
+    # convert to list of tuples: [(name, full_name), ...]
+    return [(u.get("name"), u.get("full_name") or "") for u in user_list]
+
+
+
+@frappe.whitelist()
+def get_reporting_managers(department):
+    """
+    Return approvers for a department for all three parentfields.
+    Returns dict with parentfield as key and list of approvers as value.
+    """
+    parentfields = [
+        "custom_reporting_manager",
+        "custom_review_manager",
+        "custom_hr_manager"
+    ]
+    
+    result = {}
+    for pf in parentfields:
+        result[pf] = frappe.get_all(
+            "Approver",
+            filters={"parent": department, "parentfield": pf},
+            fields=["effective_from", "role", "user", "employee"],
+            order_by="effective_from asc"
+        )
+    
+    return result
+
+
+@frappe.whitelist()
+def add_custom_hr_rows_to_employees(department, rows):
+    """
+    rows: list of dicts [{role, user, effective_from}, ...]
+    Adds only these rows to every Employee with department=department, avoiding duplicates.
+    """
+    if not department or not rows:
+        return {"added": 0}
+
+    # ensure rows is a Python list (frappe.call may send as list/object)
+    if isinstance(rows, str):
+        import json
+        rows = json.loads(rows)
+
+    employees = frappe.get_all("Employee", filters={"department": department}, fields=["name"])
+    if not employees:
+        return {"added": 0}
+
+    total_added = 0
+    for e in employees:
+        emp = frappe.get_doc("Employee", e.name)
+        existing = {
+            (r.role, r.user, (str(r.effective_from) if r.effective_from else ""))
+            for r in (emp.get("custom_hr_manager") or [])
+        }
+
+        added = False
+        for r in rows:
+            key = (r.get("role"), r.get("user"), (str(r.get("effective_from")) if r.get("effective_from") else ""))
+            if key not in existing:
+                emp.append("custom_hr_manager", {
+                    "role": r.get("role"),
+                    "user": r.get("user"),
+                    "effective_from": r.get("effective_from") or None
+                })
+                existing.add(key)
+                added = True
+                total_added += 1
+
+        if added:
+            emp.save(ignore_permissions=True)
+
+    frappe.db.commit()
+    return {"added": total_added}
