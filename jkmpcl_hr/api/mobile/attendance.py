@@ -168,3 +168,20 @@ def get_attendance_calendar(employeeId, date):
             "success": False,
             "message": str(e)
         }
+
+
+
+
+@frappe.whitelist(allow_guest=True)  # allow_guest=True if you want it accessible without login
+def attendance_status_list():
+    """
+    Returns a list of predefined attendance statuses
+    """
+    status_list = [
+        "Present",
+        "Absent",
+        "On Leave",
+        "Half Day",
+        "Work From Home"
+    ]
+    return status_list
