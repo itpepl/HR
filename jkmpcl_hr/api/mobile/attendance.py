@@ -4,27 +4,43 @@ from datetime import timedelta
 from datetime import datetime
 import frappe,uuid, os, mimetypes, calendar, re
 
-
 @frappe.whitelist()
-def get_attendance(employeeId, date):
+def get_attendance(employeeId, date=None, from_date=None, to_date=None, status=None):
     try:
-        if not employeeId or not date:
-            frappe.throw("Employee ID and Date are required")
+        if not employeeId:
+            frappe.throw("Employee ID is required")
 
-        specific_date = datetime.strptime(date, "%Y-%m-%d").date()
+        # If from_date & to_date given → use them
+        if from_date and to_date:
+            start_date = from_date
+            end_date = to_date
 
-        current_month = specific_date.month
-        current_year = specific_date.year
+        # If only date is given → pick whole month
+        elif date:
+            specific_date = datetime.strptime(date, "%Y-%m-%d").date()
+            current_month = specific_date.month
+            current_year = specific_date.year
+            total_days_in_month = calendar.monthrange(current_year, current_month)[1]
 
-        total_days_in_month = calendar.monthrange(current_year, current_month)[1]
+            start_date = f"{current_year}-{current_month:02d}-01"
+            end_date = f"{current_year}-{current_month:02d}-{total_days_in_month}"
 
-        start_date = f"{current_year}-{current_month:02d}-01"
-        end_date = f"{current_year}-{current_month:02d}-{total_days_in_month}"
+        else:
+            frappe.throw("Either 'date' OR 'from_date' and 'to_date' is required.")
 
+        # Base filters
         month_filters = [
             ["employee", "=", employeeId],
             ["attendance_date", "between", [start_date, end_date]],
         ]
+
+        # Status filter (optional, allows single or comma separated)
+        if status:
+            if "," in status:
+                status_list = [s.strip() for s in status.split(",")]
+                month_filters.append(["status", "in", status_list])
+            else:
+                month_filters.append(["status", "=", status])
 
         fields = [
             "name",
@@ -37,7 +53,10 @@ def get_attendance(employeeId, date):
         ]
 
         month_attendance_records = frappe.get_list(
-            "Attendance", filters=month_filters, fields=fields
+            "Attendance",
+            filters=month_filters,
+            fields=fields,
+            order_by="attendance_date asc"
         )
 
     except Exception as e:
@@ -51,22 +70,16 @@ def get_attendance(employeeId, date):
         }
 
     else:
-        if month_attendance_records:
-            frappe.local.response["message"] = {
-                "success": True,
-                "message": "Attendance records for the current month retrieved successfully.",
-                "data": {
-                    "current_month_attendance": month_attendance_records
-                },
-            }
-        else:
-            frappe.local.response["message"] = {
-                "success": True,
-                "message": "No attendance records found for the current month.",
-                "data": {
-                    "current_month_attendance": []
-                },
-            }
+        frappe.local.response["message"] = {
+            "success": True,
+            "message": "Attendance records retrieved successfully.",
+            "data": {
+                "from_date": start_date,
+                "to_date": end_date,
+                "records": month_attendance_records or []
+            },
+        }
+
             
             
 @frappe.whitelist()
@@ -170,18 +183,56 @@ def get_attendance_calendar(employeeId, date):
         }
 
 
-
-
-@frappe.whitelist(allow_guest=True)  # allow_guest=True if you want it accessible without login
+@frappe.whitelist(allow_guest=True)
 def attendance_status_list():
     """
-    Returns a list of predefined attendance statuses
+    Returns a list of predefined attendance statuses with colors
     """
+
     status_list = [
-        "Present",
-        "Absent",
-        "On Leave",
-        "Half Day",
-        "Work From Home"
+        {
+            "status": "Present",
+            "color": "#28a745",     # Green
+            "code": "P"
+        },
+        {
+            "status": "Absent",
+            "color": "#dc3545",     # Red
+            "code": "A"
+        },
+        {
+            "status": "Week Off",
+            "color": "#1f2a56",     # Dark Blue
+            "code": "WO"
+        },
+        {
+            "status": "Holiday",
+            "color": "#6f7dff",     # Purple/Blue
+            "code": "H"
+        },
+        {
+            "status": "Leave Not Approved",
+            "color": "#ffc0cb",     # Light Pink
+            "code": "LNA"
+        },
+        {
+            "status": "Leave Approved",
+            "color": "#9e9e9e",     # Grey
+            "code": "LA"
+        },
+        {
+            "status": "Half Day",
+            "color": "#ffa500",     # Orange
+            "code": "HD"
+        },
+        {
+            "status": "Work From Home",
+            "color": "#00bcd4",     # Sky Blue
+            "code": "WFH"
+        }
     ]
-    return status_list
+
+    return {
+        "success": True,
+        "data": status_list
+    }

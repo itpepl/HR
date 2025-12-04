@@ -134,7 +134,6 @@ def get_employee_details(email):
         }
 
 
-
 @frappe.whitelist()
 def get_upcoming_holidays(employeeId=None):
     try:
@@ -168,8 +167,19 @@ def get_upcoming_holidays(employeeId=None):
                 and row.holiday_date <= end_of_month
                 and row.weekly_off == 0
             ):
+
+                # Date formatting
+                holiday_date = getdate(row.holiday_date)
+                day = holiday_date.day
+                month = holiday_date.strftime("%b").upper()    # OCT
+                full_date = holiday_date.strftime("%A, %d %B %Y")  # Thursday, 02 October 2025
+
                 final_result.append({
                     "date": row.holiday_date,
+                    "day": day,
+                    "month": month,
+                    "display_date": f"{day} {month}",     # 2 OCT
+                    "full_date": full_date,              # Thursday, 02 October 2025
                     "occasion": row.description
                 })
 
