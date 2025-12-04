@@ -44,7 +44,8 @@ app_license = "mit"
 
 # include js in doctype views
 doctype_js = {"Employee" : "public/js/employee.js",
-              "Department" : "public/js/department.js"}
+              "Department" : "public/js/department.js",
+              "Attendance Request": "public/js/attendance_request.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -128,6 +129,11 @@ doctype_js = {"Employee" : "public/js/employee.js",
 # has_permission = {
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
+
+# Override doctype
+override_doctype_class = {
+    "Attendance Request": "jkmpcl_hr.overrides.attendance_request.AttendanceRequest"
+}
 
 # Document Events
 # ---------------
