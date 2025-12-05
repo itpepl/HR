@@ -2,7 +2,8 @@ import frappe
 from frappe import _, cint
 from frappe.utils import getdate, get_link_to_form, nowdate
 from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequest as HRMSAttendanceRequest, OverlappingAttendanceRequestError
-
+from datetime import datetime, time as time_obj
+from datetime import datetime, date
 
 class AttendanceRequest(HRMSAttendanceRequest):
     def validate(self):
@@ -11,7 +12,40 @@ class AttendanceRequest(HRMSAttendanceRequest):
         self.validate_dates_custom()
         self.validate_request_overlap_custom()
         self.validate_no_attendance_to_create()
+    def on_submit(self):
+        """Runs when Attendance Request is submitted"""
+        self.create_auto_checkin_and_attendance()
 
+    def create_auto_checkin_and_attendance(self):
+
+        if not self.employee or not self.custom_punch_type:
+            return
+
+        try:
+            if self.custom_punch_type in ["In", "Both"] and self.custom_in_time:
+                create_checkin(
+                    self.employee,
+                    self.custom_in_time,
+                    "IN",
+                    self.name,
+                    self.from_date
+                )
+
+            if self.custom_punch_type in ["Out", "Both"] and self.custom_out_time:
+                create_checkin(
+                    self.employee,
+                    self.custom_out_time,
+                    "OUT",
+                    self.name,
+                    self.from_date
+                )
+
+            if self.custom_in_time and self.custom_out_time:
+                create_attendance_from_request(self)
+
+        except Exception as e:
+            frappe.log_error(frappe.get_traceback(), "Attendance Request Error")
+            frappe.throw(str(e))
     def validate_dates_custom(self):
         """Custom date validation for Attendance Request."""
         date_of_joining, relieving_date = frappe.db.get_value(
@@ -47,6 +81,222 @@ class AttendanceRequest(HRMSAttendanceRequest):
             get_link_to_form("Attendance Request", overlapping_request),
         )
         frappe.throw(msg, title=_("Overlapping Attendance Request"), exc=OverlappingAttendanceRequestError)
+    
+def create_checkin(employee, time_value, log_type, attendance_request, att_date=None):
+
+    if not att_date:
+        att_date = date.today()
+    else:
+        if isinstance(att_date, str):
+            att_date = datetime.fromisoformat(att_date).date()
+
+    if isinstance(time_value, str) and len(time_value) <= 8:
+        time_value = datetime.combine(att_date, datetime.strptime(time_value, "%H:%M:%S").time())
+
+    elif isinstance(time_value, str):
+        time_value = datetime.fromisoformat(time_value)
+
+    exists = frappe.db.exists("Employee Checkin", {
+        "employee": employee,
+        "time": time_value,
+        "log_type": log_type
+    })
+
+    if exists:
+        return
+
+    frappe.get_doc({
+        "doctype": "Employee Checkin",
+        "employee": employee,
+        "time": time_value,
+        "log_type": log_type,
+        "device_id": "Attendance Request",
+        "attendance_request": attendance_request
+    }).insert(ignore_permissions=True)
+
+    frappe.db.commit()
+
+
+from datetime import datetime
+import frappe
+
+
+def create_attendance_from_request(doc):
+
+    shift_type = frappe.db.get_value("Employee", doc.employee, "default_shift")
+
+    if not shift_type:
+        frappe.throw(f"No default shift found for employee {doc.employee}")
+
+    shift = frappe.db.get_value(
+        "Shift Type",
+        shift_type,
+        [
+            "working_hours_threshold_for_half_day",
+            "working_hours_threshold_for_absent"
+        ],
+        as_dict=True
+    )
+
+    in_datetime = make_datetime(doc.from_date, doc.custom_in_time)
+    out_datetime = make_datetime(doc.from_date, doc.custom_out_time)
+
+    if out_datetime < in_datetime:
+        frappe.throw("Out time cannot be less than In time")
+
+    working_hours = (out_datetime - in_datetime).total_seconds() / 3600
+    half_day_threshold = float(shift.working_hours_threshold_for_half_day or 8)
+    absent_threshold   = float(shift.working_hours_threshold_for_absent or 3)
+
+    if working_hours == 0:
+        status = "On Leave"
+
+    elif 0 < working_hours <= absent_threshold:
+        status = "Absent"
+
+    elif absent_threshold < working_hours < half_day_threshold:
+        status = "Half Day"
+
+    else:
+        status = "Present"
+    attendance_name = frappe.db.get_value("Attendance", {
+        "employee": doc.employee,
+        "attendance_date": doc.from_date,
+        "docstatus": ["!=", 2]
+    })
+    if attendance_name:
+
+        att = frappe.get_doc("Attendance", attendance_name)
+
+        total_hours = float(att.working_hours or 0) + float(working_hours)
+
+        if not att.in_time or in_datetime < att.in_time:
+            final_in = in_datetime
+        else:
+            final_in = att.in_time
+
+        if not att.out_time or out_datetime > att.out_time:
+            final_out = out_datetime
+        else:
+            final_out = att.out_time
+
+        final_status = get_attendance_status(total_hours, shift)
+
+        frappe.db.set_value(
+            "Attendance",
+            attendance_name,
+            {
+                "working_hours": total_hours,
+                "status": final_status,
+                "in_time": final_in,
+                "out_time": final_out
+            },
+            update_modified=True
+        )
+
+        frappe.db.commit()
+        return
+
+
+    # Create Attendance
+    attendance = frappe.get_doc({
+        "doctype": "Attendance",
+        "employee": doc.employee,
+        "attendance_date": doc.from_date,
+        "in_time": in_datetime,
+        "out_time": out_datetime,
+        "status": status,
+        "working_hours": working_hours,
+        "shift": shift_type
+    })
+
+    attendance.insert(ignore_permissions=True)
+    attendance.submit()
+
+    frappe.msgprint(f"Attendance created: {status} ({round(working_hours,2)} hrs)")
+
+
+from datetime import datetime, date, time
+
+def make_datetime(date_value, time_value):
+    """Safely combine Date and Time into Datetime"""
+
+    if isinstance(date_value, str):
+        date_value = datetime.strptime(date_value, "%Y-%m-%d").date()
+
+    if isinstance(time_value, str):
+        time_value = datetime.strptime(time_value, "%H:%M:%S").time()
+
+    if not isinstance(date_value, date) or not isinstance(time_value, time):
+        frappe.throw("Invalid date or time format")
+
+    return datetime.combine(date_value, time_value)
+
+def get_datetime_object(value):
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    return value
+
+
+def is_within_time(check_time, start, end):
+    return start <= check_time <= end
+def attach_date(att_date, time_value):
+
+    if isinstance(att_date, str):
+        att_date = datetime.fromisoformat(att_date).date()
+
+    if isinstance(time_value, str):
+        if len(time_value) <= 8:
+            return datetime.combine(att_date, datetime.strptime(time_value, "%H:%M:%S").time())
+
+        return datetime.fromisoformat(time_value)
+
+    return time_value
+
+
+def get_shift_details(shift_name):
+    if not shift_name:
+        return None
+
+    return frappe.db.get_value(
+        "Shift Type",
+        shift_name,
+        [
+            "start_time",
+            "end_time",
+            "working_hours_threshold_for_half_day",
+            "working_hours_threshold_for_absent"
+        ],
+        as_dict=True
+    )
+
+
+def get_working_hours(in_time, out_time):
+    if not in_time or not out_time:
+        return 0
+
+    diff = out_time - in_time
+    return round(diff.total_seconds() / 3600, 2)
+
+def get_attendance_status(working_hours, shift_details):
+
+    half_day_threshold = float(shift_details.working_hours_threshold_for_half_day or 7.5)
+    absent_threshold   = float(shift_details.working_hours_threshold_for_absent or 3)
+
+    if working_hours == 0:
+        return "On Leave"
+
+    if working_hours > 0 and working_hours <= absent_threshold:
+        return "Absent"
+
+    if absent_threshold < working_hours < half_day_threshold:
+        return "Half Day"
+
+    if working_hours >= half_day_threshold:
+        return "Present"
+
+    return "Absent"
+
 
 
 @frappe.whitelist()

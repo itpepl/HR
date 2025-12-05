@@ -143,6 +143,7 @@ doc_events = {
     "Department": {
         "on_update": "jkmpcl_hr.py.department.on_update"
     }
+  
 # 	"*": {
 # 		"on_update": "method",
 # 		"on_cancel": "method",
