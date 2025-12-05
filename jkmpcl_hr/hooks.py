@@ -43,9 +43,12 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-doctype_js = {"Employee" : "public/js/employee.js",
-              "Department" : "public/js/department.js",
-              "Attendance Request": "public/js/attendance_request.js"}
+doctype_js = {
+                "Employee" : "public/js/employee.js",
+                "Department" : "public/js/department.js",
+                "Attendance Request": "public/js/attendance_request.js",
+                # "Shift Request": "public/js/shift_request.js"
+            }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -132,7 +135,8 @@ doctype_js = {"Employee" : "public/js/employee.js",
 
 # Override doctype
 override_doctype_class = {
-    "Attendance Request": "jkmpcl_hr.overrides.attendance_request.AttendanceRequest"
+    "Attendance Request": "jkmpcl_hr.overrides.attendance_request.AttendanceRequest",
+    # "Shift Request":"jkmpcl_hr.overrides.shift_request_override.CustomShiftRequest"
 }
 
 # Document Events
@@ -154,7 +158,12 @@ doc_events = {
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
+scheduler_events = {
+    "cron":{
+        "0 0 1 4 *": [
+            "jkmpcl_hr.py.scheduler_method.create_shift_assignments"
+        ]
+    }
 # 	"all": [
 # 		"jkmpcl_hr.tasks.all"
 # 	],
@@ -170,7 +179,7 @@ doc_events = {
 # 	"monthly": [
 # 		"jkmpcl_hr.tasks.monthly"
 # 	],
-# }
+}
 
 # Testing
 # -------
