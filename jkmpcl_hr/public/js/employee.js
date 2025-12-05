@@ -3,8 +3,20 @@ frappe.ui.form.on("Employee", {
         // set up filters for all three child tables on load
         setup_user_filters(frm);
     },
+
+    refresh: function(frm){
+        if(frm.doc.branch){
+            frm.set_query("default_shift", function(){
+                return{
+                    filters:{
+                        custom_branch: frm.doc.branch
+                    }
+                }
+            })
+        }
+    },
     department: async function (frm) {
-        if (!frm.is_new()) return;
+        // if (!frm.is_new()) return;
 
         const child_tables = [
             "custom_reporting_manager",
@@ -71,7 +83,21 @@ frappe.ui.form.on("Employee", {
 
             frm.refresh_field(parentfield);
         }
-    }
+    },
+    
+    // default_shift: function(frm){
+    //     if(frm.doc.branch){
+    //         frm.set_query("default_shift", function(){
+    //              return{
+    //                 filters:{
+    //                     custom_branch: frm.doc.branch
+    //                 }
+    //              }
+    //         })
+    //     }
+    // }
+
+
 });
 
 frappe.ui.form.on("Approver", {
