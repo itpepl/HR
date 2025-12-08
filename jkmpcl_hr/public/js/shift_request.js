@@ -70,8 +70,13 @@ frappe.ui.form.on("Shift Request", {
 
 
     },
+    employee: function(frm){
+        if(frm.doc.employee){
+            get_emp_reporting_manager_user(frm)
+
+        }
+    },
     from_date: function(frm){
-        get_emp_reporting_manager_user(frm)
         if(frm.doc.from_date){
             apply_filter_in_shift_type(frm)
 
