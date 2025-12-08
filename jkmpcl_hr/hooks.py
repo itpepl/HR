@@ -47,7 +47,7 @@ doctype_js = {
                 "Employee" : "public/js/employee.js",
                 "Department" : "public/js/department.js",
                 "Attendance Request": "public/js/attendance_request.js",
-                # "Shift Request": "public/js/shift_request.js"
+                "Shift Request": "public/js/shift_request.js"
             }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -136,7 +136,7 @@ doctype_js = {
 # Override doctype
 override_doctype_class = {
     "Attendance Request": "jkmpcl_hr.overrides.attendance_request.AttendanceRequest",
-    # "Shift Request":"jkmpcl_hr.overrides.shift_request_override.CustomShiftRequest"
+    "Shift Request":"jkmpcl_hr.overrides.shift_request_override.CustomShiftRequest"
 }
 
 # Document Events
@@ -146,6 +146,9 @@ override_doctype_class = {
 doc_events = {
     "Department": {
         "on_update": "jkmpcl_hr.py.department.on_update"
+    },
+    "Shift Request": {
+        "validate": "jkmpcl_hr.py.shift_request.validate"
     }
   
 # 	"*": {

@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import cint
+from frappe.utils import cint, getdate, today
 from frappe.query_builder import DocType
 
 
@@ -102,3 +102,65 @@ def add_custom_hr_rows_to_employees(department, rows):
 
     frappe.db.commit()
     return {"added": total_added}
+
+
+# * METHOD TO GET THE SHIFT TYPE BASED ON THE DATE AND BRANCH
+@frappe.whitelist()
+def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
+    branch = filters.get("branch")
+    date_str = filters.get("as_on_date")
+
+    if not branch:
+        return []
+    
+    as_on_date = getdate(date_str) if date_str else getdate()
+    if branch == "Srinagar": 
+        
+        print(f"\n\n \n\n")
+        if 4 <= as_on_date.month <= 9:   
+            required_hours = "8hours"
+        else:                          
+            required_hours = "7hours"
+
+        conditions = {"custom_hours": required_hours}
+        
+        
+        print(f"\n\n  required hours {required_hours} \n\n")
+        if branch:
+            conditions["custom_branch"] = branch
+
+        shift_types = frappe.db.get_list(
+            "Shift Type",
+            filters=conditions,
+            fields=["name"],
+            order_by="name",
+            start=start,
+            page_length=page_len
+        )
+
+        return [[s.name, s.name] for s in shift_types]
+    elif branch == "Jammu":
+        
+        if (4<= as_on_date.month <= 11) or (2 <= as_on_date.month <= 3):
+            required_hours = "8hours"
+        else:
+            required_hours = "7hours"
+        
+        conditions = {"custom_hours": required_hours}
+        
+        
+        print(f"\n\n  required hours {required_hours} \n\n")
+        if branch:
+            conditions["custom_branch"] = branch
+
+        shift_types = frappe.db.get_list(
+            "Shift Type",
+            filters=conditions,
+            fields=["name"],
+            order_by="name",
+            start=start,
+            page_length=page_len
+        )
+        
+        return [[s.name, s.name] for s in shift_types]
+        
