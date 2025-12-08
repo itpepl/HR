@@ -162,6 +162,9 @@ scheduler_events = {
     "cron":{
         "0 0 1 4 *": [
             "jkmpcl_hr.py.scheduler_method.create_shift_assignments"
+        ],
+         "0 6 * * *": [
+            "jkmpcl_hr.py.scheduler_method.run_daily_attendance"
         ]
     }
 # 	"all": [

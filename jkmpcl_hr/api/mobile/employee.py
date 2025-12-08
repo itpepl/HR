@@ -42,12 +42,11 @@ def get_employee_details(email):
             "Employee Checkin",
             filters={
                 "employee": employee_name,
-                "creation": ["Timespan", "today"],
+                # "creation": ["Timespan", "today"],
             },
             fields=["name", "log_type", "time"],
             order_by="creation desc",
         )
-
         isCheckedIn = checkinRecords[0]["log_type"] == "IN" if checkinRecords else False
         isAcknowledged = bool(checkinRecords)
         showPunchIn = False if len(checkinRecords) >= 4 else True
