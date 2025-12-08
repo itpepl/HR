@@ -17,6 +17,7 @@ frappe.ui.form.on("Employee", {
     },
     department: async function (frm) {
         // if (!frm.is_new()) return;
+        if (frm.doc.custom_stop_auto_update) return;
 
         const child_tables = [
             "custom_reporting_manager",
