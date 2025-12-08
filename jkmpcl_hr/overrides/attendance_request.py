@@ -315,7 +315,7 @@ def get_manual_punch_note_html(employee, from_date):
     def punch_count(pt):
         if not pt: return 0
         pt = str(pt).strip().lower()
-        return 2 if pt == "both" else (1 if pt in ("in", "out") else 0)
+        return 1 if pt in ("in", "out") else 0
 
     existing = frappe.get_all(
         "Attendance Request",
