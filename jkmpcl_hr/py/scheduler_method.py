@@ -222,8 +222,9 @@ def run_daily_attendance():
             continue
 
 
-        in_time = logs[0].in_time
-        out_time = logs[0].out_time
+        in_time = logs["in_time"]
+        out_time = logs["out_time"]
+
 
         working_hours = (out_time - in_time).total_seconds() / 3600
 

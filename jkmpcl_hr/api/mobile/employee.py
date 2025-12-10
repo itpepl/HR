@@ -82,20 +82,21 @@ def get_employee_details(email):
 
         data = {
             "company_info": {
-                "name": employee_name,
-                "employee_name": employee.get("employee_name", "N/A"),
-                "gender": employee.get("gender", "N/A"),
-                "date_of_birth": employee.get("date_of_birth", "N/A"),
-                "date_of_joining": employee.get("date_of_joining", "N/A"),
-            },
-            "employee_info": {
                 "company": employee.get("company", "N/A"),
                 "department": employee.get("department", "N/A"),
                 "branch": employee.get("branch", "N/A"),
+               
+            },
+            "employee_info": {
+                "name": employee_name,
                 "grade": employee.get("grade", "N/A"),
                 "reports_to": employee.get("reports_to", "N/A"),
                 "employment_type": employee.get("employment_type", "N/A"),
                 "designation": employee.get("designation", "N/A"),
+                "employee_name": employee.get("employee_name", "N/A"),
+                "gender": employee.get("gender", "N/A"),
+                "date_of_birth": employee.get("date_of_birth", "N/A"),
+                "date_of_joining": employee.get("date_of_joining", "N/A"),
             },
             "contact_info": {
                 "personal_email": employee.get("personal_email", "N/A"),
