@@ -2,8 +2,9 @@ import frappe
 from frappe import _, cint
 from frappe.utils import getdate, get_link_to_form, nowdate
 from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequest as HRMSAttendanceRequest, OverlappingAttendanceRequestError
-from datetime import datetime, date,timedelta
+from datetime import datetime, date,timedelta, time
 from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority
+
 
 class AttendanceRequest(HRMSAttendanceRequest):
     def validate(self):
