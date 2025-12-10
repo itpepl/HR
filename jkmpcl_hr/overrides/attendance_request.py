@@ -2,9 +2,9 @@ import frappe
 from frappe import _, cint
 from frappe.utils import getdate, get_link_to_form, nowdate
 from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequest as HRMSAttendanceRequest, OverlappingAttendanceRequestError
-from datetime import datetime, time as time_obj
-from datetime import datetime, date
-from datetime import datetime, time, timedelta
+from datetime import datetime, date,timedelta
+from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority
+
 class AttendanceRequest(HRMSAttendanceRequest):
     def validate(self):
         from hrms.hr.utils import validate_active_employee
@@ -82,59 +82,41 @@ class AttendanceRequest(HRMSAttendanceRequest):
         )
         frappe.throw(msg, title=_("Overlapping Attendance Request"), exc=OverlappingAttendanceRequestError)
     
-def create_checkin(employee, time_value, log_type, attendance_request, att_date=None):
+def create_checkin(employee, time_str, log_type, request_name, request_date):
+    """
+    Create Employee Checkin in correct DB datetime format → YYYY-MM-DD HH:MM:SS
+    """
 
-    if not att_date:
-        att_date = date.today()
-    else:
-        if isinstance(att_date, str):
-            att_date = datetime.fromisoformat(att_date).date()
+    full_datetime = make_datetime(request_date, time_str)
 
-    if isinstance(time_value, str) and len(time_value) <= 8:
-        time_value = datetime.combine(att_date, datetime.strptime(time_value, "%H:%M:%S").time())
+    # Correct DB format
+    db_datetime = full_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
-    elif isinstance(time_value, str):
-        time_value = datetime.fromisoformat(time_value)
-
-    exists = frappe.db.exists("Employee Checkin", {
-        "employee": employee,
-        "time": time_value,
-        "log_type": log_type
-    })
-
-    if exists:
-        return
-
-    frappe.get_doc({
+    checkin = frappe.get_doc({
         "doctype": "Employee Checkin",
         "employee": employee,
-        "time": time_value,
+        "time": db_datetime,    # ✔ CORRECT
         "log_type": log_type,
-        "device_id": "Attendance Request",
-        "attendance_request": attendance_request
-    }).insert(ignore_permissions=True)
+        "attendance_request": request_name
+    })
 
+    checkin.insert(ignore_permissions=True)
     frappe.db.commit()
+
 
 
 from datetime import datetime
 import frappe
 
-
 def create_attendance_from_request(doc):
-
     shift_type = frappe.db.get_value("Employee", doc.employee, "default_shift")
-
     if not shift_type:
         frappe.throw(f"No default shift found for employee {doc.employee}")
 
     shift = frappe.db.get_value(
         "Shift Type",
         shift_type,
-        [
-            "working_hours_threshold_for_half_day",
-            "working_hours_threshold_for_absent"
-        ],
+        ["working_hours_threshold_for_half_day", "working_hours_threshold_for_absent"],
         as_dict=True
     )
 
@@ -146,56 +128,53 @@ def create_attendance_from_request(doc):
 
     working_hours = (out_datetime - in_datetime).total_seconds() / 3600
     half_day_threshold = float(shift.working_hours_threshold_for_half_day or 8)
-    absent_threshold   = float(shift.working_hours_threshold_for_absent or 3)
+    absent_threshold = float(shift.working_hours_threshold_for_absent or 3)
 
-    if working_hours == 0:
-        status = "On Leave"
-
-    elif 0 < working_hours <= absent_threshold:
+    # Determine status based on working hours
+    if working_hours == 0 or working_hours <= absent_threshold:
         status = "Absent"
-
-    elif absent_threshold < working_hours < half_day_threshold:
+    elif working_hours < half_day_threshold:
         status = "Half Day"
-
     else:
         status = "Present"
+
+    # Check if attendance already exists
     attendance_name = frappe.db.get_value("Attendance", {
         "employee": doc.employee,
         "attendance_date": doc.from_date,
         "docstatus": ["!=", 2]
     })
+
     if attendance_name:
-
         att = frappe.get_doc("Attendance", attendance_name)
+        att.in_time = in_datetime if not att.in_time or in_datetime < att.in_time else att.in_time
+        att.out_time = out_datetime if not att.out_time or out_datetime > att.out_time else att.out_time
+        att.working_hours = (att.out_time - att.in_time).total_seconds() / 3600
+        att.status = status
+        att.save(ignore_permissions=True)
+        if att.docstatus == 0:
+            att.submit()
+    else:
+        attendance = frappe.get_doc({
+            "doctype": "Attendance",
+            "employee": doc.employee,
+            "attendance_date": doc.from_date,
+            "shift": shift_type,
+            "in_time": in_datetime,
+            "out_time": out_datetime,
+            "working_hours": working_hours,
+            "status": status
+        })
 
-        total_hours = float(att.working_hours or 0) + float(working_hours)
+        attendance.insert(ignore_permissions=True)
+        attendance.submit()
 
-        if not att.in_time or in_datetime < att.in_time:
-            final_in = in_datetime
-        else:
-            final_in = att.in_time
+    if working_hours < half_day_threshold:
+        deduct_leave_by_priority(doc.employee, doc.from_date, status)
 
-        if not att.out_time or out_datetime > att.out_time:
-            final_out = out_datetime
-        else:
-            final_out = att.out_time
+    frappe.msgprint(f"Attendance created: {status} ({round(working_hours,2)} hrs)")
 
-        final_status = get_attendance_status(total_hours, shift)
 
-        frappe.db.set_value(
-            "Attendance",
-            attendance_name,
-            {
-                "working_hours": total_hours,
-                "status": final_status,
-                "in_time": final_in,
-                "out_time": final_out
-            },
-            update_modified=True
-        )
-
-        frappe.db.commit()
-        return
 
 
     # Create Attendance
@@ -216,20 +195,27 @@ def create_attendance_from_request(doc):
     frappe.msgprint(f"Attendance created: {status} ({round(working_hours,2)} hrs)")
 
 
-from datetime import datetime, date, time
 
 def make_datetime(date_value, time_value):
     """Safely combine Date and Time into Datetime"""
-
     if isinstance(date_value, str):
         date_value = datetime.strptime(date_value, "%Y-%m-%d").date()
 
-    if isinstance(time_value, str):
-        time_value = datetime.strptime(time_value, "%H:%M:%S").time()
+
+    if isinstance(time_value, timedelta):
+        time_value = (datetime.min + time_value).time()
+    
+    elif isinstance(time_value, str):
+        try:
+            time_value = datetime.strptime(time_value, "%H:%M:%S").time()
+        except:
+            try:
+                time_value = datetime.strptime(time_value, "%H:%M").time()
+            except:
+                frappe.throw("Invalid time format")
 
     if not isinstance(date_value, date) or not isinstance(time_value, time):
         frappe.throw("Invalid date or time format")
-
     return datetime.combine(date_value, time_value)
 
 def get_datetime_object(value):
