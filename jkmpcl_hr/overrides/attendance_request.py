@@ -4,7 +4,7 @@ from frappe.utils import getdate, get_link_to_form, nowdate
 from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequest as HRMSAttendanceRequest, OverlappingAttendanceRequestError
 from datetime import datetime, time as time_obj
 from datetime import datetime, date
-
+from datetime import datetime, time, timedelta
 class AttendanceRequest(HRMSAttendanceRequest):
     def validate(self):
         from hrms.hr.utils import validate_active_employee
