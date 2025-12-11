@@ -1,0 +1,29 @@
+{
+ "attach_files": "",
+ "attach_print": 0,
+ "channel": "Email",
+ "condition_type": "Python",
+ "creation": "2025-12-11 15:58:46.619988",
+ "days_in_advance": 0,
+ "docstatus": 0,
+ "doctype": "Notification",
+ "document_type": "Attendance Request",
+ "enabled": 1,
+ "event": "Custom",
+ "idx": 0,
+ "is_standard": 1,
+ "message": "<p>Dear {{ doc.employee_name }},</p>\n\n<p>Your Attendance Request for {{ doc.from_date }} has been reviewed and has unfortunately been {{ doc.workflow_state }} - {{ frappe.session.user }}.</p>\n",
+ "message_type": "HTML",
+ "minutes_offset": 0,
+ "modified": "2025-12-11 16:43:07.907584",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Attendance Request Rejected",
+ "owner": "Administrator",
+ "recipients": [
+  {}
+ ],
+ "send_system_notification": 1,
+ "send_to_all_assignees": 0,
+ "subject": "Attendance Request Rejected for {{ doc.from_date }}"
+}
