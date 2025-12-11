@@ -1,0 +1,29 @@
+{
+ "attach_files": "",
+ "attach_print": 0,
+ "channel": "Email",
+ "condition_type": "Python",
+ "creation": "2025-12-11 16:23:00.678216",
+ "days_in_advance": 0,
+ "docstatus": 0,
+ "doctype": "Notification",
+ "document_type": "Attendance Request",
+ "enabled": 1,
+ "event": "Custom",
+ "idx": 0,
+ "is_standard": 1,
+ "message": "<p>Dear <b>{{ doc.employee }}</b>,</p>\n\n<p>\n    Your attendance request has been Approved by {{frappe.session.user}}.\n\n</p>",
+ "message_type": "HTML",
+ "minutes_offset": 0,
+ "modified": "2025-12-11 16:43:29.681714",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Attendance Request Approved",
+ "owner": "Administrator",
+ "recipients": [
+  {}
+ ],
+ "send_system_notification": 1,
+ "send_to_all_assignees": 0,
+ "subject": "Attendance Request: Approved - {{doc.employee}}"
+}

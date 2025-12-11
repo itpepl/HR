@@ -1,10 +1,10 @@
 import frappe
 from frappe import _, cint
-from frappe.utils import getdate, get_link_to_form, nowdate
+from frappe.utils import getdate, get_link_to_form, nowdate, get_datetime
 from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequest as HRMSAttendanceRequest, OverlappingAttendanceRequestError
 from datetime import datetime, date,timedelta, time
 from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority
-
+from jkmpcl_hr.py.utils import send_notification_email
 
 class AttendanceRequest(HRMSAttendanceRequest):
     def validate(self):
@@ -13,12 +13,102 @@ class AttendanceRequest(HRMSAttendanceRequest):
         self.validate_dates_custom()
         self.validate_request_overlap_custom()
         self.validate_no_attendance_to_create()
+
+    def on_update(self):
+        self.handle_workflow_notification()
+
     def on_submit(self):
         """Runs when Attendance Request is submitted"""
         self.create_auto_checkin_and_attendance()
 
-    def create_auto_checkin_and_attendance(self):
+    def handle_workflow_notification(self):
 
+        recipients,notification_name = self.get_notification_recipients()
+
+        notification_doc = frappe.get_doc("Notification", notification_name)
+        if notification_doc:
+
+            # Call your custom notification function
+            send_notification_email(
+                recipients=recipients,
+                doctype=self.doctype,
+                docname=self.name,
+                notification_name=notification_name,
+                send_link=False,
+                fallback_subject=f"Attendance Request for {self.from_date}",
+                fallback_message=f"Attendance Request for { self.from_date } is now in '{ self.workflow_state }' state.",
+                enabled=notification_doc.enabled,
+                send_system_notification=notification_doc.send_system_notification,
+                channel=notification_doc.channel
+            )
+
+    def get_notification_recipients(self):
+        recipients = []
+        approver_user = None
+        notification_name = "Attendance Request Approval"
+
+        if self.workflow_state == "Pending":
+            approver = frappe.db.get_list(
+                "Approver",
+                filters={
+                    "parent": self.employee,
+                    "effective_from": ["<=", frappe.utils.now_datetime()],
+                    "parentfield": "custom_reporting_manager"
+                },
+                fields=["name"],
+                order_by="effective_from desc",
+                ignore_permissions=True,
+                limit=1
+            )
+
+            if approver:
+                approver_user = frappe.db.get_value("Approver", approver[0].name, "user")
+
+        elif self.workflow_state == "Approved by Reporting Manager":
+
+            approver = frappe.db.get_list(
+                "Approver",
+                filters={
+                    "parent": self.employee,
+                    "effective_from": ["<=", frappe.utils.now_datetime()],
+                    "parentfield": "custom_hr_manager"
+                },
+                fields=["name"],
+                order_by="effective_from desc",
+                ignore_permissions=True,
+                limit=1
+            )
+
+            if approver:
+                approver_user = frappe.db.get_value("Approver", approver[0].name, "user")
+
+        elif self.workflow_state == "Approved by HR":
+            users = frappe.get_all("Has Role", filters={"role": "CEO"}, pluck="parent") or []
+
+            ceo_users = frappe.get_all(
+                "User",
+                filters=[
+                    ["User", "name", "in", users],
+                    ["User", "enabled", "=", 1],
+                    ["User", "name", "!=", "Administrator"]
+                ],
+                pluck="name"
+            )
+            recipients.extend(ceo_users)
+            
+        elif self.workflow_state in ["Final Approved", "Rejected", "Rejected by Reporting Manager", "Rejected by HR"]:
+            approver_user = frappe.db.get_value("Employee", self.employee, "user_id")
+            if self.workflow_state == "Final Approved":
+                notification_name = "Attendance Request Approved"
+            else:
+                notification_name = "Attendance Request Rejected"
+
+        if approver_user:
+            recipients.append(approver_user)
+
+        return recipients, notification_name
+
+    def create_auto_checkin_and_attendance(self):
         if not self.employee or not self.custom_punch_type:
             return
 
@@ -47,6 +137,7 @@ class AttendanceRequest(HRMSAttendanceRequest):
         except Exception as e:
             frappe.log_error(frappe.get_traceback(), "Attendance Request Error")
             frappe.throw(str(e))
+
     def validate_dates_custom(self):
         """Custom date validation for Attendance Request."""
         date_of_joining, relieving_date = frappe.db.get_value(
@@ -290,11 +381,11 @@ def get_attendance_status(working_hours, shift_details):
 
 
 @frappe.whitelist()
-def get_manual_punch_note_html(employee, from_date):
-    """Get HTML note for manual punch limit status, including current document."""
+def get_manual_punch_note_html(employee, from_date, current_punch_type=None, current_name=None):
+    """Get HTML note for manual punch limit status, exclude current doc from existing and include current punch once."""
     if not employee or not from_date:
         return {"count": 0, "html": ""}
-    
+
     manual_punch_limit = frappe.db.get_single_value("HR Settings", "custom_manual_punch_count") or 0
     manual_punch_limit = cint(manual_punch_limit)
 
@@ -303,15 +394,21 @@ def get_manual_punch_note_html(employee, from_date):
     year = ref_date.year
 
     def punch_count(pt):
-        if not pt: return 0
+        if not pt:
+            return 0
         pt = str(pt).strip().lower()
-        return 1 if pt in ("in", "out") else 0
+        return 2 if pt == "both" else (1 if pt in ("in", "out") else 0)
+
+    filters = {"employee": employee, "reason": "Manual Punch", "docstatus": ["<", 2]}
+    # exclude current doc if provided
+    if current_name:
+        filters["name"] = ["!=", current_name]
 
     existing = frappe.get_all(
         "Attendance Request",
-        filters={"employee": employee, "reason": "Manual Punch", "docstatus": ["<", 2]},
+        filters=filters,
         fields=["custom_punch_type", "from_date"]
-    )
+    ) or []
 
     total = 0
     for er in existing:
@@ -322,15 +419,41 @@ def get_manual_punch_note_html(employee, from_date):
         except Exception:
             continue
 
-    # Add current document punch count
-    total += 1
+    # include current document's punch_type once (if provided)
+    total += punch_count(current_punch_type)
 
     count = total
     html = ""
 
-    if count > manual_punch_limit:
-        note = _("Manual Punch limit exceeded for {0}-{1}. Count: {2}/{3}").format(year,str(month).zfill(2),count,manual_punch_limit)
-        # note = _("Manual Punch limit exceeded for {0}-{1}. Count: {2}/2").format(year, str(month).zfill(2), count)
+    if manual_punch_limit and count > manual_punch_limit:
+        note = _("Manual Punch limit exceeded for {0}-{1}. Count: {2}/{3}").format(year, str(month).zfill(2), count, manual_punch_limit)
         html = '<div style="color:#fff;background-color:#d32f2f;padding:12px;border-radius:4px;font-weight:700;">⚠️ {0}</div>'.format(frappe.utils.escape_html(note))
 
     return {"count": count, "html": html}
+
+
+
+@frappe.whitelist()
+def get_employee_for_session_user():
+    """Return Employee ID of the logged-in user (ignoring permissions)."""
+    user = frappe.session.user
+
+    employee = frappe.db.get_value(
+        "Employee",
+        {"user_id": user},
+        "name"
+    )
+
+    return {"employee": employee}
+
+
+
+@frappe.whitelist()
+def get_system_error_window():
+    """Return only the required fields, ignore user permissions."""
+    settings = frappe.get_single("HR Settings")
+
+    return {
+        "from_time": settings.custom_system_error_window_from,
+        "to_time": settings.custom_system_error_window_to
+    }
