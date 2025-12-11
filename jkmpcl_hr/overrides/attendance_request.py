@@ -140,22 +140,22 @@ def create_attendance_from_request(doc):
         status = "Present"
 
     # Check if attendance already exists
-    attendance_name = frappe.db.get_value("Attendance", {
-        "employee": doc.employee,
-        "attendance_date": doc.from_date,
-        "docstatus": ["!=", 2]
-    })
+    # attendance_name = frappe.db.get_value("Attendance", {
+    #     "employee": doc.employee,
+    #     "attendance_date": doc.from_date,
+    #     "docstatus": ["!=", 2]
+    # })
 
-    if attendance_name:
-        att = frappe.get_doc("Attendance", attendance_name)
-        att.in_time = in_datetime if not att.in_time or in_datetime < att.in_time else att.in_time
-        att.out_time = out_datetime if not att.out_time or out_datetime > att.out_time else att.out_time
-        att.working_hours = (att.out_time - att.in_time).total_seconds() / 3600
-        att.status = status
-        att.save(ignore_permissions=True)
-        if att.docstatus == 0:
-            att.submit()
-    else:
+    # if attendance_name:
+    #     att = frappe.get_doc("Attendance", attendance_name)
+    #     att.in_time = in_datetime if not att.in_time or in_datetime < att.in_time else att.in_time
+    #     att.out_time = out_datetime if not att.out_time or out_datetime > att.out_time else att.out_time
+    #     att.working_hours = (att.out_time - att.in_time).total_seconds() / 3600
+    #     att.status = status
+    #     att.save(ignore_permissions=True)
+    #     if att.docstatus == 0:
+    #         att.submit()
+    # else:
         attendance = frappe.get_doc({
             "doctype": "Attendance",
             "employee": doc.employee,
@@ -164,7 +164,8 @@ def create_attendance_from_request(doc):
             "in_time": in_datetime,
             "out_time": out_datetime,
             "working_hours": working_hours,
-            "status": status
+            "status": status,
+            "attendance_request": doc.name
         })
 
         attendance.insert(ignore_permissions=True)
@@ -187,11 +188,13 @@ def create_attendance_from_request(doc):
         "out_time": out_datetime,
         "status": status,
         "working_hours": working_hours,
-        "shift": shift_type
+        "shift": shift_type,
+        "attendance_request": doc.name
     })
 
     attendance.insert(ignore_permissions=True)
     attendance.submit()
+
 
     frappe.msgprint(f"Attendance created: {status} ({round(working_hours,2)} hrs)")
 
