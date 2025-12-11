@@ -1,0 +1,30 @@
+{
+ "attach_files": "",
+ "attach_print": 0,
+ "channel": "Email",
+ "condition_type": "Python",
+ "creation": "2025-12-11 15:19:34.278548",
+ "days_in_advance": 0,
+ "docstatus": 0,
+ "doctype": "Notification",
+ "document_type": "Attendance Request",
+ "enabled": 1,
+ "event": "Custom",
+ "idx": 0,
+ "is_standard": 1,
+ "message": "<p>Dear Sir/Madam,</p>\n\n<p>\n    An attendance request has been submitted by <b>{{ doc.employee }}</b>.  \n    Please review the details below and take the necessary action.\n</p>\n\n<p><b>Request Summary:</b></p>\n\n<ul>\n    <li><b>Employee:</b> {{ doc.employee }}</li>\n    <li><b>Request Date:</b> {{ frappe.utils.format_date(doc.from_date, \"dd-MM-yyyy\") }}</li>\n    <li><b>Workflow State:</b> {{ doc.workflow_state }}</li>\n    <li>\n        <b>View Request:</b>\n        {% set att_req_link = frappe.utils.get_url() ~ '/app/attendance-request/' ~ doc.name %}\n        <a href=\"{{ att_req_link }}\">Click here</a>\n    </li>\n</ul>\n",
+ "message_type": "HTML",
+ "minutes_offset": 0,
+ "modified": "2025-12-11 16:52:52.492710",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Attendance Request Approval",
+ "owner": "Administrator",
+ "recipients": [
+  {}
+ ],
+ "send_system_notification": 1,
+ "send_to_all_assignees": 0,
+ "subject": "Attendance Request: {{doc.workflow_state}} - {{ doc.employee }}",
+ "value_changed": ""
+}
