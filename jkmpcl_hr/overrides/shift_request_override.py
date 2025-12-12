@@ -38,7 +38,7 @@ class CustomShiftRequest(ShiftRequest):
             approvers.append(custom_approver)
             
         
-        if self.approver not in approvers:
+        if self.approver not in approvers and self.approver != current_user:
             if not any(r in user_roles for r in allowed_roles):
                 frappe.throw(_("Only Approvers can Approve this Request."))
     

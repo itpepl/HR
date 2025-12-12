@@ -81,7 +81,13 @@ frappe.ui.form.on("Shift Request", {
     employee: function(frm){
         if(frm.doc.employee){
 
-            get_emp_reporting_manager_user(frm)
+            if (frm.doc.shift_type){
+                set_ceo_as_approver(frm)
+            }
+            else{
+                get_emp_reporting_manager_user(frm)
+
+            }
         }
     },
     from_date: function(frm){
