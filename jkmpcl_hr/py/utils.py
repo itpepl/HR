@@ -8,9 +8,6 @@ def get_emp_reporting_manager(emp_id, as_on_date=today()):
 
     return rh_dict[0]["user"] if rh_dict else None
 
-
-
-
 def send_notification_email(
     recipients,
     doctype,
@@ -139,3 +136,24 @@ def send_notification_email(
             message=f"Failed sending notification: {str(e)}\n{traceback.format_exc()}",
         )
         frappe.throw(frappe._("An error occurred while sending notification emails."))
+
+
+# * METHOD TO GET ROLES FROM THE HR SETTINGS
+@frappe.whitelist()
+def get_roles_from_hr_settings_by_module(role_type_field):
+    try:
+        if not role_type_field:
+            return []
+
+        roles_value = frappe.db.get_single_value("HR Settings", role_type_field)
+        if not roles_value:
+            return []
+
+        roles_list = [role.strip() for role in roles_value.split(",") if role.strip()]
+        return roles_list
+
+    except Exception as error:
+        frappe.log_error("Error Fetching Roles from HR Settings", str(error))
+        return []
+
+

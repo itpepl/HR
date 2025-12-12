@@ -1,21 +1,63 @@
 import frappe
 from frappe.utils import getdate
 
-def get_required_shift_hours(dt, branch):
+def get_required_shift_hours(dt, branch, is_female):
     dt = getdate(dt)
-    if branch == "Srinagar":
+    if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
         if 4 <= dt.month <= 9:
             return "8hours"
         return "7hours"
     elif branch == "Jammu":
-        if (4 <= dt.month <= 11) or (2 <= dt.month <= 3):
+        if is_female:
+            if (4 <= dt.month <= 11) or (2 <= dt.month <= 3):
+                return "8hours"
+            return "7hours"
+        else:
             return "8hours"
-        return "7hours"
 
 
 
 def validate(doc, event):
     validate_shift_hours(doc)
+
+
+def on_submit(doc, event):
+    
+    try:
+        notification_doc = frappe.db.get_value(
+                    "Notification", "Shift Request Submitted", ["subject", "message"], as_dict=True
+        )
+        
+        emp_user = frappe.db.get_value("Employee", doc.employee, "user_id")
+        
+        if notification_doc and emp_user:
+                    # doc = frappe.get_doc(doctype, docname)
+            message = frappe.render_template(notification_doc.message, {"doc": doc})
+            subject = frappe.render_template(notification_doc.subject, {"doc": doc})
+            
+            
+            system_notification = frappe.get_doc(
+                                {
+                                    "doctype": "Notification Log",
+                                    "subject": subject,
+                                    "for_user": emp_user,
+                                    # "type": "Energy Point",
+                                    "document_type": doc.doctype,
+                                    "document_name": doc.name,
+                                }
+                            )
+            system_notification.insert(ignore_permissions=True)
+                
+            
+            
+            frappe.sendmail(
+                recipients=[emp_user],
+                subject=subject,
+                message=message                
+            )
+    except Exception as e:
+        frappe.throw(e)
+        frappe.log_error("error_send_shift_request_notification", frappe.get_traceback())
 
 
 @frappe.whitelist()
@@ -27,10 +69,12 @@ def validate_shift_hours(doc):
             return
 
         
-        from_hours = get_required_shift_hours(doc.from_date, doc.custom_branch)
+        is_female = True if frappe.db.get_value("Employee", doc.employee, "gender") == "Female" else False
+        
+        from_hours = get_required_shift_hours(doc.from_date, doc.custom_branch, is_female)
         to_hours = from_hours
         if doc.to_date:
-            to_hours = get_required_shift_hours(doc.to_date, doc.custom_branch)
+            to_hours = get_required_shift_hours(doc.to_date, doc.custom_branch, is_female)
 
         if from_hours != to_hours:
             frappe.throw(
@@ -61,4 +105,36 @@ def validate_shift_hours(doc):
                 f"but for the selected dates only {required_hours}-hour shifts are allowed."
             )
         
+
+# * METHOD TO GET CEO USER
+@frappe.whitelist()
+def get_ceo(shift_type, branch):
+    
+    if not frappe.db.get_value("Shift Type", shift_type, "custom_shift_type") == "24 hours":
+        return {"is_ceo": 0}
         
+    ceo_users = frappe.get_all(
+        "Has Role",
+        filters={"role": "CEO"},
+        fields=["parent as user"]
+    )
+
+    if not ceo_users:
+        return {"is_ceo": 0}
+
+    ceo_user_ids = [d.user for d in ceo_users]
+
+    # Step 2: Get Employee linked to these users with matching branch
+    employees = frappe.get_all(
+        "Employee",
+        filters={
+            "user_id": ["in", ceo_user_ids],
+            "branch": branch
+        },
+        fields=["name", "user_id", "employee_name", "branch"]
+    )
+
+    if not employees:
+        return {"is_ceo": 0}
+
+    return {"is_ceo": 1, "user": employees[0].user_id}
