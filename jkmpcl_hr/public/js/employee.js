@@ -6,13 +6,14 @@ frappe.ui.form.on("Employee", {
 
     refresh: function(frm){
         if(frm.doc.branch){
-            frm.set_query("default_shift", function(){
-                return{
-                    filters:{
-                        custom_branch: frm.doc.branch
-                    }
-                }
-            })
+            // frm.set_query("default_shift", function(){
+            //     return{
+            //         filters:{
+            //             custom_branch: frm.doc.branch
+            //         }
+            //     }
+            // })
+            apply_filter_in_shift_type(frm)
         }
     },
     department: async function (frm) {
@@ -86,6 +87,11 @@ frappe.ui.form.on("Employee", {
         }
     },
     
+    branch: function(frm){
+        if(frm.doc.branch){
+            apply_filter_in_shift_type(frm)
+        }
+    }
     // default_shift: function(frm){
     //     if(frm.doc.branch){
     //         frm.set_query("default_shift", function(){
@@ -161,5 +167,19 @@ function setup_user_filters(frm) {
                 };
             };
         }
+    });
+}
+
+// * FUNCTION TO APPLY FILTER ON shift_type FIELD
+function apply_filter_in_shift_type(frm){
+    frm.set_query("default_shift", function () {
+        return {
+            query: "jkmpcl_hr.py.api.determine_shift_types",
+            filters: {
+                branch: frm.doc.branch,
+                as_on_date: frappe.datetime.get_today(),
+                emp_id: frm.doc.name
+            }
+        };
     });
 }
