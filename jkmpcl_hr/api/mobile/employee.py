@@ -27,6 +27,7 @@ def get_employee_details(email):
                 "personal_email",
                 "cell_number",
                 "company_email",
+                "shift_request_approver"
                 "designation",
             ],
         )
@@ -97,6 +98,7 @@ def get_employee_details(email):
                 "gender": employee.get("gender", "N/A"),
                 "date_of_birth": employee.get("date_of_birth", "N/A"),
                 "date_of_joining": employee.get("date_of_joining", "N/A"),
+                "shift_request_approver": employee.get("shift_request_approver", "N/A"),
             },
             "contact_info": {
                 "personal_email": employee.get("personal_email", "N/A"),
