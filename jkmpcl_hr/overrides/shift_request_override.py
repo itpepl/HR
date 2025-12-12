@@ -4,7 +4,7 @@ from frappe.utils import getdate, add_days
 from hrms.hr.doctype.shift_request.shift_request import ShiftRequest
 from hrms.hr.utils import share_doc_with_approver, validate_active_employee
 
-from jkmpcl_hr.py.utils import get_emp_reporting_manager
+from jkmpcl_hr.py.utils import get_emp_reporting_manager, get_roles_from_hr_settings_by_module
 
 
 class CustomShiftRequest(ShiftRequest):
@@ -21,18 +21,26 @@ class CustomShiftRequest(ShiftRequest):
         shift_approver = frappe.get_value("Employee", self.employee, "shift_request_approver")
         
         custom_approver = get_emp_reporting_manager(self.employee)
+        current_user = frappe.session.user
+
+        user_roles = frappe.get_roles(current_user)
         
+        allowed_roles = get_roles_from_hr_settings_by_module("custom_roles_allowed_to_assign_24hours_shift")
+         
         approvers = frappe.db.sql(
             """select approver from `tabDepartment Approver` where parent= %s and parentfield = 'shift_request_approver'""",
             (department),
         )
         approvers = [approver[0] for approver in approvers]
         approvers.append(shift_approver)
+        
         if custom_approver:
             approvers.append(custom_approver)
             
+        
         if self.approver not in approvers:
-            frappe.throw(_("Only Approvers can Approve this Request."))
+            if not any(r in user_roles for r in allowed_roles):
+                frappe.throw(_("Only Approvers can Approve this Request."))
     
     
     def on_submit(self):

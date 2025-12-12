@@ -34,7 +34,7 @@ def create_and_assign_shift_assignments_srinagar(today_date, start_year, emp_fil
     if today_date >= oct_start_sri:
         is_seven_hours_period = True
 
-    emp_filters["branch"] = "Srinagar"
+    emp_filters["branch"] = "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar"
     emp_list = frappe.db.get_list("Employee", filters=emp_filters, fields=["name", "default_shift"])
         
     if not emp_list:

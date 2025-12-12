@@ -3,6 +3,8 @@ from frappe import _
 from frappe.utils import cint, getdate, today
 from frappe.query_builder import DocType
 
+from jkmpcl_hr.py.utils import get_roles_from_hr_settings_by_module
+
 
 
 @frappe.whitelist()
@@ -109,12 +111,26 @@ def add_custom_hr_rows_to_employees(department, rows):
 def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
     branch = filters.get("branch")
     date_str = filters.get("as_on_date")
+    employee_id = filters.get("emp_id")
+    conditions = {}    
+    
+    
+    current_user = frappe.session.user
+
+    user_roles = frappe.get_roles(current_user)
+    
+    allowed_roles = get_roles_from_hr_settings_by_module("custom_roles_allowed_to_assign_24hours_shift")
+
+    if not any(r in user_roles for r in allowed_roles):
+        conditions["custom_shift_type"] = ["!=", "24 hours"]
 
     if not branch:
         return []
     
+    
+    
     as_on_date = getdate(date_str) if date_str else getdate()
-    if branch == "Srinagar": 
+    if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar": 
         
         print(f"\n\n \n\n")
         if 4 <= as_on_date.month <= 9:   
@@ -122,7 +138,8 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
         else:                          
             required_hours = "7hours"
 
-        conditions = {"custom_hours": required_hours}
+        
+        conditions["custom_hours"]= required_hours
         
         
         print(f"\n\n  required hours {required_hours} \n\n")
@@ -141,12 +158,17 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
         return [[s.name, s.name] for s in shift_types]
     elif branch == "Jammu":
         
-        if (4<= as_on_date.month <= 11) or (2 <= as_on_date.month <= 3):
-            required_hours = "8hours"
+        is_female = True if frappe.db.get_value("Employee", employee_id, "gender") == "Female" else False
+    
+        if is_female:        
+            if (4<= as_on_date.month <= 11) or (2 <= as_on_date.month <= 3):
+                required_hours = "8hours"
+            else:
+                required_hours = "7hours"
         else:
-            required_hours = "7hours"
+            required_hours = "8hours"
         
-        conditions = {"custom_hours": required_hours}
+        conditions["custom_hours"]= required_hours
         
         
         print(f"\n\n  required hours {required_hours} \n\n")

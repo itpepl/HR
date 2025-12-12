@@ -39,7 +39,7 @@ frappe.ui.form.on("Shift Request", {
             frm.set_df_property("status", "read_only", 0);
         }
         else{
-            if(frm.doc.employee){
+            if(frm.doc.employee && !frm.doc.approver){
                  frappe.call({
                     method: "jkmpcl_hr.py.utils.get_emp_reporting_manager",
                     args:{
@@ -70,10 +70,18 @@ frappe.ui.form.on("Shift Request", {
 
 
     },
+
+    shift_type: function(frm){
+        if(frm.doc.shift_type){
+            set_ceo_as_approver(frm)
+        }
+
+    },
+
     employee: function(frm){
         if(frm.doc.employee){
-            get_emp_reporting_manager_user(frm)
 
+            get_emp_reporting_manager_user(frm)
         }
     },
     from_date: function(frm){
@@ -104,11 +112,13 @@ frappe.ui.form.on("Shift Request", {
 
 // * FUNCTION TO GET THE APPROVER OF THE EMPLOYEE
 function get_emp_reporting_manager_user(frm){
+
     frappe.call({
         method: "jkmpcl_hr.py.utils.get_emp_reporting_manager",
         args:{
                 emp_id: frm.doc.employee,
-                as_on_date: frm.doc.from_date?frm.doc.from_date:frappe.datetime.get_today()
+                as_on_date: frm.doc.from_date?frm.doc.from_date:frappe.datetime.get_today() 
+
         },  
         callback: function(res){
             if(res.message){
@@ -127,8 +137,31 @@ function apply_filter_in_shift_type(frm){
             query: "jkmpcl_hr.py.api.determine_shift_types",
             filters: {
                 branch: frm.doc.custom_branch,
-                as_on_date: frm.doc.from_date || frappe.datetime.get_today()
+                as_on_date: frm.doc.from_date || frappe.datetime.get_today(),
+                emp_id: frm.doc.employee
             }
         };
     });
+}
+
+// * FUNCTION TO SET CEO AS APPROVER IF THE SELECTED SHIFT IS A 24 HOURS SHIFT BASED ON BRANCH
+function set_ceo_as_approver(frm){
+
+    frappe.call({
+        method: "jkmpcl_hr.py.shift_request.get_ceo",
+        args:{
+            shift_type: frm.doc.shift_type,
+            branch: frm.doc.custom_branch
+        },
+        callback: function(res){
+            if (res.message && res.message.is_ceo){
+
+                frm.set_value("approver", res.message.user)
+                frm.refresh_field("approver")
+            }
+            else{
+                get_emp_reporting_manager_user(frm)
+            }
+        }
+    })
 }

@@ -149,7 +149,8 @@ doc_events = {
         "on_update": "jkmpcl_hr.py.department.on_update"
     },
     "Shift Request": {
-        "validate": "jkmpcl_hr.py.shift_request.validate"
+        "validate": "jkmpcl_hr.py.shift_request.validate",
+        "on_submit": "jkmpcl_hr.py.shift_request.on_submit"
     }
   
 # 	"*": {
