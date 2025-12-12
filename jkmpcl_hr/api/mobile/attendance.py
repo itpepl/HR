@@ -5,7 +5,7 @@ from datetime import datetime
 import frappe,uuid, os, mimetypes, calendar, re
 
 @frappe.whitelist()
-def get_attendance(employeeId, date=None, from_date=None, to_date=None, status=None):
+def get_attendance(employeeId, date=None, from_date=None, to_date=None, status=None, limit=None, limit_start=0):
     try:
         if not employeeId:
             frappe.throw("Employee ID is required")
@@ -34,7 +34,7 @@ def get_attendance(employeeId, date=None, from_date=None, to_date=None, status=N
             ["attendance_date", "between", [start_date, end_date]],
         ]
 
-        # Status filter (optional, allows single or comma separated)
+        # Status filter (optional)
         if status:
             if "," in status:
                 status_list = [s.strip() for s in status.split(",")]
@@ -56,7 +56,9 @@ def get_attendance(employeeId, date=None, from_date=None, to_date=None, status=N
             "Attendance",
             filters=month_filters,
             fields=fields,
-            order_by="attendance_date asc"
+            order_by="attendance_date asc",
+            limit=limit,
+            limit_start=limit_start
         )
 
     except Exception as e:
