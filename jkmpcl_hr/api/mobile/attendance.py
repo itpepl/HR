@@ -5,7 +5,15 @@ from datetime import datetime
 import frappe,uuid, os, mimetypes, calendar, re
 
 @frappe.whitelist()
-def get_attendance(employeeId, date=None, from_date=None, to_date=None, status=None, limit=None, limit_start=0):
+def get_attendance(
+    employeeId,
+    date=None,
+    from_date=None,
+    to_date=None,
+    status=None,
+    limit=None,
+    limit_start=0
+):
     try:
         if not employeeId:
             frappe.throw("Employee ID is required")
@@ -52,6 +60,13 @@ def get_attendance(employeeId, date=None, from_date=None, to_date=None, status=N
             "working_hours"
         ]
 
+        # ✅ Total records (without limit)
+        total_records = frappe.db.count(
+            "Attendance",
+            filters=month_filters
+        )
+
+        # ✅ Attendance records (with optional limit)
         month_attendance_records = frappe.get_list(
             "Attendance",
             filters=month_filters,
@@ -78,6 +93,7 @@ def get_attendance(employeeId, date=None, from_date=None, to_date=None, status=N
             "data": {
                 "from_date": start_date,
                 "to_date": end_date,
+                "total_records": total_records,  # ✅ added
                 "records": month_attendance_records or []
             },
         }

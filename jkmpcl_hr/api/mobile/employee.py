@@ -27,8 +27,8 @@ def get_employee_details(email):
                 "personal_email",
                 "cell_number",
                 "company_email",
-                "shift_request_approver"
-                "designation",
+                "shift_request_approver",
+                "designation"
             ],
         )
 
