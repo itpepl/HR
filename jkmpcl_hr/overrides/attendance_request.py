@@ -238,9 +238,6 @@ def update_attendance_direct_db(employee, date, in_time, out_time, working_hours
     if not attendance_name:
         return
 
-    # --------------------------
-    # UPDATE ATTENDANCE DIRECT
-    # --------------------------
     frappe.db.sql("""
         UPDATE `tabAttendance`
         SET 
@@ -251,17 +248,12 @@ def update_attendance_direct_db(employee, date, in_time, out_time, working_hours
         WHERE name = %s
     """, (in_time, out_time, working_hours, status, attendance_name))
 
-    # --------------------------
-    # DELETE OLD LEAVE LEDGERS
-    # --------------------------
+
     frappe.db.sql("""
         DELETE FROM `tabLeave Ledger Entry`
         WHERE employee = %s AND transaction_name = %s
     """, (employee, attendance_name))
 
-    # --------------------------
-    # ADD NEW LEAVE IF REQUIRED
-    # --------------------------
     if status in ["Absent", "Half Day"]:
         leave_type = get_employee_leave_type(employee)
 
@@ -310,9 +302,6 @@ from datetime import datetime
 import frappe
 def create_attendance_from_request(doc):
 
-    # -----------------------------
-    # 1. Fetch Shift from Shift Assignment
-    # -----------------------------
     shift_assignment = frappe.db.get_value(
         "Shift Assignment",
         {
@@ -343,9 +332,7 @@ def create_attendance_from_request(doc):
 
     shift_type = shift_assignment.shift_type
 
-    # -----------------------------
-    # 2. Fetch Shift Type settings
-    # -----------------------------
+
     shift = frappe.db.get_value(
         "Shift Type",
         shift_type,
@@ -353,9 +340,6 @@ def create_attendance_from_request(doc):
         as_dict=True
     )
 
-    # -----------------------------
-    # 3. Compute Working Hours
-    # -----------------------------
     in_datetime = make_datetime(doc.from_date, doc.custom_in_time)
     out_datetime = make_datetime(doc.from_date, doc.custom_out_time)
 
@@ -366,9 +350,7 @@ def create_attendance_from_request(doc):
     half_day_threshold = float(shift.working_hours_threshold_for_half_day or 8)
     absent_threshold = float(shift.working_hours_threshold_for_absent or 3)
 
-    # -----------------------------
-    # 4. Determine Attendance Status
-    # -----------------------------
+
     if working_hours == 0 or working_hours <= absent_threshold:
         status = "Absent"
     elif working_hours < half_day_threshold:
@@ -376,9 +358,7 @@ def create_attendance_from_request(doc):
     else:
         status = "Present"
 
-    # -----------------------------
-    # 5. Create Attendance
-    # -----------------------------
+
     attendance = frappe.get_doc({
         "doctype": "Attendance",
         "employee": doc.employee,
@@ -394,9 +374,6 @@ def create_attendance_from_request(doc):
     attendance.insert(ignore_permissions=True)
     attendance.submit()
 
-    # -----------------------------
-    # 6. Deduct leave if needed
-    # -----------------------------
     if working_hours < half_day_threshold:
         deduct_leave_by_priority(doc.employee, doc.from_date, status, attendance.name )
 
