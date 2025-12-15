@@ -2,21 +2,57 @@ import frappe
 
 
 @frappe.whitelist()
-def get_manual_punches(employee, start_date=None, end_date=None):
+def get_manual_punches(
+    employee,
+    start_date=None,
+    end_date=None,
+    limit=None
+):
     filters = {"employee": employee}
 
-    # Add date range filters only if values exist
+    # Date range filters
     if start_date:
         filters["to_date"] = [">=", start_date]
 
     if end_date:
         filters["from_date"] = ["<=", end_date]
 
-    return frappe.get_all(
+    # Total record count
+    total_records = frappe.db.count(
         "Attendance Request",
-        filters=filters,
-        fields=["name", "employee", "from_date", "to_date","explanation","reason","custom_punch_type","custom_in_time","custom_out_time","employee_name"],
+        filters=filters
     )
+
+    # Prepare args for get_all
+    get_all_args = {
+        "doctype": "Attendance Request",
+        "filters": filters,
+        "fields": [
+            "name",
+            "employee",
+            "employee_name",
+            "from_date",
+            "to_date",
+            "explanation",
+            "reason",
+            "custom_punch_type",
+            "custom_in_time",
+            "custom_out_time",
+            "workflow_state"
+        ],
+        "order_by": "from_date desc"
+    }
+
+    # Apply limit only if passed
+    if limit:
+        get_all_args["limit_page_length"] = int(limit)
+
+    records = frappe.get_all(**get_all_args)
+
+    return {
+        "data": records,
+        "total_records": total_records
+    }
 
 
 
@@ -77,7 +113,7 @@ def request_type_list():
     return {
             "success": True,
             "message": "Request types fetched successfully",
-            "data": ["Manual Punch","Field Visit","System Error"]
+            "data": ["Manual Punch","Field Visit"]
         }
 
 

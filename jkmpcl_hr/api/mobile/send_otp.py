@@ -19,7 +19,7 @@ def send_reset_otp(email):
     # Expiry (10 minutes)
     expiry = add_to_date(now(), minutes=10)
 
-    # Save OTP in Doctype
+    # Save OTP
     doc = frappe.new_doc("Password Reset OTP")
     doc.email = email
     doc.otp = str(otp)
@@ -28,9 +28,9 @@ def send_reset_otp(email):
     doc.insert(ignore_permissions=True)
     frappe.db.commit()
 
-    # 📩 Send OTP to email
+    # Send email
     frappe.sendmail(
-        recipients=["aditya@sanskartechnolab.com"],
+        recipients=[email],
         subject="Your OTP to Reset Password",
         message=f"""
         Hello,
@@ -38,20 +38,20 @@ def send_reset_otp(email):
         Your OTP for password reset is: <b>{otp}</b>
 
         This OTP will expire in 10 minutes.
-
-        If you did not request this, please ignore this email.
-
-        Thanks,
-        Support Team
         """,
         delayed=False
     )
 
-    return {
+    response = {
         "success": True,
         "message": f"OTP sent successfully to {email[:3]}****{email.split('@')[1]}"
     }
 
+    # ✅ Return OTP ONLY in developer mode (testing)
+    if frappe.conf.get("developer_mode"):
+        response["otp"] = str(otp)
+
+    return response
 
 
 @frappe.whitelist(allow_guest=True)
