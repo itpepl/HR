@@ -204,13 +204,38 @@ def run_daily_attendance():
 
         logs = frappe.db.sql("""
             SELECT
-                MIN(time) as in_time,
-                MAX(time) as out_time,
-                COUNT(name) as punches
+                MIN(time) AS in_time,
+                MAX(time) AS out_time,
+                COUNT(*) AS punches
             FROM `tabEmployee Checkin`
             WHERE employee = %s
             AND DATE(time) = %s
-        """, (emp, yesterday), as_dict=1)[0]
+        """, (emp, yesterday), as_dict=True)[0]
+
+        # No punches → Absent
+        if not logs or not logs.in_time:
+            create_or_update_attendance(emp, yesterday, None, None, 0)
+            continue
+
+        # Only 1 punch → missing checkout
+        if logs.punches == 1:
+            handle_missing_checkout(emp, yesterday, logs.in_time)
+            continue
+
+        # Multiple punches → calculate working hours
+        in_time = logs.in_time
+        out_time = logs.out_time
+
+        working_hours = (out_time - in_time).total_seconds() / 3600
+
+        create_or_update_attendance(
+            emp,
+            yesterday,
+            in_time,
+            out_time,
+            working_hours
+        )
+
 
 
         if not logs or not logs["in_time"]:
@@ -250,12 +275,11 @@ def handle_missing_checkout(employee, date, in_time):
     working_hours = 0
     status = "Absent"
 
-    create_or_update_attendance(employee, date, in_time, None, working_hours)
+    attendance_name = create_or_update_attendance(employee, date, in_time, None, working_hours)
+    deduct_leave_by_priority(employee, date, status,attendance_name)
 
-    deduct_leave_by_priority(employee, date, status)
 
-
-def deduct_leave_by_priority(employee, date, status):
+def deduct_leave_by_priority(employee, date, status,attendance=None):
 
     leave_priority = [
         "Casual Leave",
@@ -263,14 +287,14 @@ def deduct_leave_by_priority(employee, date, status):
         "Privilege Leave",
         "Leave Without Pay"
     ]
-
     leave_days = 0.5 if status == "Half Day" else 1
     for leave_type in leave_priority:
 
         balance = get_leave_balance(employee, leave_type, date)
 
         if balance >= leave_days or leave_type == "Leave Without Pay":
-            create_leave_ledger(employee, leave_type, date, status)
+            
+            create_leave_ledger(employee, leave_type, date, status,attendance)
             break
 
 
@@ -370,7 +394,7 @@ def get_employee_leave_type(employee):
 
     return leave_type
 
-def create_leave_ledger(employee, leave_type, date, status):
+def create_leave_ledger(employee, leave_type, date, status,attendance):
     if not leave_type:
         return
 
@@ -385,7 +409,6 @@ def create_leave_ledger(employee, leave_type, date, status):
 
     # Half day will deduct 0.5
     leave_days = 0.5 if status == "Half Day" else 1
-
     doc = frappe.get_doc({
         "doctype": "Leave Ledger Entry",
         "employee": employee,
@@ -395,7 +418,8 @@ def create_leave_ledger(employee, leave_type, date, status):
         "to_date": date,
         "leave_allocation": None,
         "leaves": -abs(leave_days),
-        "transaction_type": "Leave Adjustment"
+        "transaction_type": "Attendance",
+        "transaction_name":attendance,
     })
 
     doc.insert(ignore_permissions=True)
