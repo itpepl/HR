@@ -76,7 +76,7 @@ def create_shift_assignment_for_srinagar(today_date, emp_id, default_shift_type_
         create_shift_assignment_rec(emp_id, seven_hours_start, seven_hours_end, seven_hours_shift_id)
     
     elif assign_seven_hours:
-        create_shift_assignment_rec(emp_id, seven_hours_start, seven_hours_end, seven_hours_shift_id)
+        create_shift_assignment_rec(emp_id, today_date, seven_hours_end, seven_hours_shift_id)
 
 
 
