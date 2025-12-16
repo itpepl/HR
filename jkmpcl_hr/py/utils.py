@@ -157,3 +157,18 @@ def get_roles_from_hr_settings_by_module(role_type_field):
         return []
 
 
+
+def create_shift_assignment_rec(emp_id, from_date, to_date, shift_type_id):
+    
+    doc = frappe.get_doc({
+                    "doctype": "Shift Assignment",
+                    "employee": emp_id,
+                    # "employee_name": emp_display
+                    "shift_type": shift_type_id,
+                    "start_date": from_date,
+                    "end_date": to_date,
+                })  
+
+    doc.insert(ignore_permissions=True)
+    doc.submit()    
+    frappe.db.commit()

@@ -3,6 +3,8 @@ from frappe.utils import getdate, today,add_days,now_datetime
 from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
 
+from jkmpcl_hr.py.utils import create_shift_assignment_rec
+
 @frappe.whitelist(allow_guest=True)
 def create_shift_assignments():
     frappe.log_error("start_create_shift_assignments", "Scheduler Started")
@@ -29,10 +31,6 @@ def create_and_assign_shift_assignments_srinagar(today_date, start_year, emp_fil
     
     # sep_end_sri  = date(start_year, 9, 30)
     # oct_start_sri = date(start_year, 10, 1)
-    is_seven_hours_period = False
-    
-    if today_date >= oct_start_sri:
-        is_seven_hours_period = True
 
     emp_filters["branch"] = "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar"
     emp_list = frappe.db.get_list("Employee", filters=emp_filters, fields=["name", "default_shift"])
@@ -171,25 +169,7 @@ def create_and_assign_shift_assignments_jammu(today_date, start_year, emp_filter
     frappe.log_error("end_create_and_assign_shift_assignments_jammu", f"Scheduler Ended FOR Jammu \n ds_not_setupfor_this_emp: {ds_not_set_emp}")
     
     
-def create_shift_assignment_rec(emp_id, from_date, to_date, shift_type_id):
-    
-    doc = frappe.get_doc({
-                    "doctype": "Shift Assignment",
-                    "employee": emp_id,
-                    # "employee_name": emp_display
-                    "shift_type": shift_type_id,
-                    "start_date": from_date,
-                    "end_date": to_date,
-                })  
 
-                # If Shift Assignment doctype requires additional fields (company etc.)
-                # set them here. Example:
-                # doc.company = frappe.db.get_single_value("Global Defaults", "default_company")
-
-
-    doc.insert(ignore_permissions=True)
-    doc.submit()    
-    frappe.db.commit()
 
 
 

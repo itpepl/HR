@@ -151,6 +151,9 @@ doc_events = {
     "Shift Request": {
         "validate": "jkmpcl_hr.py.shift_request.validate",
         "on_submit": "jkmpcl_hr.py.shift_request.on_submit"
+    },
+    "Employee": {
+        "after_insert": "jkmpcl_hr.py.employee.after_insert"
     }
   
 # 	"*": {
