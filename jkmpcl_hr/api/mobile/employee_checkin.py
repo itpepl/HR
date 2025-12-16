@@ -13,16 +13,16 @@ def check_in(employeeId, latitude=None, longitude=None):
         if not employeeId:
             frappe.throw(_("Employee ID is required"))
 
-        # if not latitude or not longitude:
-        #     frappe.throw(_("Latitude and Longitude are required"))
+        if not latitude or not longitude:
+            frappe.throw(_("Latitude and Longitude are required"))
 
         attendance = frappe.get_doc(
             {
                 "doctype": "Employee Checkin",
                 "employee": employeeId,
                 "check_in": now(),
-                # "latitude": float(latitude),
-                # "longitude": float(longitude),
+                "latitude": float(latitude),
+                "longitude": float(longitude),
                 "log_type": "IN",
             }
         )
@@ -50,8 +50,8 @@ def check_in(employeeId, latitude=None, longitude=None):
                 "name": attendance.name,
                 "employee": employeeId,
                 "check_in_time": attendance.check_in,
-                # "latitude": latitude,
-                # "longitude": longitude,
+                "latitude": latitude,
+                "longitude": longitude,
                 "log_type": "IN"
             },
         }
@@ -63,8 +63,8 @@ def check_out(employeeId, latitude=None, longitude=None):
         if not employeeId:
             frappe.throw(_("Employee ID is required"))
 
-        # if not latitude or not longitude:
-        #     frappe.throw(_("Latitude and Longitude are required"))
+        if not latitude or not longitude:
+            frappe.throw(_("Latitude and Longitude are required"))
 
         # Get Last IN record
         check_in_records = frappe.get_all(
@@ -87,8 +87,8 @@ def check_out(employeeId, latitude=None, longitude=None):
                 "doctype": "Employee Checkin",
                 "employee": employeeId,
                 "check_out": now(),
-                # "latitude": float(latitude) or None,
-                # "longitude": float(longitude),
+                "latitude": float(latitude) or None,
+                "longitude": float(longitude),
                 "log_type": "OUT",
                 "related_check_in": last_checkin,
             }

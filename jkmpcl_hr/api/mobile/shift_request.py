@@ -1,4 +1,6 @@
 import frappe
+from frappe.utils import getdate
+from frappe.utils import now, add_to_date
 # from jkmpcl_hr.py.api import determine_shift_types
 @frappe.whitelist()
 def get_shift_requests(employeeId=None, start_date=None, end_date=None):
@@ -88,48 +90,6 @@ def create_shift_request(data):
             "data": None
         }
 
-
-@frappe.whitelist()
-def shift_type_list(branch=None):
-
-    try:
-        filters = {}
-
-        if branch:
-            filters["custom_branch"] = branch
-
- 
-        shift_types = frappe.get_all(
-            "Shift Type",
-            filters=filters,
-            fields=["name", "start_time", "end_time"],
-            order_by="name asc"
-        )
-
-        return {
-            "success": True,
-            "message": "Shift types fetched successfully",
-            "data": shift_types
-        }
-
-    except Exception as e:
-        error_message = f"Error fetching shift types: {str(e)}"
-        frappe.log_error(error_message, "Shift Type API Error")
-
-        return {
-            "success": False,
-            "message": error_message,
-            "data": None
-        }
-
-
-
-import frappe
-from frappe.utils import getdate
-from frappe.utils import now, add_to_date
-
-import frappe
-from frappe.utils import getdate
 
 @frappe.whitelist()
 def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
