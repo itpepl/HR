@@ -58,7 +58,6 @@ def create_shift_request(data):
                 "message": "Missing required fields",
                 "data": None
             }
-        print(f"\n\n Employee: {employee}, Shift Type: {shift_type}, From Date: {from_date}, To Date: {to_date}, Remarks: {remarks} \n\n")
         shift_request = frappe.get_doc({
             "doctype": "Shift Request",
             "employee": employee,
