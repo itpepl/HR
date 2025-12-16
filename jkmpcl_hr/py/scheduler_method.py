@@ -191,9 +191,6 @@ def create_shift_assignment_rec(emp_id, from_date, to_date, shift_type_id):
     doc.submit()    
     frappe.db.commit()
 
-
-
-#Auto Attendance Marking Script
 def run_daily_attendance():
     yesterday = add_days(getdate(), -1)
     employees = frappe.get_all("Employee", filters={"status": "Active"}, pluck="name")
@@ -201,6 +198,10 @@ def run_daily_attendance():
     for emp in employees:
         if has_approved_leave(emp, yesterday):
             continue
+
+        shift_type = get_employee_shift(emp, yesterday)
+        if not shift_type:
+            continue  # Skip if no shift
 
         logs = frappe.db.sql("""
             SELECT
@@ -212,54 +213,29 @@ def run_daily_attendance():
             AND DATE(time) = %s
         """, (emp, yesterday), as_dict=True)[0]
 
-        # No punches → Absent
-        if not logs or not logs.in_time:
-            create_or_update_attendance(emp, yesterday, None, None, 0)
-            continue
-
-        # Only 1 punch → missing checkout
-        if logs.punches == 1:
-            handle_missing_checkout(emp, yesterday, logs.in_time)
-            continue
-
-        # Multiple punches → calculate working hours
-        in_time = logs.in_time
-        out_time = logs.out_time
-
-        working_hours = (out_time - in_time).total_seconds() / 3600
-
-        create_or_update_attendance(
-            emp,
-            yesterday,
-            in_time,
-            out_time,
-            working_hours
-        )
-
-
-
+        # ❌ No punches
         if not logs or not logs["in_time"]:
             create_or_update_attendance(emp, yesterday, None, None, 0)
+
             continue
 
+        # ⚠️ Single punch
         if logs["punches"] == 1:
-            handle_missing_checkout(emp, yesterday, logs["in_time"])
+            handle_missing_checkout(emp, yesterday, logs["in_time"], shift_type)
             continue
 
-
+        # ✅ Normal punches
         in_time = logs["in_time"]
         out_time = logs["out_time"]
-
-
         working_hours = (out_time - in_time).total_seconds() / 3600
 
         create_or_update_attendance(
-            emp, yesterday,
-            in_time, out_time,
-            working_hours
+            emp, yesterday, 
+            in_time, out_time, working_hours
         )
 
     frappe.db.commit()
+
     
 def has_approved_leave(employee, date):
     leave = frappe.db.exists("Leave Application", {
@@ -269,33 +245,36 @@ def has_approved_leave(employee, date):
         "to_date": (">=", date)
     })
     return leave
+def handle_missing_checkout(employee, date, in_time, shift_type):
+    attendance_name = create_or_update_attendance(
+        employee, date, shift_type, in_time, None, 0
+    )
 
-def handle_missing_checkout(employee, date, in_time):
-
-    working_hours = 0
-    status = "Absent"
-
-    attendance_name = create_or_update_attendance(employee, date, in_time, None, working_hours)
-    deduct_leave_by_priority(employee, date, status,attendance_name)
+    deduct_leave_by_priority(
+        employee, date, "Absent", attendance_name
+    )
 
 
-def deduct_leave_by_priority(employee, date, status,attendance=None):
-
+def deduct_leave_by_priority(employee, date, status, attendance):
     leave_priority = [
         "Casual Leave",
         "Sick Leave",
         "Privilege Leave",
         "Leave Without Pay"
     ]
+
     leave_days = 0.5 if status == "Half Day" else 1
+
     for leave_type in leave_priority:
+        if leave_type != "Leave Without Pay":
+            balance = get_leave_balance(employee, leave_type, date)
+            if balance < leave_days:
+                continue
 
-        balance = get_leave_balance(employee, leave_type, date)
+        create_leave_ledger(employee, leave_type, date, status, attendance)
+        break
 
-        if balance >= leave_days or leave_type == "Leave Without Pay":
-            
-            create_leave_ledger(employee, leave_type, date, status,attendance)
-            break
+
 
 
 
@@ -310,9 +289,9 @@ def get_leave_balance(employee, leave_type, date):
     
 def create_or_update_attendance(employee, date, in_time, out_time, working_hours):
 
-    shift_type = frappe.db.get_value("Employee", employee, "default_shift")
+    shift_type = get_employee_shift(employee, date)
     if not shift_type:
-        return
+        return None
 
     shift = frappe.db.get_value(
         "Shift Type",
@@ -326,18 +305,11 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
 
     half_day_threshold = float(shift.working_hours_threshold_for_half_day or 8)
     absent_threshold = float(shift.working_hours_threshold_for_absent or 3)
-        # Create leave ledger if Absent or Half Day
 
-
-    if working_hours == 0:
+    if working_hours <= absent_threshold:
         status = "Absent"
-
-    elif working_hours <= absent_threshold:
-        status = "Absent"
-
     elif working_hours < half_day_threshold:
         status = "Half Day"
-
     else:
         status = "Present"
 
@@ -356,59 +328,59 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
         att.save(ignore_permissions=True)
         if att.docstatus == 0:
             att.submit()
-        return
+        attendance = att
+    else:
+        attendance = frappe.get_doc({
+            "doctype": "Attendance",
+            "employee": employee,
+            "attendance_date": date,
+            "shift": shift_type,
+            "in_time": in_time,
+            "out_time": out_time,
+            "working_hours": working_hours,
+            "status": status
+        })
+        attendance.insert(ignore_permissions=True)
+        attendance.submit()
 
-    attendance = frappe.get_doc({
-        "doctype": "Attendance",
-        "employee": employee,
-        "attendance_date": date,
-        "shift": shift_type,
-        "in_time": in_time,
-        "out_time": out_time,
-        "working_hours": working_hours,
-      
-        "status": status    
-    })
+    # ✅ LEAVE DEDUCTION ONLY HERE
     if status in ["Absent", "Half Day"]:
+        deduct_leave_by_priority(employee, date, status, attendance.name)
 
-        leave_type = get_employee_leave_type(employee)
-        if leave_type:
-            create_leave_ledger(employee, leave_type, date, status)
-    attendance.insert(ignore_permissions=True)
-    attendance.submit()
+    return attendance.name
+
 
 
 
 def get_employee_leave_type(employee):
-    policy = frappe.db.get_value("Leave Policy Assignment", {
+    policy = frappe.db.get_value(
+        "Leave Policy Assignment",
+        {"employee": employee, "docstatus": 1},
+        "leave_policy"
+    )
+
+    if policy:
+        leave_type = frappe.db.get_value(
+            "Leave Policy Detail",
+            {"parent": policy},
+            "leave_type"
+        )
+        if leave_type:
+            return leave_type
+
+    # 🔥 Fallback to Leave Without Pay
+    return "Leave Without Pay"
+
+def create_leave_ledger(employee, leave_type, date, status, attendance):
+    if frappe.db.exists("Leave Ledger Entry", {
         "employee": employee,
-        "docstatus": 1
-    }, "leave_policy")
-
-    if not policy:
-        return None
-
-    leave_type = frappe.db.get_value("Leave Policy Detail", {
-        "parent": policy
-    }, "leave_type")
-
-    return leave_type
-
-def create_leave_ledger(employee, leave_type, date, status,attendance):
-    if not leave_type:
+        "from_date": date,
+        "transaction_name": attendance
+    }):
         return
 
-    # Prevent duplicate leave entry
-    already = frappe.db.exists("Leave Ledger Entry", {
-        "employee": employee,
-        "leave_type": leave_type,
-        "from_date": date
-    })
-    if already:
-        return
-
-    # Half day will deduct 0.5
     leave_days = 0.5 if status == "Half Day" else 1
+
     doc = frappe.get_doc({
         "doctype": "Leave Ledger Entry",
         "employee": employee,
@@ -416,12 +388,36 @@ def create_leave_ledger(employee, leave_type, date, status,attendance):
         "posting_date": date,
         "from_date": date,
         "to_date": date,
-        "leave_allocation": None,
-        "leaves": -abs(leave_days),
+        "leaves": -leave_days,
         "transaction_type": "Attendance",
-        "transaction_name":attendance,
+        "transaction_name": attendance
     })
 
     doc.insert(ignore_permissions=True)
     doc.submit()
+
     
+def get_employee_shift(employee, date):
+    shift = frappe.db.get_value(
+        "Shift Assignment",
+        {
+            "employee": employee,
+            "start_date": ("<=", date),
+            "end_date": (">=", date),
+            "status": "Active"
+        },
+        "shift_type"
+    )
+
+    if shift:
+        return shift
+
+    shift = frappe.db.get_value("Employee", employee, "default_shift")
+    if shift:
+        return shift
+
+    frappe.log_error(
+        title="Auto Attendance Error",
+        message=f"No Shift Assigned for Employee {employee} on {date}"
+    )
+    return None

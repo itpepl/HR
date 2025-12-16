@@ -5,7 +5,6 @@ from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequ
 from datetime import datetime, date,timedelta, time
 from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority ,get_employee_leave_type, create_leave_ledger
 from jkmpcl_hr.py.utils import send_notification_email
-
 class AttendanceRequest(HRMSAttendanceRequest):
     def validate(self):
         from hrms.hr.utils import validate_active_employee
@@ -13,6 +12,7 @@ class AttendanceRequest(HRMSAttendanceRequest):
         self.validate_dates_custom()
         self.validate_request_overlap_custom()
         self.validate_no_attendance_to_create()
+        self.validate_shift_assignment()
 
     # def on_update(self):
     #     self.handle_workflow_notification()
@@ -41,6 +41,32 @@ class AttendanceRequest(HRMSAttendanceRequest):
                 enabled=notification_doc.enabled,
                 send_system_notification=notification_doc.send_system_notification,
                 channel=notification_doc.channel
+            )
+    def validate_shift_assignment(self):
+        shift_assignment = frappe.db.get_value(
+            "Shift Assignment",
+            {
+                "employee": self.employee,
+                "start_date": ["<=", self.from_date],
+                "end_date": [">=", self.from_date],
+                "status": "Active"
+            },
+            "shift_type"
+        )
+
+        if shift_assignment:
+            return
+
+        # fallback to default shift
+        default_shift = frappe.db.get_value("Employee", self.employee, "default_shift")
+
+        if not default_shift:
+            frappe.throw(
+                _("Cannot submit Attendance Request.<br>"
+                "No <b>Shift Assignment</b> or <b>Default Shift</b> found for employee "
+                "<b>{0}</b> on <b>{1}</b>.").format(
+                    self.employee, self.from_date
+                )
             )
 
     def get_notification_recipients(self):
@@ -203,21 +229,20 @@ def recalculate_attendance_after_manual_log(employee, date):
 
     update_attendance_direct_db(employee, date, in_time, out_time, working_hours)
 
-
+# Updating attendance for HR-EMP-00001 on 2025-12-16 2025-12-16 09:40:00 2025-12-16 11:51:44 2.1955555555555555
 def update_attendance_direct_db(employee, date, in_time, out_time, working_hours):
-
-    # Get shift thresholds
     shift_type = frappe.db.get_value("Employee", employee, "default_shift")
     shift = frappe.db.get_value(
-        "Shift Type", shift_type,
-        ["working_hours_threshold_for_half_day", "working_hours_threshold_for_absent"],
+        "Shift Type",
+        shift_type,
+        ["working_hours_threshold_for_half_day",
+         "working_hours_threshold_for_absent"],
         as_dict=True
     )
 
     half_day_threshold = float(shift.working_hours_threshold_for_half_day or 8)
-    absent_threshold = float(shift.working_hours_threshold_for_absent or 3)
+    absent_threshold   = float(shift.working_hours_threshold_for_absent or 3)
 
-    # Determine status
     if working_hours == 0 or working_hours <= absent_threshold:
         status = "Absent"
     elif working_hours < half_day_threshold:
@@ -225,53 +250,53 @@ def update_attendance_direct_db(employee, date, in_time, out_time, working_hours
     else:
         status = "Present"
 
-    # Identify attendance record
-    attendance_name = frappe.db.get_value("Attendance", 
+    attendance_name = frappe.db.get_value(
+        "Attendance",
         {
             "employee": employee,
             "attendance_date": date,
             "docstatus": ("!=", 2)
-        }, 
+        },
         "name"
     )
 
     if not attendance_name:
         return
 
+    # Update Attendance
     frappe.db.sql("""
         UPDATE `tabAttendance`
-        SET 
-            in_time = %s,
-            out_time = %s,
-            working_hours = %s,
-            status = %s
-        WHERE name = %s
+        SET in_time=%s, out_time=%s, working_hours=%s, status=%s
+        WHERE name=%s
     """, (in_time, out_time, working_hours, status, attendance_name))
 
+    # Always delete old Leave Ledger Entries
+    frappe.db.delete("Leave Ledger Entry", {
+        "employee": employee,
+        "transaction_type": "Attendance",
+        "transaction_name": attendance_name
+    })
 
-    frappe.db.sql("""
-        DELETE FROM `tabLeave Ledger Entry`
-        WHERE employee = %s AND transaction_name = %s
-    """, (employee, attendance_name))
-
-    if status in ["Absent", "Half Day"]:
+    # Create & submit Leave Ledger only for Half Day
+    if status == "Half Day":
         leave_type = get_employee_leave_type(employee)
-
         if leave_type:
-            leave_days = 0.5 if status == "Half Day" else 1
-
-            frappe.db.sql("""
-                INSERT INTO `tabLeave Ledger Entry`
-                (name, creation, modified, employee, leave_type, posting_date, 
-                 from_date, to_date, leaves, transaction_type, transaction_name)
-                VALUES (%s, NOW(), NOW(), %s, %s, %s, %s, %s, %s, 'Attendance', %s)
-            """, (
-                frappe.utils.make_autoname("LLE-.#####"),
-                employee, leave_type, date, date, date,
-                -abs(leave_days), attendance_name
-            ))
+            lle = frappe.get_doc({
+                "doctype": "Leave Ledger Entry",
+                "employee": employee,
+                "leave_type": leave_type,
+                "posting_date": date,
+                "from_date": date,
+                "to_date": date,
+                "leaves": -0.5,
+                "transaction_type": "Attendance",
+                "transaction_name": attendance_name
+            })
+            lle.insert(ignore_permissions=True)
+            lle.submit()
 
     frappe.db.commit()
+
 
 
 def create_checkin(name,employee,time_str,log_type,request_name,request_date):
@@ -296,10 +321,6 @@ def create_checkin(name,employee,time_str,log_type,request_name,request_date):
     checkin.insert(ignore_permissions=True)
     frappe.db.commit()
 
-
-
-from datetime import datetime
-import frappe
 def create_attendance_from_request(doc):
 
     shift_assignment = frappe.db.get_value(
