@@ -112,6 +112,7 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
     branch = filters.get("branch")
     date_str = filters.get("as_on_date")
     employee_id = filters.get("emp_id")
+    gender = filters.get("gender", False)
     conditions = {}    
     
     
@@ -158,7 +159,10 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
         return [[s.name, s.name] for s in shift_types]
     elif branch == "Jammu":
         
-        is_female = True if frappe.db.get_value("Employee", employee_id, "gender") == "Female" else False
+        if not gender:
+            is_female = True if frappe.db.get_value("Employee", employee_id, "gender") == "Female" else False
+        else:
+            is_female = True if gender == "Female" else False
     
         if is_female:        
             if (4<= as_on_date.month <= 11) or (2 <= as_on_date.month <= 3):
