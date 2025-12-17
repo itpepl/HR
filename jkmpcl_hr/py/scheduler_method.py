@@ -104,7 +104,7 @@ def create_and_assign_shift_assignments_jammu(today_date, start_year, emp_filter
     jan_end_jammu = getdate(f"{start_year+1}-01-31")
     feb_start_jammu = getdate(f"{start_year+1}-02-01")
     
-    emp_filters["branch"] = "Jammu"
+    emp_filters["branch"] = "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"
     emp_list = frappe.db.get_list("Employee", filters=emp_filters, fields=["name", "default_shift", "gender"])
     
     if not emp_list:

@@ -17,7 +17,7 @@ def after_insert(doc, event):
     if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
         create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year)
 
-    elif branch == "Jammu":
+    elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
         if doc.gender == "Female":
             print(f"\n\n CALLED For Female \n\n")
             create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year,is_female=True)

@@ -7,7 +7,7 @@ def get_required_shift_hours(dt, branch, is_female):
         if 4 <= dt.month <= 9:
             return "8hours"
         return "7hours"
-    elif branch == "Jammu":
+    elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
         if is_female:
             if (4 <= dt.month <= 11) or (2 <= dt.month <= 3):
                 return "8hours"
@@ -86,7 +86,7 @@ def validate_shift_hours(doc):
         from_date = getdate(doc.from_date)
         to_date = getdate(doc.to_date)
         if from_hours == to_hours:
-            if doc.custom_branch == "Jammu" and (from_date <= getdate(f"{from_date.year}-12-01") and getdate(f"{from_date.year+1}-01-31") <= to_date):
+            if doc.custom_branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu" and (from_date <= getdate(f"{from_date.year}-12-01") and getdate(f"{from_date.year+1}-01-31") <= to_date):
                 frappe.throw(
                     f" 7 Hours shift fall between the from date and to date "
                     "Please create separate Shift Requests for each period."
