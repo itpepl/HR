@@ -186,7 +186,6 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
             page_length=page_len
         )
         
-        print(f"\n\n SHIFT TYPES {shift_types} \n\n")
         return [[s.name, s.name] for s in shift_types] if shift_types else []
         # return 
         
