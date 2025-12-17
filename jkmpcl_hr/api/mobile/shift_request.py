@@ -20,7 +20,7 @@ def get_shift_requests(employeeId=None, start_date=None, end_date=None):
         shift_requests = frappe.get_all(
             "Shift Request",
             filters=filters,
-            fields=["shift_type", "employee", "approver", "from_date", "to_date", "name","status"],
+            fields=["shift_type", "employee", "approver", "from_date", "to_date", "name","status","custom_remarks"],
             order_by=order_by
         )
 
@@ -66,7 +66,7 @@ def create_shift_request(data):
             "shift_type": shift_type,
             "from_date": from_date,
             "to_date": to_date,
-            "remarks": remarks,
+            "custom_remarks": remarks,
             "approver": approver
         })
         # ✅ THIS LINE IS CRITICAL
@@ -99,16 +99,15 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
 
     if not branch:
         return []
-
     as_on_date = getdate(date_str) if date_str else getdate()
 
-    if branch == "Srinagar":
+    if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
         if 4 <= as_on_date.month <= 9:
             required_hours = "8hours"
         else:
             required_hours = "7hours"
 
-    elif branch == "Jammu":
+    elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
         is_female = (
             frappe.db.get_value("Employee", employee_id, "gender") == "Female"
         )
