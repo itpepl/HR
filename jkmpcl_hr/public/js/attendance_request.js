@@ -46,6 +46,53 @@ frappe.ui.form.on("Attendance Request", {
     custom_punch_type: function(frm) {
         update_manual_punch_note(frm);
     },
+    // before_workflow_action: function (frm) {
+    //     // if ((frm.workflow_state === "Pending" || frm.workflow_state === "Approved by HR") && frm.selected_workflow_action === "Approve") {
+
+    //         // frappe.workflow.get_transitions(frm.doc).then(transitions => {
+    //         //     console.log("<<< Transitions fetched:", transitions);
+            
+    //         //     const selected_transition = transitions.find(
+    //         //         t => t.action === frm.selected_workflow_action
+    //         //     );
+
+    //         //     const target_state = selected_transition ? selected_transition.next_state : null;
+    //         //     console.log(">>> Selected transition:", selected_transition);
+    //         //     console.log(">>> Target workflow state:", target_state);
+
+    //         //     frappe.throw("Hello");
+
+    //         // });
+    //     // }
+    //     frm._workflow_blocked = true;
+
+    //     frappe.workflow.get_transitions(frm.doc).then(transitions => {
+    //         const selected = transitions.find(
+    //             t => t.action === frm.selected_workflow_action
+    //         );
+
+    //         if (!selected) return;
+
+    //         const target_state = selected.next_state;
+
+    //         // ❌ your validation
+    //         if (target_state === "Final Approved") {
+    //             frappe.msgprint({
+    //                 title: "Not Allowed",
+    //                 message: "Shift assignment missing",
+    //                 indicator: "red"
+    //             });
+    //             return;
+    //         }
+
+    //         // ✅ Validation passed → re-trigger workflow action
+    //         frm._workflow_blocked = false;
+    //         frm.selected_workflow_action = selected.action;
+    //         frm.script_manager.trigger("workflow_action");
+    //     });
+
+    //     return false;
+    // }
 });
 
 
@@ -62,6 +109,8 @@ async function add_reason_option_based_on_role(frm) {
         ? frappe.datetime.str_to_obj(res.message.to_time)
         : null;
 
+    let allowed_role = res.message.allowed_role || null;
+
     let now = new Date();
 
     let options = ["", "Manual Punch", "Field Visit"];
@@ -72,7 +121,7 @@ async function add_reason_option_based_on_role(frm) {
         show_system_error = true;
     }
     // Condition 2 → HR Manager always
-    else if (frappe.user.has_role("HR Manager")) {
+    else if (frappe.user.has_role(allowed_role)) {
         show_system_error = true;
     }
 
