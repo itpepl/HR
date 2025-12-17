@@ -1,10 +1,9 @@
 
 frappe.ui.form.on("Shift Request", {
 	setup: function (frm) {
-        console.log("Hello")
         const current_user = frappe.session.user
           // * FETCHING CURRENT USER'S EMPLOYEE ID ADN SETTING IT IN THE employee FIELD IF THE employee FIELD HAS NO VALUE
-         if (!frm.doc.employee){
+        if (!frm.doc.employee){
             frappe.db.get_value("Employee", {"user_id": current_user}, "name").then(r =>{
                 if(r.message.name){
 
@@ -12,9 +11,9 @@ frappe.ui.form.on("Shift Request", {
                     as_on_date = frm.doc.from_date?frm.doc.from_date:frappe.datetime.get_today()
                     frm.set_value("employee", emp_id)
                     frm.refresh_field("employee")
-          
+        
                     get_emp_reporting_manager_user(frm)
-                   
+                
                 }
             })
         }
@@ -22,9 +21,8 @@ frappe.ui.form.on("Shift Request", {
 	},
 
     refresh:function(frm){
-        console.log("REFERESH", frm.doc.branch)
         const current_user = frappe.session.user
-      
+    
 
         // * HIDING sbumit BUTTON AND MAKING status FIELD read only IF THE CURRENT USER IS NOT THE APPROVER AND IF THE CURRENT USER IS APPROVER THEN DISPLAYING THE submit BUTTON AND MAKING status FIELD EDITABLE
         // $('.primary-action').prop('hidden', true);
@@ -40,7 +38,7 @@ frappe.ui.form.on("Shift Request", {
         }
         else{
             if(frm.doc.employee && !frm.doc.approver){
-                 frappe.call({
+                frappe.call({
                     method: "jkmpcl_hr.py.utils.get_emp_reporting_manager",
                     args:{
                             emp_id: frm.doc.employee,
@@ -62,9 +60,9 @@ frappe.ui.form.on("Shift Request", {
         }
 
 
-        // * APPLYNNG FILTER TO THE shift_type FIELD
+        // // * APPLYNNG FILTER TO THE shift_type FIELD
         // if (frm.doc.custom_branch){
-            apply_filter_in_shift_type(frm)
+        //     apply_filter_in_shift_type(frm)
         // }
         
 
@@ -78,9 +76,8 @@ frappe.ui.form.on("Shift Request", {
 
     },
 
-    employee: function(frm){
+    employee: function (frm) {
         if(frm.doc.employee){
-
             if (frm.doc.shift_type){
                 set_ceo_as_approver(frm)
             }
@@ -112,7 +109,13 @@ frappe.ui.form.on("Shift Request", {
                 }
             })
         }
+    },
+    custom_branch: function (frm) {
+        if (frm.doc.custom_branch){
+            apply_filter_in_shift_type(frm)
+        }
     }
+
 });
 
 

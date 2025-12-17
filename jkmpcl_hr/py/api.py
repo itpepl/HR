@@ -157,7 +157,7 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
         )
 
         return [[s.name, s.name] for s in shift_types]
-    elif branch == "Jammu":
+    elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
         
         if not gender:
             is_female = True if frappe.db.get_value("Employee", employee_id, "gender") == "Female" else False
@@ -174,8 +174,6 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
         
         conditions["custom_hours"]= required_hours
         
-        
-        print(f"\n\n  required hours {required_hours} \n\n")
         if branch:
             conditions["custom_branch"] = branch
 
@@ -188,5 +186,7 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
             page_length=page_len
         )
         
-        return [[s.name, s.name] for s in shift_types]
+        print(f"\n\n SHIFT TYPES {shift_types} \n\n")
+        return [[s.name, s.name] for s in shift_types] if shift_types else []
+        # return 
         
