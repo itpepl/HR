@@ -5,7 +5,10 @@ from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequ
 from datetime import datetime, date,timedelta, time
 from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority ,get_employee_leave_type, create_leave_ledger
 from jkmpcl_hr.py.utils import send_notification_email
+
+
 class AttendanceRequest(HRMSAttendanceRequest):
+
     def validate(self):
         from hrms.hr.utils import validate_active_employee
         validate_active_employee(self.employee)
@@ -14,13 +17,12 @@ class AttendanceRequest(HRMSAttendanceRequest):
         self.validate_no_attendance_to_create()
         self.validate_shift_assignment()
 
-    # def on_update(self):
-    #     self.handle_workflow_notification()
+    def on_update(self):
+        self.handle_workflow_notification()
 
     def on_submit(self):
         """Runs when Attendance Request is submitted"""
         self.create_auto_checkin_and_attendance()
-        self.handle_workflow_notification()
 
     def handle_workflow_notification(self):
 
@@ -43,16 +45,24 @@ class AttendanceRequest(HRMSAttendanceRequest):
                 channel=notification_doc.channel
             )
     def validate_shift_assignment(self):
-        shift_assignment = frappe.db.get_value(
+        
+        shift = frappe.db.get_list(
             "Shift Assignment",
-            {
+            filters={
                 "employee": self.employee,
                 "start_date": ["<=", self.from_date],
-                "end_date": [">=", self.from_date],
                 "status": "Active"
             },
-            "shift_type"
+            or_filters=[
+                {"end_date": [">=", self.from_date]},
+                {"end_date": ["is", "not set"]}
+            ],
+            fields=["shift_type"],
+            order_by="start_date desc",
+            limit=1
         )
+
+        shift_assignment = shift[0].shift_type if shift else None
 
         if shift_assignment:
             return
@@ -163,6 +173,7 @@ class AttendanceRequest(HRMSAttendanceRequest):
             if self.custom_in_time and self.custom_out_time:
                 create_attendance_from_request(self)
             recalculate_attendance_after_manual_log(self.employee, self.from_date)
+        
         except Exception as e:
             frappe.log_error(frappe.get_traceback(), "Attendance Request Error")
             frappe.throw(str(e))
@@ -232,13 +243,34 @@ def recalculate_attendance_after_manual_log(employee, date):
 # Updating attendance for HR-EMP-00001 on 2025-12-16 2025-12-16 09:40:00 2025-12-16 11:51:44 2.1955555555555555
 def update_attendance_direct_db(employee, date, in_time, out_time, working_hours):
     shift_type = frappe.db.get_value("Employee", employee, "default_shift")
-    shift = frappe.db.get_value(
-        "Shift Type",
-        shift_type,
-        ["working_hours_threshold_for_half_day",
-         "working_hours_threshold_for_absent"],
-        as_dict=True
-    )
+    
+    if not shift_type:
+        shift_assignment = frappe.db.get_list(
+            "Shift Assignment",
+            filters={
+                "employee": employee,
+                "start_date": ["<=", date],
+                "status": "Active"
+            },
+            or_filters=[
+                {"end_date": [">=", date]},
+                {"end_date": ["is", "not set"]}
+            ],
+            fields=["shift_type"],
+            order_by="start_date desc",
+            limit=1
+        )
+
+        shift_type = shift_assignment[0].shift_type if shift_assignment else None
+
+    if shift_type:
+        shift = frappe.db.get_value(
+            "Shift Type",
+            shift_type,
+            ["working_hours_threshold_for_half_day",
+            "working_hours_threshold_for_absent"],
+            as_dict=True
+        )
 
     half_day_threshold = float(shift.working_hours_threshold_for_half_day or 8)
     absent_threshold   = float(shift.working_hours_threshold_for_absent or 3)
@@ -323,36 +355,26 @@ def create_checkin(name,employee,time_str,log_type,request_name,request_date):
 
 def create_attendance_from_request(doc):
 
-    shift_assignment = frappe.db.get_value(
+    shift_assignment = frappe.db.get_list(
         "Shift Assignment",
-        {
+        filters={
             "employee": doc.employee,
             "start_date": ["<=", doc.from_date],
-            "end_date": [">=", doc.from_date],
             "status": "Active"
         },
-        ["shift_type"],
-        as_dict=True
+        or_filters=[
+            {"end_date": [">=", doc.from_date]},
+            {"end_date": ["is", "not set"]}
+        ],
+        fields=["shift_type"],
+        order_by="start_date desc",
+        limit=1
     )
 
-    if not shift_assignment:
-        shift_assignment = frappe.db.get_value(
-            "Shift Assignment",
-            {
-                "employee": doc.employee,
-                "start_date": ["<=", doc.from_date],
-                "end_date": ["is", "not set"],
-                "status": "Active"
-            },
-            ["shift_type"],
-            as_dict=True
-        )
+    shift_type = shift_assignment[0].shift_type if shift_assignment else None
 
-    if not shift_assignment:
-        frappe.throw(f"No Shift Assignment found for employee {doc.employee} on {doc.from_date}")
-
-    shift_type = shift_assignment.shift_type
-
+    if not shift_type:
+        frappe.throw(f"No Shift found for employee {doc.employee} on {doc.from_date}")
 
     shift = frappe.db.get_value(
         "Shift Type",
@@ -639,5 +661,6 @@ def get_system_error_window():
 
     return {
         "from_time": settings.custom_system_error_window_from,
-        "to_time": settings.custom_system_error_window_to
+        "to_time": settings.custom_system_error_window_to,
+        "allowed_role": settings.custom_allowed_role
     }
