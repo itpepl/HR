@@ -172,6 +172,61 @@ def create_and_assign_shift_assignments_jammu(today_date, start_year, emp_filter
     frappe.log_error("end_create_and_assign_shift_assignments_jammu", f"Scheduler Ended FOR Jammu \n ds_not_setupfor_this_emp: {ds_not_set_emp}")
     
     
+def create_leave_ledger(employee, leave_type, date, status, attendance):
+    # Check if Leave Ledger Entry already exists
+    if frappe.db.exists(
+        "Leave Ledger Entry",
+        {
+            "employee": employee,
+            "from_date": date,
+            "transaction_name": attendance
+        }
+    ):
+        return
+
+    # Determine leave days
+    leave_days = 0.5 if status == "Half Day" else 1
+
+    # Create Leave Ledger Entry
+    doc = frappe.get_doc({
+        "doctype": "Leave Ledger Entry",
+        "employee": employee,
+        "leave_type": leave_type,
+        "posting_date": date,
+        "from_date": date,
+        "to_date": date,
+        "leaves": -leave_days,
+        "transaction_type": "Attendance",
+        "transaction_name": attendance
+    })
+
+    doc.insert(ignore_permissions=True)
+    doc.submit()
+
+def get_employee_leave_type(employee):
+    policy = frappe.db.get_value(
+        "Leave Policy Assignment",
+        {
+            "employee": employee,
+            "docstatus": 1
+        },
+        "leave_policy"
+    )
+
+    if policy:
+        leave_type = frappe.db.get_value(
+            "Leave Policy Detail",
+            {
+                "parent": policy
+            },
+            "leave_type"
+        )
+
+        if leave_type:
+            return leave_type
+
+    # 🔥 Fallback to Leave Without Pay
+    return "Leave Without Pay"
 
 
 # =========================================================
