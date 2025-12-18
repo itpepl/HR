@@ -46,53 +46,70 @@ frappe.ui.form.on("Attendance Request", {
     custom_punch_type: function(frm) {
         update_manual_punch_note(frm);
     },
-    // before_workflow_action: function (frm) {
-    //     // if ((frm.workflow_state === "Pending" || frm.workflow_state === "Approved by HR") && frm.selected_workflow_action === "Approve") {
+    before_workflow_action: function (frm) {
+        // Only intercept Approve action from Pending or Approved by HR
+        if ((frm.doc.workflow_state === "Pending" || frm.doc.workflow_state === "Approved by HR") && frm.selected_workflow_action === "Approve") {
+            return new Promise((resolve, reject) => {
+                frappe.workflow.get_transitions(frm.doc).then(transitions => {
+                    const selected_transition = transitions.find(t => t.action === frm.selected_workflow_action);
+                    const target_state = selected_transition ? selected_transition.next_state : null;
 
-    //         // frappe.workflow.get_transitions(frm.doc).then(transitions => {
-    //         //     console.log("<<< Transitions fetched:", transitions);
-            
-    //         //     const selected_transition = transitions.find(
-    //         //         t => t.action === frm.selected_workflow_action
-    //         //     );
+                    // If target is not Final Approved, continue as normal
+                    if (target_state !== "Final Approved") {
+                        return resolve();
+                    }
 
-    //         //     const target_state = selected_transition ? selected_transition.next_state : null;
-    //         //     console.log(">>> Selected transition:", selected_transition);
-    //         //     console.log(">>> Target workflow state:", target_state);
+                    // Target is Final Approved -> call server method
+                    frappe.call({
+                        method: "jkmpcl_hr.overrides.attendance_request.create_auto_checkin_and_attendance",
+                        args: { docname: frm.doc.name },
+                        freeze: true
+                    }).then(r => {
+                        // ensure UI is unfrozen
+                        try { frappe.unfreeze && frappe.unfreeze(); } catch (e) {}
+                        const msg = (r && r.message && r.message.message) ? r.message.message : "Checkins / attendance created successfully.";
+                        frappe.msgprint({ title: "Success", message: msg, indicator: "green" });
+                        resolve();
+                    }).catch(err => {
+                        // ensure UI is unfrozen
+                        try { frappe.unfreeze && frappe.unfreeze(); } catch (e) {}
 
-    //         //     frappe.throw("Hello");
+                        // extract only the first server message
+                        let server = err._server_messages || (err.responseJSON && err.responseJSON._server_messages) || null;
+                        let errMsg = "";
+                        if (server) {
+                            try {
+                                const arr = JSON.parse(server);
+                                if (arr && arr.length) {
+                                    try {
+                                        const first = JSON.parse(arr[0]);
+                                        errMsg = first.message || JSON.stringify(first);
+                                    } catch (e) {
+                                        errMsg = arr[0];
+                                    }
+                                } else {
+                                    errMsg = err.exc || err.message || JSON.stringify(err);
+                                }
+                            } catch (e) {
+                                errMsg = err.exc || err.message || String(err);
+                            }
+                        } else {
+                            errMsg = err.exc || (err.responseJSON && err.responseJSON.exception) || err.message || JSON.stringify(err);
+                        }
 
-    //         // });
-    //     // }
-    //     frm._workflow_blocked = true;
-
-    //     frappe.workflow.get_transitions(frm.doc).then(transitions => {
-    //         const selected = transitions.find(
-    //             t => t.action === frm.selected_workflow_action
-    //         );
-
-    //         if (!selected) return;
-
-    //         const target_state = selected.next_state;
-
-    //         // ❌ your validation
-    //         if (target_state === "Final Approved") {
-    //             frappe.msgprint({
-    //                 title: "Not Allowed",
-    //                 message: "Shift assignment missing",
-    //                 indicator: "red"
-    //             });
-    //             return;
-    //         }
-
-    //         // ✅ Validation passed → re-trigger workflow action
-    //         frm._workflow_blocked = false;
-    //         frm.selected_workflow_action = selected.action;
-    //         frm.script_manager.trigger("workflow_action");
-    //     });
-
-    //     return false;
-    // }
+                        // show single error message and reject to stop workflow transition
+                        // frappe.msgprint({ title: "Error", message: errMsg, indicator: "red" });
+                        reject(err);
+                    });
+                }).catch(err => {
+                    // If transitions can't be fetched, allow workflow to continue
+                    console.error("Failed to fetch transitions:", err);
+                    resolve();
+                });
+            });
+        }
+        // For all other actions / states, do nothing (workflow continues)
+    }
 });
 
 

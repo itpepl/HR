@@ -5,7 +5,7 @@ from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequ
 from datetime import datetime, date,timedelta, time
 from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority ,get_employee_leave_type, create_leave_ledger
 from jkmpcl_hr.py.utils import send_notification_email
-
+from erpnext.setup.doctype.employee.employee import is_holiday
 
 class AttendanceRequest(HRMSAttendanceRequest):
 
@@ -14,15 +14,17 @@ class AttendanceRequest(HRMSAttendanceRequest):
         validate_active_employee(self.employee)
         self.validate_dates_custom()
         self.validate_request_overlap_custom()
-        self.validate_no_attendance_to_create()
+        # self.validate_no_attendance_to_create()
         self.validate_shift_assignment()
 
     def on_update(self):
         self.handle_workflow_notification()
 
+
     def on_submit(self):
-        """Runs when Attendance Request is submitted"""
-        self.create_auto_checkin_and_attendance()
+        pass
+    #     """Runs when Attendance Request is submitted"""
+    #     self.create_auto_checkin_and_attendance()
 
     def handle_workflow_notification(self):
 
@@ -44,6 +46,7 @@ class AttendanceRequest(HRMSAttendanceRequest):
                 send_system_notification=notification_doc.send_system_notification,
                 channel=notification_doc.channel
             )
+
     def validate_shift_assignment(self):
         
         shift = frappe.db.get_list(
@@ -145,38 +148,92 @@ class AttendanceRequest(HRMSAttendanceRequest):
 
         return recipients, notification_name
 
-    def create_auto_checkin_and_attendance(self):
-        if not self.employee or not self.custom_punch_type:
-            return
+    def validate_no_attendance_to_create(self):
+        # validate only for single day (self.from_date)
+        attendance_warnings = self.get_attendance_warnings(self.from_date)
+        # if there are warnings and none allow Overwrite, block
+        if attendance_warnings and not any(warning["action"] == "Overwrite" for warning in attendance_warnings):
+            frappe.throw(
+                title=_("No attendance records to create"),
+                msg=_(
+                    "Please check if employee is on leave or attendance with the same status exists for the selected day."
+                ),
+            )
 
-        try:
-            if self.custom_punch_type in ["In", "Both"] and self.custom_in_time:
-                create_checkin(
-                    self.name,
-                    self.employee,
-                    self.custom_in_time,
-                    "IN",
-                    self.name,
-                    self.from_date
-                )
+    @frappe.whitelist()
+    def get_attendance_warnings(self, attendance_date=None) -> list:
+        """
+        Return warnings for a single date (defaults to self.from_date).
+        Each warning is: {"date": date, "reason": "...", "action": "Skip" | "Overwrite", "record": ... (optional)}
+        """
+        if attendance_date is None:
+            attendance_date = self.from_date
 
-            if self.custom_punch_type in ["Out", "Both"] and self.custom_out_time:
-                create_checkin(
-                    self.name,
-                    self.employee,
-                    self.custom_out_time,
-                    "OUT",
-                    self.name,
-                    self.from_date
-                )
+        attendance_warnings = []
 
-            if self.custom_in_time and self.custom_out_time:
-                create_attendance_from_request(self)
-            recalculate_attendance_after_manual_log(self.employee, self.from_date)
+        # skip holidays
+        if not self.include_holidays and is_holiday(self.employee, attendance_date):
+            attendance_warnings.append({"date": attendance_date, "reason": "Holiday", "action": "Skip"})
+            print("\n\n\n\n",attendance_warnings," 1 \n\n\n\n")
+            return attendance_warnings
+
+        # on leave
+        if self.has_leave_record(attendance_date):
+            attendance_warnings.append({"date": attendance_date, "reason": "On Leave", "action": "Skip"})
+            print("\n\n\n\n",attendance_warnings," 2 \n\n\n\n")
+            return attendance_warnings
+
+        # status unchanged
+        if self.status_unchanged(attendance_date):
+            attendance_warnings.append({"date": attendance_date, "reason": "Attendance status unchanged", "action": "Skip"})
+            print("\n\n\n\n",attendance_warnings," 3 \n\n\n\n")
+            return attendance_warnings
+
+        # existing attendance record
+        attendance = self.get_attendance_doc(attendance_date)
+        if attendance:
+            attendance_warnings.append({
+                "date": attendance_date,
+                "reason": "Attendance already marked",
+                "record": attendance.name,
+                "action": "Overwrite",
+            })
+            print("\n\n\n\n",attendance_warnings," 4 \n\n\n\n")
+
+        return attendance_warnings
+
+    # def create_auto_checkin_and_attendance(self):
+        # if not self.employee or not self.custom_punch_type:
+        #     return
+
+        # try:
+        #     if self.custom_punch_type in ["In", "Both"] and self.custom_in_time:
+        #         create_checkin(
+        #             self.name,
+        #             self.employee,
+        #             self.custom_in_time,
+        #             "IN",
+        #             self.name,
+        #             self.from_date
+        #         )
+
+        #     if self.custom_punch_type in ["Out", "Both"] and self.custom_out_time:
+        #         create_checkin(
+        #             self.name,
+        #             self.employee,
+        #             self.custom_out_time,
+        #             "OUT",
+        #             self.name,
+        #             self.from_date
+        #         )
+
+        #     if self.custom_in_time and self.custom_out_time:
+        #         create_attendance_from_request(self)
+        #     recalculate_attendance_after_manual_log(self.employee, self.from_date)
         
-        except Exception as e:
-            frappe.log_error(frappe.get_traceback(), "Attendance Request Error")
-            frappe.throw(str(e))
+        # except Exception as e:
+        #     frappe.log_error(frappe.get_traceback(), "Attendance Request Error")
+        #     frappe.throw(str(e))
 
     def validate_dates_custom(self):
         """Custom date validation for Attendance Request."""
@@ -331,30 +388,41 @@ def update_attendance_direct_db(employee, date, in_time, out_time, working_hours
 
 
 
-def create_checkin(name,employee,time_str,log_type,request_name,request_date):
+def create_checkin(name, employee, time_str, log_type, request_name, request_date):
     """
     Create Employee Checkin in correct DB datetime format → YYYY-MM-DD HH:MM:SS
+    Returns a message string instead of calling frappe.msgprint.
     """
-
     full_datetime = make_datetime(request_date, time_str)
-
-    # Correct DB format
     db_datetime = full_datetime.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Avoid duplicate checkin insertion
+    exists = frappe.db.exists("Employee Checkin", {
+        "employee": employee,
+        "time": db_datetime,
+        "log_type": log_type
+    })
+    if exists:
+        return f"Checkin already exists: {exists}"
 
     checkin = frappe.get_doc({
         "doctype": "Employee Checkin",
         "employee": employee,
-        "time": db_datetime,    # ✔ CORRECT
+        "time": db_datetime,
         "log_type": log_type,
         "attendance_request": request_name,
-        "custom_attendance_request" :name
+        "custom_attendance_request": name
     })
 
     checkin.insert(ignore_permissions=True)
     frappe.db.commit()
+    return f"Checkin created: {checkin.name}"
 
 def create_attendance_from_request(doc):
-
+    """
+    Create Attendance from an Attendance Request and return a user message string.
+    (No frappe.msgprint here)
+    """
     shift_assignment = frappe.db.get_list(
         "Shift Assignment",
         filters={
@@ -393,14 +461,12 @@ def create_attendance_from_request(doc):
     half_day_threshold = float(shift.working_hours_threshold_for_half_day or 8)
     absent_threshold = float(shift.working_hours_threshold_for_absent or 3)
 
-
     if working_hours == 0 or working_hours <= absent_threshold:
         status = "Absent"
     elif working_hours < half_day_threshold:
         status = "Half Day"
     else:
         status = "Present"
-
 
     attendance = frappe.get_doc({
         "doctype": "Attendance",
@@ -418,9 +484,10 @@ def create_attendance_from_request(doc):
     attendance.submit()
 
     if working_hours < half_day_threshold:
-        deduct_leave_by_priority(doc.employee, doc.from_date, status, attendance.name )
+        deduct_leave_by_priority(doc.employee, doc.from_date, status, attendance.name)
 
-    frappe.msgprint(f"Attendance created: {status} ({round(working_hours, 2)} hrs)")
+    message = f"Attendance created: {status} ({round(working_hours, 2)} hrs)"
+    return message
 
 def apply_attendance_regularisation(doc):
     """
@@ -492,10 +559,8 @@ def apply_attendance_regularisation(doc):
 
     frappe.db.commit()
 
-    frappe.msgprint(
-        f"Attendance updated to <b>{status}</b> with {round(working_hours,2)} hrs "
-        f"and leave reversed successfully."
-    )
+    msg = f"Attendance updated to {status} with {round(working_hours,2)} hrs and leave reversed successfully."
+    return msg
 
 def make_datetime(date_value, time_value):
     """Safely combine Date and Time into Datetime"""
@@ -664,3 +729,53 @@ def get_system_error_window():
         "to_time": settings.custom_system_error_window_to,
         "allowed_role": settings.custom_allowed_role
     }
+
+
+@frappe.whitelist()
+def create_auto_checkin_and_attendance(docname):
+    try:
+        if not docname:
+            frappe.throw(_("Missing docname"))
+
+        doc = frappe.get_doc("Attendance Request", docname)
+
+        if not doc.employee or not doc.custom_punch_type:
+            frappe.throw(_("Missing Employee or Punch Type"))
+
+        messages = []
+
+        if doc.custom_punch_type in ["In", "Both"] and doc.custom_in_time:
+            create_checkin(
+                doc.name,
+                doc.employee,
+                doc.custom_in_time,
+                "IN",
+                doc.name,
+                doc.from_date
+            )
+            messages.append("IN checkin created")
+
+        if doc.custom_punch_type in ["Out", "Both"] and doc.custom_out_time:
+            create_checkin(
+                doc.name,
+                doc.employee,
+                doc.custom_out_time,
+                "OUT",
+                doc.name,
+                doc.from_date
+            )
+            messages.append("OUT checkin created")
+
+        if doc.custom_in_time and doc.custom_out_time:
+            attendance_msg = create_attendance_from_request(doc)
+            messages.append(attendance_msg)
+
+        recalculate_attendance_after_manual_log(doc.employee, doc.from_date)
+
+        final_message = ", ".join(messages) if messages else "No actions performed"
+        return {"status": "ok", "message": final_message}
+
+    except Exception:
+        # log full traceback for debugging, then re-raise original exception
+        frappe.log_error(frappe.get_traceback(), "create_auto_checkin_and_attendance")
+        raise
