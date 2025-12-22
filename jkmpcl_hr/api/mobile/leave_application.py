@@ -1,5 +1,9 @@
+import os
+import uuid
 import frappe
-
+from frappe.utils import getdate
+from frappe.utils.file_manager import save_file
+import shutil
 
 
 #leave type list api
@@ -92,3 +96,110 @@ def list(
             "data": leave_application_list_raw,
             "count": total_count
         }
+
+
+
+
+
+
+@frappe.whitelist()
+def create(**args):
+    try:
+
+        mandatory_fields = {
+            "employee": "Employee",
+            "leave_type": "Leave Type",
+            "from_date": "From Date",
+            "to_date": "To Date",
+            "posting_date": "Posting Date",
+            "status": "Status"
+        }
+
+        for field, label in mandatory_fields.items():
+            if not args.get(field):
+                frappe.throw(f"Please Fill {label}", frappe.MandatoryError)
+
+        args["from_date"] = getdate(args.get("from_date"))
+        args["to_date"] = getdate(args.get("to_date"))
+        args["posting_date"] = getdate(args.get("posting_date"))
+
+        if args.get("half_day") in ("1", "true", "True"):
+            if not args.get("half_day_date"):
+                frappe.throw("Half Day Date is required")
+            args["half_day_date"] = getdate(args.get("half_day_date"))
+
+        if args.get("custom_email_cc"):
+            args["custom_email_cc"] = frappe.parse_json(args.get("custom_email_cc"))
+
+        leave_doc = frappe.get_doc({
+            "doctype": "Leave Application",
+            **args
+        })
+        leave_doc.insert(ignore_permissions=True)
+
+        temp_files = []
+        uploaded_files = frappe.request.files.getlist("file")
+
+        if uploaded_files:
+            temp_dir = frappe.get_site_path("private", "leave_temp")
+            os.makedirs(temp_dir, exist_ok=True)
+
+            for f in uploaded_files:
+                ext = os.path.splitext(f.filename)[1]
+                temp_name = f"{uuid.uuid4().hex}{ext}"
+                temp_path = os.path.join(temp_dir, temp_name)
+
+                with open(temp_path, "wb") as tmp:
+                    shutil.copyfileobj(f.stream, tmp)
+
+                temp_files.append(temp_path)
+
+            # ✅ ASYNC CALL
+            frappe.enqueue(
+                "jkmpcl_hr.api.mobile.leave_application.upload_leave_files",
+                queue="short",
+                leave_application=leave_doc.name,
+                temp_files=temp_files
+            )
+
+        return {
+            "success": True,
+            "message": "Leave Application Created",
+            "data": {"leave_application": leave_doc.name}
+        }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Leave Create API Error")
+        return {
+            "success": False,
+            "message": str(e),
+            "data": None
+        }
+
+
+def upload_leave_files(leave_application, temp_files):
+    try:
+        for path in temp_files:
+            if not os.path.exists(path):
+                continue
+
+            with open(path, "rb") as f:
+                content = f.read()
+
+            save_file(
+                fname=os.path.basename(path),
+                content=content,
+                dt="Leave Application",
+                dn=leave_application,
+                is_private=0
+            )
+
+            os.remove(path)  # cleanup
+
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Leave File Upload Job Error"
+        )
+
+
