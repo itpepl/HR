@@ -7,7 +7,7 @@ from frappe.utils import now
 
 
 @frappe.whitelist()
-def check_in(employeeId, latitude=None, longitude=None):
+def check_in(employeeId, latitude=None, longitude=None,):
 
     try:
         if not employeeId:
@@ -24,6 +24,7 @@ def check_in(employeeId, latitude=None, longitude=None):
                 "latitude": float(latitude),
                 "longitude": float(longitude),
                 "log_type": "IN",
+                "custom_checkin_source": "Mobile App" 
             }
         )
 
@@ -91,6 +92,7 @@ def check_out(employeeId, latitude=None, longitude=None):
                 "longitude": float(longitude),
                 "log_type": "OUT",
                 "related_check_in": last_checkin,
+                "custom_checkin_source": "Mobile App"
             }
         )
 
@@ -171,3 +173,78 @@ def checkInLog(employeeId=None):
             "message": _("Check-in log fetched successfully"),
             "data": final_data
         }
+        
+        
+def is_point_inside_polygon(lat, lon, polygon):
+    """
+    Ray-casting algorithm for point-in-polygon
+    polygon = [(lat, lon), (lat, lon), ...]
+    """
+    x = lon
+    y = lat
+
+    inside = False
+    n = len(polygon)
+
+    p1x, p1y = polygon[0][1], polygon[0][0]
+    for i in range(n + 1):
+        p2x, p2y = polygon[i % n][1], polygon[i % n][0]
+
+        if y > min(p1y, p2y):
+            if y <= max(p1y, p2y):
+                if x <= max(p1x, p2x):
+                    if p1y != p2y:
+                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                    if p1x == p2x or x <= xinters:
+                        inside = not inside
+        p1x, p1y = p2x, p2y
+
+    return inside
+
+
+
+@frappe.whitelist(allow_guest=True)
+def validate_geofence(employeeId, latitude, longitude):
+    if not latitude or not longitude:
+        return {"allowed": False, "message": "Location not provided"}
+
+    branch = frappe.db.get_value("Employee", employeeId, "branch")
+    if not branch:
+        return {"allowed": False, "message": "Employee or branch not found"}
+
+    coords_str = frappe.db.get_value(
+        "Branch", branch, "custom_latitudes_and_longitudes"
+    )
+    if not coords_str:
+        return {"allowed": False, "message": "Branch geofence not defined"}
+
+    import re
+    matches = re.findall(
+        r"(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)",
+        coords_str
+    )
+
+    polygon = [(float(lat), float(lon)) for lat, lon in matches]
+
+    if len(polygon) < 3:
+        return {
+            "allowed": False,
+            "message": "Invalid geofence data"
+        }
+
+    inside = is_point_inside_polygon(
+        float(latitude),
+        float(longitude),
+        polygon
+    )
+
+    if not inside:
+        return {
+            "allowed": False,
+            "message": "You are outside the branch geofence"
+        }
+
+    return {
+        "allowed": True,
+        "message": "You are inside the branch geofence"
+    }
