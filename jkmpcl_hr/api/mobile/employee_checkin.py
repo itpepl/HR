@@ -7,7 +7,7 @@ from frappe.utils import now
 
 
 @frappe.whitelist()
-def check_in(employeeId, latitude=None, longitude=None):
+def check_in(employeeId, latitude=None, longitude=None,):
 
     try:
         if not employeeId:
@@ -24,6 +24,7 @@ def check_in(employeeId, latitude=None, longitude=None):
                 "latitude": float(latitude),
                 "longitude": float(longitude),
                 "log_type": "IN",
+                "custom_checkin_source": "Mobile App" 
             }
         )
 
@@ -91,6 +92,7 @@ def check_out(employeeId, latitude=None, longitude=None):
                 "longitude": float(longitude),
                 "log_type": "OUT",
                 "related_check_in": last_checkin,
+                "custom_checkin_source": "Mobile App"
             }
         )
 
