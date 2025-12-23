@@ -98,26 +98,26 @@ def get_attendance(
             },
         }
 
-            
-            
-
 @frappe.whitelist()
 def get_attendance_calendar(employeeId, date):
     try:
+        # -----------------------------
+        # VALIDATION
+        # -----------------------------
         if not employeeId or not date:
             frappe.throw("Employee ID and Date are required")
 
-        # Parse input date
         specific_date = datetime.strptime(date, "%Y-%m-%d").date()
         current_month = specific_date.month
         current_year = specific_date.year
         total_days = calendar.monthrange(current_year, current_month)[1]
 
-        # Start and end dates for attendance query
         start_date = f"{current_year}-{current_month:02d}-01"
         end_date = f"{current_year}-{current_month:02d}-{total_days}"
 
-        # Get attendance records for the month
+        # -----------------------------
+        # FETCH ATTENDANCE DATA
+        # -----------------------------
         attendance_data = frappe.get_all(
             "Attendance",
             filters={
@@ -129,16 +129,23 @@ def get_attendance_calendar(employeeId, date):
                 "status",
                 "in_time",
                 "out_time",
-                "working_hours"
+                "working_hours",
+                "leave_type",
+                "status"
             ]
         )
 
-        # Map attendance by date
-        attendance_map = {str(row.attendance_date): row for row in attendance_data}
+        attendance_map = {
+            str(row.attendance_date): row
+            for row in attendance_data
+        }
 
-        # Get employee and holiday list
+        # -----------------------------
+        # HOLIDAY LIST
+        # -----------------------------
         employee = frappe.get_doc("Employee", employeeId)
         holiday_map = {}
+
         if employee.holiday_list:
             holiday_doc = frappe.get_doc("Holiday List", employee.holiday_list)
             for h in holiday_doc.holidays:
@@ -148,66 +155,193 @@ def get_attendance_calendar(employeeId, date):
                     "is_half_day": h.is_half_day
                 }
 
-        # Current date to check future days
         today = sys_date.today()
         month_data = []
 
-        # Loop through the whole month
+        # -----------------------------
+        # LOOP MONTH DAYS
+        # -----------------------------
         for d in range(1, total_days + 1):
             date_obj = sys_date(current_year, current_month, d)
             date_str = str(date_obj)
 
-            # Initialize default day data
             day_data = {
                 "date": date_str,
                 "status": "A",  # Default Absent
                 "in_time": None,
                 "out_time": None,
-                "working_hours": 0
+                "working_hours": 0,
+                "other_half_status": None
             }
 
-            # ✅ Skip future dates
+            # -----------------------------
+            # FUTURE DATE
+            # -----------------------------
             if date_obj > today:
-                day_data["status"] = ""  # Or "N/A" if you prefer
+                day_data["status"] = ""
                 month_data.append(day_data)
                 continue
 
-            # ✅ Holiday List overrides default
+            # -----------------------------
+            # HOLIDAY / WEEKLY OFF
+            # -----------------------------
             if date_str in holiday_map:
-                holiday_info = holiday_map[date_str]
-                if holiday_info["weekly_off"] == 1:
-                    day_data["status"] = "WO"   # Weekly Off
+                holiday = holiday_map[date_str]
+                if holiday["weekly_off"]:
+                    day_data["status"] = "WO"
                 else:
-                    day_data["status"] = "H"    # Holiday
+                    day_data["status"] = "H"
 
-            # ✅ Attendance overrides everything
+            # -----------------------------
+            # ATTENDANCE OVERRIDES ALL
+            # -----------------------------
             if date_str in attendance_map:
                 record = attendance_map[date_str]
+
                 if record.status == "Present":
                     day_data["status"] = "P"
+
+                elif record.status == "Half Day":
+                    day_data["status"] = "HD"
+                    day_data["other_half_status"] = record.status   
+
                 elif record.status == "On Leave":
                     day_data["status"] = "L"
-                else:
+
+                elif record.status == "Absent":
                     day_data["status"] = "A"
 
                 day_data["in_time"] = record.in_time
                 day_data["out_time"] = record.out_time
-                day_data["working_hours"] = record.working_hours
+                day_data["working_hours"] = record.working_hours or 0
 
             month_data.append(day_data)
 
+        # -----------------------------
+        # RESPONSE
+        # -----------------------------
         return {
             "success": True,
-            "month": f"{current_year}-{current_month}",
+            "month": f"{current_year}-{current_month:02d}",
             "attendance": month_data
         }
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Calendar API Error")
+        frappe.log_error(frappe.get_traceback(), "Calendar Attendance API Error")
         return {
             "success": False,
             "message": str(e)
         }
+
+            
+
+# @frappe.whitelist()
+# def get_attendance_calendar(employeeId, date):
+#     try:
+#         if not employeeId or not date:
+#             frappe.throw("Employee ID and Date are required")
+
+#         # Parse input date
+#         specific_date = datetime.strptime(date, "%Y-%m-%d").date()
+#         current_month = specific_date.month
+#         current_year = specific_date.year
+#         total_days = calendar.monthrange(current_year, current_month)[1]
+
+#         # Start and end dates for attendance query
+#         start_date = f"{current_year}-{current_month:02d}-01"
+#         end_date = f"{current_year}-{current_month:02d}-{total_days}"
+
+#         # Get attendance records for the month
+#         attendance_data = frappe.get_all(
+#             "Attendance",
+#             filters={
+#                 "employee": employeeId,
+#                 "attendance_date": ["between", [start_date, end_date]]
+#             },
+#             fields=[
+#                 "attendance_date",
+#                 "status",
+#                 "in_time",
+#                 "out_time",
+#                 "working_hours"
+#             ]
+#         )
+
+#         # Map attendance by date
+#         attendance_map = {str(row.attendance_date): row for row in attendance_data}
+
+#         # Get employee and holiday list
+#         employee = frappe.get_doc("Employee", employeeId)
+#         holiday_map = {}
+#         if employee.holiday_list:
+#             holiday_doc = frappe.get_doc("Holiday List", employee.holiday_list)
+#             for h in holiday_doc.holidays:
+#                 holiday_map[str(h.holiday_date)] = {
+#                     "weekly_off": h.weekly_off,
+#                     "description": h.description,
+#                     "is_half_day": h.is_half_day
+#                 }
+
+#         # Current date to check future days
+#         today = sys_date.today()
+#         month_data = []
+
+#         # Loop through the whole month
+#         for d in range(1, total_days + 1):
+#             date_obj = sys_date(current_year, current_month, d)
+#             date_str = str(date_obj)
+
+#             # Initialize default day data
+#             day_data = {
+#                 "date": date_str,
+#                 "status": "A",  # Default Absent
+#                 "in_time": None,
+#                 "out_time": None,
+#                 "working_hours": 0
+#             }
+
+#             # ✅ Skip future dates
+#             if date_obj > today:
+#                 day_data["status"] = ""  # Or "N/A" if you prefer
+#                 month_data.append(day_data)
+#                 continue
+
+#             # ✅ Holiday List overrides default
+#             if date_str in holiday_map:
+#                 holiday_info = holiday_map[date_str]
+#                 if holiday_info["weekly_off"] == 1:
+#                     day_data["status"] = "WO"   # Weekly Off
+#                 else:
+#                     day_data["status"] = "H"    # Holiday
+
+#             # ✅ Attendance overrides everything
+#             if date_str in attendance_map:
+#                 record = attendance_map[date_str]
+#                 if record.status == "Present":
+#                     day_data["status"] = "P"
+#                 elif record.status == "On Leave":
+#                     day_data["status"] = "L"
+#                 else:
+#                     day_data["status"] = "A"
+
+#                 day_data["in_time"] = record.in_time
+#                 day_data["out_time"] = record.out_time
+#                 day_data["working_hours"] = record.working_hours
+
+#             month_data.append(day_data)
+
+#         return {
+#             "success": True,
+#             "month": f"{current_year}-{current_month}",
+#             "attendance": month_data
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Calendar API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
 
 
 @frappe.whitelist(allow_guest=True)
