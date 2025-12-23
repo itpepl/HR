@@ -130,8 +130,7 @@ def get_attendance_calendar(employeeId, date):
                 "in_time",
                 "out_time",
                 "working_hours",
-                "leave_type",
-                "status"
+                "leave_type"
             ]
         )
 
@@ -143,8 +142,8 @@ def get_attendance_calendar(employeeId, date):
         # -----------------------------
         # HOLIDAY LIST
         # -----------------------------
-        employee = frappe.get_doc("Employee", employeeId)
         holiday_map = {}
+        employee = frappe.get_doc("Employee", employeeId)
 
         if employee.holiday_list:
             holiday_doc = frappe.get_doc("Holiday List", employee.holiday_list)
@@ -167,7 +166,7 @@ def get_attendance_calendar(employeeId, date):
 
             day_data = {
                 "date": date_str,
-                "status": "A",  # Default Absent
+                "status": "",              # ✅ DEFAULT BLANK
                 "in_time": None,
                 "out_time": None,
                 "working_hours": 0,
@@ -175,10 +174,9 @@ def get_attendance_calendar(employeeId, date):
             }
 
             # -----------------------------
-            # FUTURE DATE
+            # FUTURE DATE → BLANK
             # -----------------------------
             if date_obj > today:
-                day_data["status"] = ""
                 month_data.append(day_data)
                 continue
 
@@ -203,7 +201,7 @@ def get_attendance_calendar(employeeId, date):
 
                 elif record.status == "Half Day":
                     day_data["status"] = "HD"
-                    day_data["other_half_status"] = record.status   
+                    day_data["other_half_status"] = "HD"
 
                 elif record.status == "On Leave":
                     day_data["status"] = "L"
@@ -214,6 +212,14 @@ def get_attendance_calendar(employeeId, date):
                 day_data["in_time"] = record.in_time
                 day_data["out_time"] = record.out_time
                 day_data["working_hours"] = record.working_hours or 0
+
+            # -----------------------------
+            # PAST DATE WITHOUT ATTENDANCE
+            # -----------------------------
+            elif date_obj < today and not day_data["status"]:
+                day_data["status"] = "A"
+
+            # 👉 TODAY without attendance stays BLANK
 
             month_data.append(day_data)
 
