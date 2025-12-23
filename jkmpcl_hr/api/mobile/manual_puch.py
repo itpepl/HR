@@ -92,7 +92,7 @@ def create_manual_punch(data):
         })
 
         doc.insert(ignore_permissions=True)
-        # doc.submit()  
+        doc.submit()  
 
         return {
             "success": True,
