@@ -23,7 +23,7 @@ frappe.ui.form.on("Shift Request", {
     refresh:function(frm){
         const current_user = frappe.session.user
     
-
+        toggle_approver_field(frm);
         // * HIDING sbumit BUTTON AND MAKING status FIELD read only IF THE CURRENT USER IS NOT THE APPROVER AND IF THE CURRENT USER IS APPROVER THEN DISPLAYING THE submit BUTTON AND MAKING status FIELD EDITABLE
         // $('.primary-action').prop('hidden', true);
         $('button[data-label="Submit"]').hide();
@@ -88,7 +88,16 @@ frappe.ui.form.on("Shift Request", {
         }
     },
     from_date: function(frm){
-        if(frm.doc.from_date){
+        if (frm.doc.from_date) {
+            const today = frappe.datetime.get_today();
+
+            if (frm.doc.from_date < today) {
+                frappe.throw(__("You cannot select a previous date."));
+                frm.set_value("from_date", null);
+            }    
+
+
+
             apply_filter_in_shift_type(frm)
 
             frappe.call({
@@ -101,7 +110,19 @@ frappe.ui.form.on("Shift Request", {
     },
 
     to_date: function(frm){
-        if(frm.doc.to_date){
+        if (frm.doc.to_date) {
+            
+            if (!frm.doc.from_date){
+                frappe.throw(__("Please select From Date first."));
+                frm.set_value("to_date", null);
+            }
+
+            if (frm.doc.to_date < frm.doc.from_date) {
+                frappe.throw(__("To Date cannot be before From Date."));
+                frm.set_value("to_date", null);
+            }
+
+
             frappe.call({
                 method: "jkmpcl_hr.py.shift_request.validate_shift_hours",
                 args:{
@@ -173,4 +194,21 @@ function set_ceo_as_approver(frm){
             }
         }
     })
+}
+
+function toggle_approver_field(frm) {
+    const roles = frappe.user_roles;
+
+    const has_employee_role = roles.includes("Employee");
+    const has_other_roles = roles.some(
+        r => !["Employee", "All", "Desk User", "Guest"].includes(r)
+    );
+
+    if (has_employee_role && !has_other_roles) {
+        frm.set_df_property("approver", "read_only", 1);
+    } else {
+        frm.set_df_property("approver", "read_only", 0);
+    }
+
+    frm.refresh_field("approver");
 }

@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import getdate
+from frappe.utils import getdate, today
 
 def get_required_shift_hours(dt, branch, is_female):
     dt = getdate(dt)
@@ -18,6 +18,15 @@ def get_required_shift_hours(dt, branch, is_female):
 
 
 def validate(doc, event):
+
+    if doc.from_date and getdate(doc.from_date) < getdate(today()):
+        frappe.throw("From Date cannot be a previous date.")
+
+    if doc.to_date and getdate(doc.to_date) < getdate(doc.from_date):
+        frappe.throw("To Date cannot be before From Date.")
+    elif doc.to_date and not doc.from_date and getdate(doc.to_date) < getdate(today()):
+        frappe.throw("To Date cannot be a previous date.")
+    
     validate_shift_hours(doc)
 
 
