@@ -7,36 +7,51 @@ from frappe.utils import now_datetime
 @frappe.whitelist(allow_guest=True)
 def send_reset_otp(email):
 
+    if not email:
+        return {
+            "success": False,
+            "message": "Email is required"
+        }
+
     if not frappe.db.exists("User", email):
         return {
             "success": False,
             "message": "User not found"
         }
 
-    # Generate 4-digit OTP
+    # 🔥 STEP 1: Invalidate old unused OTPs
+    frappe.db.sql("""
+        UPDATE `tabPassword Reset OTP`
+        SET is_used = 1
+        WHERE email = %s
+        AND is_used = 0
+        AND expires_on >= NOW()
+    """, email)
+
+    # 🔥 STEP 2: Generate new OTP
     otp = random.randint(1000, 9999)
 
-    # Expiry (10 minutes)
+    # OTP expiry (10 minutes)
     expiry = add_to_date(now(), minutes=10)
 
-    # Save OTP
+    # 🔥 STEP 3: Save new OTP
     doc = frappe.new_doc("Password Reset OTP")
     doc.email = email
     doc.otp = str(otp)
     doc.expires_on = expiry
     doc.is_used = 0
     doc.insert(ignore_permissions=True)
+
     frappe.db.commit()
 
-    # Send email
+    # 🔥 STEP 4: Send email
     frappe.sendmail(
         recipients=[email],
         subject="Your OTP to Reset Password",
         message=f"""
         Hello,
 
-        Your OTP for password reset is: <b>{otp}</b>
-
+        Your OTP for password reset is: <b>{otp}</b><br><br>
         This OTP will expire in 10 minutes.
         """,
         delayed=False
@@ -47,12 +62,11 @@ def send_reset_otp(email):
         "message": f"OTP sent successfully to {email[:3]}****{email.split('@')[1]}"
     }
 
-    # ✅ Return OTP ONLY in developer mode (testing)
+    # ✅ Return OTP only in developer mode
     if frappe.conf.get("developer_mode"):
         response["otp"] = str(otp)
 
     return response
-
 
 @frappe.whitelist(allow_guest=True)
 def verify_reset_otp(email, otp):
