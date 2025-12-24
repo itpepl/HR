@@ -77,6 +77,20 @@ def create_manual_punch(data):
                 "success": False,
                 "message": "Missing required fields"
             }
+        warning_data = get_manual_punch_note(
+            employeeId=employee,
+            from_date=date,
+            current_punch_type=punch_type
+        )
+        warning_message = ""
+        if warning_data.get("show_warning"):
+            note = warning_data.get("message")
+
+            warning_message = (
+                '<div style="color:#fff;background-color:#d32f2f;'
+                'padding:12px;border-radius:4px;font-weight:700;">'
+                '⚠️ {0}</div>'
+            ).format(frappe.utils.escape_html(note))
 
         # Create document
         doc = frappe.get_doc({
@@ -88,11 +102,12 @@ def create_manual_punch(data):
             "custom_punch_type": punch_type,  
             "custom_in_time": in_time,
             "custom_out_time": out_time,
-            "explanation": remarks
+            "explanation": remarks,
+            "custom_note":warning_message
         })
 
         doc.insert(ignore_permissions=True)
-        doc.submit()  
+        # doc.submit()
 
         return {
             "success": True,
