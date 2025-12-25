@@ -23,7 +23,7 @@ frappe.ui.form.on("Shift Request", {
     refresh:function(frm){
         const current_user = frappe.session.user
     
-        toggle_approver_field(frm);
+        // toggle_approver_field(frm);
         // * HIDING sbumit BUTTON AND MAKING status FIELD read only IF THE CURRENT USER IS NOT THE APPROVER AND IF THE CURRENT USER IS APPROVER THEN DISPLAYING THE submit BUTTON AND MAKING status FIELD EDITABLE
         // $('.primary-action').prop('hidden', true);
         $('button[data-label="Submit"]').hide();
@@ -196,19 +196,19 @@ function set_ceo_as_approver(frm){
     })
 }
 
-function toggle_approver_field(frm) {
-    const roles = frappe.user_roles;
+// function toggle_approver_field(frm) {
+//     const roles = frappe.user_roles;
 
-    const has_employee_role = roles.includes("Employee");
-    const has_other_roles = roles.some(
-        r => !["Employee", "All", "Desk User", "Guest"].includes(r)
-    );
+//     const has_employee_role = roles.includes("Employee");
+//     const has_other_roles = roles.some(
+//         r => !["Employee", "All", "Desk User", "Guest"].includes(r)
+//     );
 
-    if (has_employee_role && !has_other_roles) {
-        frm.set_df_property("approver", "read_only", 1);
-    } else {
-        frm.set_df_property("approver", "read_only", 0);
-    }
+//     if (has_employee_role && !has_other_roles) {
+//         frm.set_df_property("approver", "read_only", 1);
+//     } else {
+//         frm.set_df_property("approver", "read_only", 0);
+//     }
 
-    frm.refresh_field("approver");
-}
+//     frm.refresh_field("approver");
+// }
