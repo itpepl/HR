@@ -233,9 +233,11 @@ def get_employee_leave_type(employee):
 # MAIN SCHEDULER METHOD
 # =========================================================
 @frappe.whitelist()
-def run_attendance_from_to():
-    from_date = getdate("2025-11-01")
-    to_date = getdate("2025-11-30")
+def run_attendance_from_to(from_date,to_date):
+    if not from_date or not to_date:
+        frappe.throw("From Date and To Date are required")
+    from_date = getdate(from_date)
+    to_date = getdate(to_date)
 
     current_date = from_date
 
