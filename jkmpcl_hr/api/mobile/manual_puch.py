@@ -40,7 +40,7 @@ def get_manual_punches(
             "custom_in_time",
             "custom_out_time",
             "workflow_state",
-            "custom_note"
+            "custom_note",
             "creation"
         ],
         # order_by="from_date desc",
