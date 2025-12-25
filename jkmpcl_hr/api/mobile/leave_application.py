@@ -30,8 +30,8 @@ def get_leave_types():
             "message": "Leave types fetched successfully",
             "data": leave_types
         }
-        
-        
+
+ 
 @frappe.whitelist()
 def list(
     filters=None,
@@ -203,3 +203,10 @@ def upload_leave_files(leave_application, temp_files):
         )
 
 
+@frappe.whitelist()
+def status_list():
+    return {
+            "success": True,
+            "message": "Status fetch successfully",
+            "data": ["Open","Approved","Rejected","Cancelled"]
+        }    
