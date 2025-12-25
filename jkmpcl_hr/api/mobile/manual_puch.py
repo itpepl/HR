@@ -62,7 +62,6 @@ def get_manual_punches(
 
 @frappe.whitelist(allow_guest=False)
 def create_manual_punch(data):
-
     try:
         if isinstance(data, str):
             data = frappe.parse_json(data)
@@ -78,53 +77,69 @@ def create_manual_punch(data):
         if not (employee and date and request_type and remarks):
             return {
                 "success": False,
-                "message": "Missing required fields"
+                "message": "Employee, Date, Request Type and Remarks are required"
             }
-        warning_data = get_manual_punch_note(
-            employeeId=employee,
-            from_date=date,
-            current_punch_type=punch_type
-        )
+
+        # -----------------------------
+        # WARNING LOGIC
+        # -----------------------------
         warning_message = ""
-        if warning_data.get("show_warning"):
-            note = warning_data.get("message")
 
-            warning_message = (
-                '<div style="color:#fff;background-color:#d32f2f;'
-                'padding:12px;border-radius:4px;font-weight:700;">'
-                '⚠️ {0}</div>'
-            ).format(frappe.utils.escape_html(note))
+        # ❗ Skip warning for Field Visit
+        if request_type != "Field Visit":
+            warning_data = get_manual_punch_note(
+                employeeId=employee,
+                from_date=date,
+                current_punch_type=punch_type
+            )
 
-        # Create document
+            if warning_data.get("show_warning"):
+                warning_message = warning_data.get("message")
+
+        # -----------------------------
+        # CREATE ATTENDANCE REQUEST
+        # -----------------------------
         doc = frappe.get_doc({
             "doctype": "Attendance Request",
             "employee": employee,
             "from_date": date,
             "to_date": date,
-            "reason": request_type,            
-            "custom_punch_type": punch_type,  
+            "reason": request_type,
+            "custom_punch_type": punch_type,
             "custom_in_time": in_time,
             "custom_out_time": out_time,
             "explanation": remarks,
-            "custom_note":warning_message
+            "custom_note": warning_message or None
         })
 
         doc.insert(ignore_permissions=True)
-        # doc.submit()
 
         return {
             "success": True,
             "message": "Manual punch created successfully",
-            "data": doc.name
+            "data": {
+                "attendance_request_id": doc.name
+            }
         }
 
-    except Exception as e:
+    except frappe.DuplicateEntryError:
+        return {
+            "success": False,
+            "message": "Attendance request already exists for this date."
+        }
+
+    except frappe.ValidationError as e:
+        return {
+            "success": False,
+            "message": frappe.utils.strip_html(str(e))
+        }
+
+    except Exception:
         frappe.log_error(frappe.get_traceback(), "Manual Punch API Error")
         return {
             "success": False,
-            "message": str(e)
+            "message": "Unable to create manual punch. Please contact admin."
         }
-
 
 
 @frappe.whitelist()
@@ -148,8 +163,15 @@ def punch_type_list():
 
 
 @frappe.whitelist()
-def get_manual_punch_note(employeeId, from_date, current_punch_type=None, current_name=None):
+def get_manual_punch_note(employeeId, from_date,request_type=None, current_punch_type=None, current_name=None):
     if not employeeId or not from_date:
+        return {
+            "show_warning": False,
+            "count": 0,
+            "limit": 0,
+            "message": ""
+        }
+    if request_type == "Field Visit":
         return {
             "show_warning": False,
             "count": 0,
