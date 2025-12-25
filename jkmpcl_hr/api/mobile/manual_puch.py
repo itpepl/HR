@@ -3,8 +3,6 @@ from frappe.utils import getdate, cint
 from frappe import _
 from frappe.utils import strip_html
 
-
-
 @frappe.whitelist()
 def get_manual_punches(
     employee,
