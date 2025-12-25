@@ -41,8 +41,11 @@ def get_manual_punches(
             "custom_out_time",
             "workflow_state",
             "custom_note"
+            "creation"
         ],
-        order_by="from_date desc",
+        # order_by="from_date desc",
+        order_by="creation desc",
+        
         limit_page_length=int(limit) if limit else None
     )
 
