@@ -113,9 +113,10 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
     date_str = filters.get("as_on_date")
     employee_id = filters.get("emp_id")
     gender = filters.get("gender", False)
+    emp_attendance_source = filters.get("attendance_source", frappe.get_value("Employee", employee_id, "custom_attendance_source")) 
+    
     conditions = {}    
-    
-    
+            
     current_user = frappe.session.user
 
     user_roles = frappe.get_roles(current_user)
@@ -127,23 +128,39 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
 
     if not branch:
         return []
-    
-    
+
     
     as_on_date = getdate(date_str) if date_str else getdate()
     if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar": 
         
-        print(f"\n\n \n\n")
+        
+        if emp_attendance_source:
+            if emp_attendance_source == "Biometric":
+                conditions["custom_attendance_source"] = ["not in", ["Field", "Punch"]]
+            
+            elif emp_attendance_source == "Punch":
+                conditions["custom_attendance_source"] = ["!=", "Field"]
+                # conditions["name"] = ["!=", "Jammu-General-8hours"]
+                conditions["name"] = ["not in", ["Srinagar-General-8hours", "Srinagar-General-7hours"]]
+                
+                
+
+                
+            elif emp_attendance_source == "Field":
+                conditions["custom_attendance_source"] = ["!=", "Punch"]
+                # conditions["name"] = ["!=", "Srinagar-General-8hours"]
+                conditions["name"] = ["not in", ["Srinagar-General-8hours", "Srinagar-General-7hours"]]
+                
+        
+        
         if 4 <= as_on_date.month <= 9:   
             required_hours = "8hours"
         else:                          
             required_hours = "7hours"
-
         
         conditions["custom_hours"]= required_hours
         
         
-        print(f"\n\n  required hours {required_hours} \n\n")
         if branch:
             conditions["custom_branch"] = branch
 
@@ -158,6 +175,14 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
 
         return [[s.name, s.name] for s in shift_types]
     elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
+        
+        if emp_attendance_source:
+            if emp_attendance_source in ["Biometric", "Punch"]:
+                conditions["custom_attendance_source"] = ["not in", ["Field", "Punch"]]
+                    
+            elif emp_attendance_source == "Field":
+                conditions["name"] = ["not in", ["Jammu-General-8hours", "Jammu-General-7hours"]]
+                
         
         if not gender:
             is_female = True if frappe.db.get_value("Employee", employee_id, "gender") == "Female" else False

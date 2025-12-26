@@ -179,7 +179,8 @@ function apply_filter_in_shift_type(frm){
                 branch: frm.doc.branch,
                 as_on_date: frappe.datetime.get_today(),
                 emp_id: frm.doc.name,
-                gender: frm.doc.gender
+                gender: frm.doc.gender,
+                attendance_source: frm.doc.custom_attendance_source
             }
         };
     });
