@@ -173,6 +173,9 @@ scheduler_events = {
         ],
          "0 6 * * *": [
             "jkmpcl_hr.py.scheduler_method.run_daily_attendance"
+        ],
+        "0 7 * * *": [
+            "jkmpcl_hr.py.scheduler_method.process_comp_off_scheduler"
         ]
     }
 # 	"all": [
