@@ -821,3 +821,241 @@ Step     : {step}
         title=f"Auto Attendance Error : {date}",
         message=message
     )
+
+
+
+
+
+# =========================================================
+# ENTRY POINT (Scheduler – Daily) for Auto Comp-Off Creation
+# =========================================================
+
+def process_comp_off_scheduler():
+    """
+    Runs daily.
+    Checks only YESTERDAY.
+    """
+    yesterday = add_days(getdate(), -1)
+
+    requests = frappe.get_all(
+        "Off-Day Work Request",
+        filters={
+            "workflow_state": "Approved",
+            "date": yesterday,
+            "docstatus": 1,
+            "comp_off_created": 0
+        },
+        fields=["name", "employee", "date"]
+    )
+
+    for req in requests:
+        
+        try:
+            process_working_day(req)
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Comp-Off Scheduler Error - {req.name}"
+            )
+
+
+# =========================================================
+# PROCESS SINGLE REQUEST
+# =========================================================
+
+
+def process_working_day(req):
+    """
+    Main entry point per Off-Day Working Request
+    """
+
+    attendance = get_attendance(req["employee"], req["date"])
+    if not attendance:
+        return
+
+    holiday = get_holiday_details(req["employee"], req["date"])
+    if not holiday:
+        return
+
+    # WO OR Normal Holiday OR RH+WO
+    if holiday["is_wo"] or not holiday["is_rh"]:
+        allocation = create_comp_off(req["employee"], req["date"])
+
+        # Update Request
+        frappe.db.set_value(
+            "Off-Day Work Request",
+            req["name"],
+            {
+                "attendance": attendance,
+                "leave_allocation": allocation.name,
+                "comp_off_created": 1
+            }
+        )
+        return
+
+    # RH only
+    handle_rh_only(req, attendance, holiday)
+
+
+# =========================================================
+# ATTENDANCE CHECK
+# =========================================================
+
+
+def get_attendance(employee, date):
+    return frappe.db.get_value(
+        "Attendance",
+        {
+            "employee": employee,
+            "attendance_date": date,
+            "status": "Present",
+            "docstatus": 1
+        },
+        "name"
+    )
+
+
+# =========================================================
+# DAY TYPE IDENTIFICATION
+# =========================================================
+
+
+def get_holiday_details(employee, date):
+    holiday_list = frappe.db.get_value(
+        "Employee",
+        employee,
+        "holiday_list"
+    )
+    if not holiday_list:
+        return None
+
+    holiday = frappe.db.get_value(
+        "Holiday",
+        {
+            "parent": holiday_list,
+            "holiday_date": date
+        },
+        [
+            "weekly_off",
+            "custom_is_restricted_holiday",
+            "custom_restricted_holiday_date"
+        ],
+        as_dict=True
+    )
+
+    if not holiday:
+        return None
+
+    return {
+        "is_wo": bool(holiday.weekly_off),
+        "is_rh": bool(holiday.custom_is_restricted_holiday),
+        "pair_date": holiday.custom_restricted_holiday_date
+    }
+
+
+# =========================================================
+# RH ONLY HANDLER
+# =========================================================
+
+
+def handle_rh_only(req, attendance, holiday):
+
+    pair_date = holiday.get("pair_date")
+    if not pair_date:
+        return
+
+    pair_holiday = get_holiday_details(req["employee"], pair_date)
+
+    # RH + WO (past or future) → immediate
+    if pair_holiday and pair_holiday["is_wo"]:
+        allocation = create_comp_off(req["employee"], req["date"])
+
+        # Update Request
+        frappe.db.set_value(
+            "Off-Day Work Request",
+            req["name"],
+            {
+                "attendance": attendance,
+                "leave_allocation": allocation.name,
+                "comp_off_created": 1
+            }
+        )
+        return
+
+    # Pair is future RH-only → skip
+    if pair_date > req["date"]:
+        return
+
+    # Pair is past RH-only → both must be present
+    pair_attendance = get_attendance(req["employee"], pair_date)
+    if pair_attendance:
+        allocation = create_comp_off(req["employee"], req["date"])
+
+        # Update Request
+        frappe.db.set_value(
+            "Off-Day Work Request",
+            req["name"],
+            {
+                "attendance": attendance,
+                "leave_allocation": allocation.name,
+                "comp_off_created": 1
+            }
+        )
+
+
+# =========================================================
+# Comp Off ALLOCATION CREATION
+# =========================================================
+
+
+def create_comp_off(employee, date):
+    """
+    Creates 1 Comp-Off Leave Allocation
+    Validity: 45 days
+    """
+
+    date = getdate(date)
+
+    if already_created(employee, date):
+        return
+
+    leave_type = frappe.db.get_value(
+        "Leave Type",
+        {
+            "is_compensatory": 1
+        },
+        "custom_validity_days"
+    )   
+    validity_days = leave_type if leave_type else 45
+
+    allocation = frappe.get_doc({
+        "doctype": "Leave Allocation",
+        "employee": employee,
+        "leave_type": "Compensatory Off",
+        "from_date": date,
+        "to_date": add_days(date, validity_days),
+        "new_leaves_allocated": 1
+    })
+
+    allocation.insert(ignore_permissions=True)
+    allocation.submit()
+
+    return allocation
+
+
+# =========================================================
+# DUPLICATE CHECK
+# =========================================================
+
+
+def already_created(employee, date):
+    return frappe.db.exists(
+        "Leave Allocation",
+        {
+            "employee": employee,
+            "leave_type": "Compensatory Off",
+            "from_date": date,
+            "docstatus": 1
+        }
+    )
+
