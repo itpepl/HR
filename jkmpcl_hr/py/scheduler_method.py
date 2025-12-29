@@ -93,7 +93,7 @@ def create_and_assign_shift_assignments_jammu(today_date, start_year, emp_filter
     frappe.log_error("start_create_and_assign_shift_assignments_jammu", "Scheduler Started FOR Jammu")
     
     apr_start_date = getdate(f"{start_year}-04-01")
-    mar_end_date = getdate(f"{start_year+1}-03-31")
+    mar_end_date = getdate(f"{start_year+120137}-03-31")
     
     # nov_end_jammu = date(start_year, 11, 30)
     # dec_start_jammu = date(start_year, 12, 1)
@@ -203,16 +203,17 @@ def get_employee_leave_type(employee):
 # MAIN SCHEDULER METHOD
 # =========================================================
 @frappe.whitelist()
-def run_attendance_from_to():
-    # if not from_date or not to_date:
-    #     frappe.throw("From Date and To Date are required")
-    from_date = "2025-11-03"
-    to_date = "2025-11-03"
+def run_attendance_from_to(from_date, to_date
+                           ):
 
+    if not from_date or not to_date:
+        frappe.throw("From Date and To Date are required")
+    from_date = getdate(from_date)
+    to_date = getdate(to_date)
     current_date = from_date
 
     while current_date <= to_date:
-        run_daily_attendance(current_date)
+        run_daily_attendance(current_date,only_for_jammu=True)
         current_date = add_days(current_date, 1)
 
     return {
@@ -222,17 +223,24 @@ def run_attendance_from_to():
 
 
 
-def run_daily_attendance(att_date=None):    
+def run_daily_attendance(att_date=None,only_for_jammu=False):    
     if not att_date:
         att_date = add_days(getdate(), -1)
     else:
         att_date = getdate(att_date)
 
-    employees = frappe.get_all(
-        "Employee",
-        filters={"status": "Active"},
-        pluck="name"
-    )
+    if only_for_jammu:
+        employees = frappe.get_all(
+            "Employee",
+            filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"},
+            pluck="name"
+        )
+    else:
+        employees = frappe.get_all(
+            "Employee",
+            filters={"status": "Active"},
+            pluck="name"
+        )
 
     for emp in employees:
         try:
@@ -249,11 +257,9 @@ def run_daily_attendance(att_date=None):
             )
 
             is_holiday = is_holiday_or_weekoff(emp, att_date)
-
-            # ==========================
-            # ==========================
-            if shift_custom_type == "24 Hours":
-                first_in, last_out, checkin_id= get_24_hour_working_hours(
+            if shift_custom_type == "24 hours":
+                print("test")
+                first_in, last_out, checkin_id,working_hours= get_24_hour_working_hours(
                     emp, att_date
                 )
                 if not first_in:
@@ -264,8 +270,7 @@ def run_daily_attendance(att_date=None):
                         None,
                         0,
                         None,
-                        skip_shift_time_rules=True,
-                        is_24_hour_shift=True
+                        skip_shift_time_rules=True
                     )
                 else:
                     create_or_update_attendance(
@@ -273,10 +278,9 @@ def run_daily_attendance(att_date=None):
                         att_date,
                         first_in,
                         last_out,
-                        0,                    # 👈 NO working hours
+                        working_hours,                   # 👈 NO working hours
                         checkin_id,
-                        skip_shift_time_rules=True,
-                        is_24_hour_shift=True
+                        skip_shift_time_rules=True
                     )
 
             # ==========================
@@ -371,16 +375,18 @@ def get_24_hour_working_hours(employee, date):
         ORDER BY time ASC
     """, (employee, date), as_dict=True)
 
-    # ❌ No logs or single log
     if not logs or len(logs) < 2:
-        return None, None, None
+        return None, None, None, 0  # return 0 working hours if insufficient logs
 
-    first_in = logs[0]["time"]     # ✅ First punch
-    last_out = logs[-1]["time"]    # ✅ Last punch
+    first_in = logs[0]["time"]     
+    last_out = logs[-1]["time"]    
     last_checkin_id = logs[-1]["name"]
 
-    return first_in, last_out, last_checkin_id
+    # Calculate working hours
+    working_seconds = (last_out - first_in).total_seconds()
+    working_hours = working_seconds / 3600  # convert seconds to hours
 
+    return first_in, last_out, last_checkin_id, working_hours
 
 # =========================================================
 # LEAVE CHECK
@@ -544,10 +550,10 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
             as_dict=True
         )
         
-
+        print("hello",skip_shift_time_rules)
         half_day_hours = float(shift.working_hours_threshold_for_half_day or 8)
         absent_hours = float(shift.working_hours_threshold_for_absent or 3)
-
+        print("working",working_hours)
         if working_hours <= absent_hours:
             status = "Absent"
         elif working_hours < half_day_hours:
@@ -785,18 +791,75 @@ def create_leave_ledger(employee, leave_type, date, status, attendance):
     doc.insert(ignore_permissions=True)
     doc.submit()
 
+JAMMU_BRANCH = "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"
+SRINAGAR_BRANCH = "Jammu and Kashmir Milk Producers Co-operative Ltd Srinagar"
 
 
 # =========================================================
 # SHIFT HELPERS
 # =========================================================
 
-def get_required_hours_by_date(date):
+# def get_required_hours_by_date(employee, date):
+#     date = getdate(date)
+
+#     emp = frappe.db.get_value(
+#         "Employee",
+#         employee,
+#         ["branch", "gender", "custom_attendance_source"],
+#         as_dict=True
+#     )
+
+#     if (
+#         emp.branch == JAMMU_BRANCH
+#         and emp.gender == "Female"
+#         and emp.custom_attendance_source == "Field"
+#         and date.month in (12, 1)
+#     ):
+#         return 7
+
+#     if emp.branch == SRINAGAR_BRANCH:
+#         if 4 <= date.month <= 9:
+#             return 8
+#         return 7
+
+#     return 8
+JAMMU_BRANCH = "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"
+SRINAGAR_BRANCH = "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar"
+DEC_JAN = (12, 1)
+
+def get_required_hours_by_date(employee, date):
     date = getdate(date)
-    return 8 if 4 <= date.month <= 9 else 7
+
+    emp = frappe.db.get_value(
+        "Employee",
+        employee,
+        ["branch", "gender", "custom_attendance_source"],
+        as_dict=True
+    )
+
+    if (
+        emp.branch == JAMMU_BRANCH
+        and emp.gender == "Female"
+        and emp.custom_attendance_source == "Field"
+        and date.month in DEC_JAN
+    ):
+        return 7
+
+    if emp.branch == JAMMU_BRANCH:
+        return 8
+
+    if emp.branch == SRINAGAR_BRANCH:
+        if 4 <= date.month <= 9: 
+            return 8
+        return 7
+
+    return 8
+
+
 
 def get_employee_shift(employee, date):
     date = getdate(date)
+
     assigned_shift = frappe.db.get_value(
         "Shift Assignment",
         {
@@ -825,7 +888,7 @@ def get_employee_shift(employee, date):
     if not shift_type:
         return default_shift
 
-    required_hours = get_required_hours_by_date(date)
+    required_hours = get_required_hours_by_date(employee, date)
 
     branch = frappe.db.get_value("Employee", employee, "branch")
 
@@ -833,7 +896,7 @@ def get_employee_shift(employee, date):
         "Shift Type",
         {
             "custom_branch": branch,
-            "custom_shift_type": shift_type,        # General / 24 hours
+            "custom_shift_type": shift_type,   # General / Morning / Day / Night / 24H
             "custom_hours": f"{required_hours}hours"
         },
         "name"
