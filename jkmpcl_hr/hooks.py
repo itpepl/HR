@@ -48,7 +48,8 @@ doctype_js = {
                 "Department" : "public/js/department.js",
                 "Attendance Request": "public/js/attendance_request.js",
                 "Shift Request": "public/js/shift_request.js",
-                "HR Settings":"public/js/hr_settings.js"
+                "HR Settings":"public/js/hr_settings.js",
+                "Leave Application":"public/js/leave_application.js"
             }
 # doctype_list_js = {"doctype" : "public/js/attendance_request_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -154,6 +155,10 @@ doc_events = {
     },
     "Employee": {
         "after_insert": "jkmpcl_hr.py.employee.after_insert"
+    },
+    "Leave Application": {
+        "validate": "jkmpcl_hr.py.leave_application.validate",
+        "on_submit": "jkmpcl_hr.py.leave_application.on_submit"
     }
   
 # 	"*": {
