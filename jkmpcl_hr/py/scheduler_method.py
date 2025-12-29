@@ -833,7 +833,7 @@ def get_employee_shift(employee, date):
         {
             "branch": branch,
             "shift_type": shift_type,        # General / 24 hours
-            "hours": f"{required_hours}hours"
+            "custom_hours": f"{required_hours}hours"
         },
         "name"
     )
