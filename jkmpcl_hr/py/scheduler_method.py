@@ -203,11 +203,11 @@ def get_employee_leave_type(employee):
 # MAIN SCHEDULER METHOD
 # =========================================================
 @frappe.whitelist()
-def run_attendance_from_to(from_date,to_date):
-    if not from_date or not to_date:
-        frappe.throw("From Date and To Date are required")
-    from_date = getdate(from_date)
-    to_date = getdate(to_date)
+def run_attendance_from_to():
+    # if not from_date or not to_date:
+    #     frappe.throw("From Date and To Date are required")
+    from_date = "2025-11-03"
+    to_date = "2025-11-03"
 
     current_date = from_date
 
@@ -633,10 +633,11 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
             })
             att.insert(ignore_permissions=True)
             att.submit()
-
-        emp_checkin=frappe.get_doc("Employee Checkin",checkin_id)
-        emp_checkin.attendance=att.name
-        emp_checkin.save()
+        if checkin_id is not None:
+            emp_checkin = frappe.get_doc("Employee Checkin", checkin_id)
+            emp_checkin.attendance = att.name
+            emp_checkin.save(ignore_permissions=True)
+            emp_checkin.save()
         if status in ["Absent", "Half Day"]:
             deduct_leave_by_priority(employee, date, status, att.name)
 
@@ -831,8 +832,8 @@ def get_employee_shift(employee, date):
     shift = frappe.db.get_value(
         "Shift Type",
         {
-            "branch": branch,
-            "shift_type": shift_type,        # General / 24 hours
+            "custom_branch": branch,
+            "custom_shift_type": shift_type,        # General / 24 hours
             "custom_hours": f"{required_hours}hours"
         },
         "name"
