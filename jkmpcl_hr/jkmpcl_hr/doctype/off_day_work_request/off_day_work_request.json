@@ -17,6 +17,7 @@
   "remarks",
   "section_break_uhxt",
   "attendance",
+  "leave_application",
   "column_break_al1a",
   "comp_off_created",
   "leave_allocation",
@@ -128,13 +129,20 @@
    "label": "Leave Allocation",
    "options": "Leave Allocation",
    "read_only": 1
+  },
+  {
+   "fieldname": "leave_application",
+   "fieldtype": "Link",
+   "label": "Leave Application",
+   "options": "Leave Application",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-12-26 18:00:46.946764",
+ "modified": "2025-12-29 19:15:27.412225",
  "modified_by": "Administrator",
  "module": "JKMPCL HR",
  "name": "Off-Day Work Request",
