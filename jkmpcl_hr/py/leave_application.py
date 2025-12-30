@@ -69,20 +69,24 @@ def get_valid_comp_off(employee, leave_date, leave_type_name):
     if not leave_allocation:
         return None
     
-    record = frappe.db.get_value(
-        "Off-Day Work Request",
-        {
-            "employee": employee,
-            "comp_off_created": 1,
-            "leave_allocation": leave_allocation[0].name,
-            "leave_application": None,
-            "docstatus": 1
-        },
-        ["name", "date"],
-        as_dict=True
-    )
+    for allocation in leave_allocation:
+        record = frappe.db.get_value(
+            "Off-Day Work Request",
+            {
+                "employee": employee,
+                "comp_off_created": 1,
+                "leave_allocation": allocation.name,
+                "leave_application": ["is", "not set"],
+                "docstatus": 1
+            },
+            ["name", "date"],
+            as_dict=True
+        )
+        
+        if record:
+            return record
     
     if not record:
         return None
 
-    return record
+    return record   
