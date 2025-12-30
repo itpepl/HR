@@ -234,7 +234,7 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
     if only_for_jammu:
         employees = frappe.get_all(
             "Employee",
-            filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu","name":"20121"},
+            filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"},
             pluck="name"
         )
     else:
