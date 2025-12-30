@@ -36,13 +36,12 @@ def get_leave_types():
 def list(
     filters=None,
     or_filters=None,
-    fields=["name","employee","leave_type","from_date","to_date","status","total_leave_days","workflow_state"],
+    fields=["name","employee","leave_type","from_date","to_date","status","total_leave_days","leave_approver_name","leave_approver_name","workflow_state","description","custom_half_day_time","half_day_date","half_day"],
     order_by=None,
     limit_page_length=0,
     limit_start=0,
 ):
     try:
-        # 🔐 Get employee linked with logged-in user
         employee = frappe.db.get_value(
             "Employee",
             {"user_id": frappe.session.user},
@@ -54,13 +53,11 @@ def list(
 
         employee_list = [employee]
 
-        # --- Parse filters ---
         filters = frappe.parse_json(filters) if filters else []
 
         if isinstance(filters, dict):
             filters = [[k, "=", v] for k, v in filters.items()]
 
-        # Enforce employee filter
         filters.append(["employee", "in", employee_list])
 
         parsed_fields = frappe.parse_json(fields)
@@ -119,6 +116,31 @@ def create(**args):
             if not args.get(field):
                 frappe.throw(f"Please Fill {label}", frappe.MandatoryError)
 
+        if not args.get("leave_approver"):
+            leave_approver = frappe.db.get_value(
+                "Employee",
+                args.get("employee"),
+                "leave_approver"
+            )
+
+            if not leave_approver:
+                leave_approver = frappe.db.get_value(
+                    "Employee",
+                    args.get("employee"),
+                    "reports_to"
+                )
+
+            if not leave_approver:
+                frappe.throw("Leave Approver not set for this Employee")
+
+            leave_approver_name = frappe.db.get_value(
+                "Employee",
+                {"user_id":leave_approver},
+                "employee_name"
+            )
+            args["leave_approver"] = leave_approver
+            args["leave_approver_name"] = leave_approver_name
+
         args["from_date"] = getdate(args.get("from_date"))
         args["to_date"] = getdate(args.get("to_date"))
         args["posting_date"] = getdate(args.get("posting_date"))
@@ -135,6 +157,7 @@ def create(**args):
             "doctype": "Leave Application",
             **args
         })
+
         leave_doc.insert(ignore_permissions=True)
 
         temp_files = []
@@ -154,7 +177,6 @@ def create(**args):
 
                 temp_files.append(temp_path)
 
-            # ✅ ASYNC CALL
             frappe.enqueue(
                 "jkmpcl_hr.api.mobile.leave_application.upload_leave_files",
                 queue="short",
@@ -175,6 +197,7 @@ def create(**args):
             "message": str(e),
             "data": None
         }
+
 
 
 def upload_leave_files(leave_application, temp_files):
@@ -206,7 +229,24 @@ def upload_leave_files(leave_application, temp_files):
 @frappe.whitelist()
 def status_list():
     return {
-            "success": True,
-            "message": "Status fetch successfully",
-            "data": ["Open","Approved","Rejected","Cancelled"]
-        }    
+        "success": True,
+        "message": "Status fetched successfully",
+        "data": [
+            {
+                "status": "Open",
+                "color": "#FFA500"  
+            },
+            {
+                "status": "Approved",
+                "color": "#4CAF50"  
+            },
+            {
+                "status": "Rejected",
+                "color": "#F44336"   
+            },
+            {
+                "status": "Cancelled",
+                "color": "#9E9E9E"  
+            }
+        ]
+    }
