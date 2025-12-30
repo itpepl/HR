@@ -202,14 +202,14 @@ def get_employee_leave_type(employee):
 # =========================================================
 # MAIN SCHEDULER METHOD
 # =========================================================
-@frappe.whitelist()
-def run_attendance_from_to(from_date, to_date
+@frappe.whitelist(allow_guest=True)
+def run_attendance_from_to(
                            ):
 
-    if not from_date or not to_date:
-        frappe.throw("From Date and To Date are required")
-    from_date = getdate(from_date)
-    to_date = getdate(to_date)
+    # if not from_date or not to_date:
+    #     frappe.throw("From Date and To Date are required")
+    from_date = "2025-12-09"
+    to_date = "2025-12-09"
     current_date = from_date
 
     while current_date <= to_date:
@@ -232,7 +232,7 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
     if only_for_jammu:
         employees = frappe.get_all(
             "Employee",
-            filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"},
+            filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu","name":"20121"},
             pluck="name"
         )
     else:
@@ -256,13 +256,41 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
                 "Shift Type", shift_type, "custom_shift_type"
             )
 
+            # is_holiday = is_holiday_or_weekoff(emp, att_date)
+            # if shift_custom_type == "24 hours":
+            #     first_in, last_out, checkin_id,working_hours= get_24_hour_working_hours(
+            #         emp, att_date
+            #     )
+            #     if not first_in:
+            #         create_or_update_attendance(
+            #             emp,
+            #             att_date,
+            #             None,
+            #             None,
+            #             0,
+            #             None,
+            #             skip_shift_time_rules=True
+            #         )
+            #     else:
+            #         create_or_update_attendance(
+            #             emp,
+            #             att_date,
+            #             first_in,
+            #             last_out,
+            #             working_hours,                   # 👈 NO working hours
+            #             checkin_id,
+            #             skip_shift_time_rules=True
+            #         )
             is_holiday = is_holiday_or_weekoff(emp, att_date)
+
             if shift_custom_type == "24 hours":
-                print("test")
-                first_in, last_out, checkin_id,working_hours= get_24_hour_working_hours(
-                    emp, att_date
+
+                first_in, last_out, checkin_id, working_hours, log_count = (
+                    get_24_hour_working_hours(emp, att_date)
                 )
-                if not first_in:
+                if log_count == 0:
+                    if is_holiday:
+                        continue   
                     create_or_update_attendance(
                         emp,
                         att_date,
@@ -272,16 +300,31 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
                         None,
                         skip_shift_time_rules=True
                     )
-                else:
+                    continue
+
+                if log_count == 1:
+                    if is_holiday:
+                        continue   
                     create_or_update_attendance(
                         emp,
                         att_date,
-                        first_in,
-                        last_out,
-                        working_hours,                   # 👈 NO working hours
+                        None,
+                        None,
+                        0,
                         checkin_id,
                         skip_shift_time_rules=True
                     )
+                    continue
+
+                create_or_update_attendance(
+                    emp,
+                    att_date,
+                    first_in,
+                    last_out,
+                    working_hours,
+                    checkin_id,
+                    skip_shift_time_rules=True
+                )
 
             # ==========================
             # ==========================
@@ -366,6 +409,26 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
             )
 
     frappe.db.commit()
+# def get_24_hour_working_hours(employee, date):
+#     logs = frappe.db.sql("""
+#         SELECT name, time
+#         FROM `tabEmployee Checkin`
+#         WHERE employee=%s
+#           AND DATE(time)=%s
+#         ORDER BY time ASC
+#     """, (employee, date), as_dict=True)
+
+#     if not logs or len(logs) < 2:
+#         return None, None, None, 0  
+
+#     first_in = logs[0]["time"]     
+#     last_out = logs[-1]["time"]    
+#     last_checkin_id = logs[-1]["name"]
+
+#     working_seconds = (last_out - first_in).total_seconds()
+#     working_hours = working_seconds / 3600 
+
+#     return first_in, last_out, last_checkin_id, working_hours
 def get_24_hour_working_hours(employee, date):
     logs = frappe.db.sql("""
         SELECT name, time
@@ -375,18 +438,19 @@ def get_24_hour_working_hours(employee, date):
         ORDER BY time ASC
     """, (employee, date), as_dict=True)
 
-    if not logs or len(logs) < 2:
-        return None, None, None, 0  # return 0 working hours if insufficient logs
+    if not logs:
+        return None, None, None, 0, 0   # no logs
 
-    first_in = logs[0]["time"]     
-    last_out = logs[-1]["time"]    
+    if len(logs) < 2:
+        return None, None, logs[-1]["name"], 0, len(logs)
+
+    first_in = logs[0]["time"]
+    last_out = logs[-1]["time"]
     last_checkin_id = logs[-1]["name"]
 
-    # Calculate working hours
-    working_seconds = (last_out - first_in).total_seconds()
-    working_hours = working_seconds / 3600  # convert seconds to hours
+    working_hours = (last_out - first_in).total_seconds() / 3600
 
-    return first_in, last_out, last_checkin_id, working_hours
+    return first_in, last_out, last_checkin_id, working_hours, len(logs)
 
 # =========================================================
 # LEAVE CHECK
@@ -542,18 +606,17 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
             [
                 "start_time",
                 "end_time",
-                "begin_check_in_before_shift_start_time",
+                "late_entry_grace_period",
                 "allow_check_out_after_shift_end_time",
                 "working_hours_threshold_for_half_day",
                 "working_hours_threshold_for_absent"
             ],
             as_dict=True
         )
+        late_entry = 0
         
-        print("hello",skip_shift_time_rules)
         half_day_hours = float(shift.working_hours_threshold_for_half_day or 8)
         absent_hours = float(shift.working_hours_threshold_for_absent or 3)
-        print("working",working_hours)
         if working_hours <= absent_hours:
             status = "Absent"
         elif working_hours < half_day_hours:
@@ -561,13 +624,12 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
         else:
             status = "Present"
         if in_time and out_time and not skip_shift_time_rules:
-            print(in_time,out_time,skip_shift_time_rules)
             shift_start = combine_datetime(date, shift.start_time)
             shift_end = combine_datetime(date, shift.end_time)
 
-            allowed_late_minutes = shift.begin_check_in_before_shift_start_time
+            allowed_late_minutes = shift.late_entry_grace_period
 
-            allowed_late_minutes = shift.begin_check_in_before_shift_start_time
+            allowed_late_minutes = shift.late_entry_grace_period
 
             if allowed_late_minutes and int(allowed_late_minutes) > 0:
                 latest_allowed_in = add_to_date(
@@ -575,6 +637,7 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
                 )
 
                 if in_time > latest_allowed_in:
+                    late_entry = 1
                     status = "Half Day"
 
 
@@ -622,7 +685,8 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
                 "in_time": in_time,
                 "out_time": out_time,
                 "working_hours": working_hours,
-                "status": status
+                "status": status,
+                "late_entry": late_entry
             })
             att.save(ignore_permissions=True)
             att.submit()
@@ -635,11 +699,12 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
                 "in_time": in_time,
                 "out_time": out_time,
                 "working_hours": working_hours,
-                "status": status
+                "status": status,
+                "late_entry": late_entry
             })
             att.insert(ignore_permissions=True)
             att.submit()
-        if checkin_id is not None:
+        if checkin_id :
             emp_checkin = frappe.get_doc("Employee Checkin", checkin_id)
             emp_checkin.attendance = att.name
             emp_checkin.save(ignore_permissions=True)
