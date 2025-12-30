@@ -924,9 +924,61 @@ def get_required_hours_by_date(employee, date):
 
 
 
+# def get_employee_shift(employee, date):
+#     date = getdate(date)
+
+#     assigned_shift = frappe.db.get_value(
+#         "Shift Assignment",
+#         {
+#             "employee": employee,
+#             "start_date": ("<=", date),
+#             "end_date": (">=", date),
+#             "status": "Active"
+#         },
+#         "shift_type"
+#     )
+
+#     if assigned_shift:
+#         return assigned_shift
+
+#     default_shift = frappe.db.get_value(
+#         "Employee", employee, "default_shift"
+#     )
+
+#     if not default_shift:
+#         return None
+
+#     shift_type = frappe.db.get_value(
+#         "Shift Type", default_shift, "custom_shift_type"
+#     )
+    
+
+#     if not shift_type:
+#         return default_shift
+
+#     required_hours = get_required_hours_by_date(employee, date)
+
+#     branch = frappe.db.get_value("Employee", employee, "branch")
+
+#     shift = frappe.db.get_value(
+#         "Shift Type",
+#         {
+#             "custom_branch": branch,
+#             "custom_shift_type": shift_type,   # General / Morning / Day / Night / 24H
+#             "custom_hours": f"{required_hours}hours"
+#         },
+#         "name"
+#     )
+
+#     if shift:
+#         return shift
+
+#     return default_shift
+
 def get_employee_shift(employee, date):
     date = getdate(date)
 
+    # 1️⃣ Check active Shift Assignment first (highest priority)
     assigned_shift = frappe.db.get_value(
         "Shift Assignment",
         {
@@ -941,39 +993,47 @@ def get_employee_shift(employee, date):
     if assigned_shift:
         return assigned_shift
 
-    default_shift = frappe.db.get_value(
-        "Employee", employee, "default_shift"
+    # 2️⃣ Fetch employee details ONCE
+    emp = frappe.db.get_value(
+        "Employee",
+        employee,
+        [
+            "default_shift",
+            "branch",
+            "custom_attendance_source"
+        ],
+        as_dict=True
     )
 
-    if not default_shift:
+    if not emp or not emp.default_shift:
         return None
 
+    # 3️⃣ Get base shift type (General / Morning / Night / 24H)
     shift_type = frappe.db.get_value(
-        "Shift Type", default_shift, "custom_shift_type"
+        "Shift Type",
+        emp.default_shift,
+        "custom_shift_type"
     )
 
     if not shift_type:
-        return default_shift
+        return emp.default_shift
 
+    # 4️⃣ Calculate required hours dynamically
     required_hours = get_required_hours_by_date(employee, date)
-
-    branch = frappe.db.get_value("Employee", employee, "branch")
 
     shift = frappe.db.get_value(
         "Shift Type",
         {
-            "custom_branch": branch,
-            "custom_shift_type": shift_type,   # General / Morning / Day / Night / 24H
-            "custom_hours": f"{required_hours}hours"
+            "custom_branch": emp.branch,
+            "custom_shift_type": shift_type,
+            "custom_attendance_source": emp.custom_attendance_source, 
+            "custom_hours": f"{required_hours}hours"                 
         },
         "name"
     )
 
-    if shift:
-        return shift
-
-    return default_shift
-
+    # 6️⃣ Return matched shift or fallback
+    return shift or emp.default_shift
 def get_shift_end_datetime(shift_type, date):
     end_time = frappe.db.get_value(
         "Shift Type", shift_type, "end_time"
