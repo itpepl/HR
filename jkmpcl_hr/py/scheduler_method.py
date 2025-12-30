@@ -203,17 +203,19 @@ def get_employee_leave_type(employee):
 # MAIN SCHEDULER METHOD
 # =========================================================
 @frappe.whitelist(allow_guest=True)
-def run_attendance_from_to(
-                           ):
+def run_attendance_from_to(from_date,to_date):
 
-    # if not from_date or not to_date:
-    #     frappe.throw("From Date and To Date are required")
-    from_date = "2025-12-09"
-    to_date = "2025-12-09"
+    if not from_date or not to_date:
+        frappe.throw("From Date and To Date are required")
+
+    # Convert string → date
+    from_date = getdate(from_date)
+    to_date = getdate(to_date)
+
     current_date = from_date
 
     while current_date <= to_date:
-        run_daily_attendance(current_date,only_for_jammu=True)
+        run_daily_attendance(current_date, only_for_jammu=True)
         current_date = add_days(current_date, 1)
 
     return {
