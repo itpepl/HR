@@ -203,15 +203,15 @@ def get_employee_leave_type(employee):
 # MAIN SCHEDULER METHOD
 # =========================================================
 @frappe.whitelist(allow_guest=True)
-# def run_attendance_from_to(from_date,to_date):
-def run_attendance_from_to():
-    # if not from_date or not to_date:
-    #     frappe.throw("From Date and To Date are required")
+def run_attendance_from_to(from_date,to_date):
+# def run_attendance_from_to():
+    if not from_date or not to_date:
+        frappe.throw("From Date and To Date are required")
 
-    # from_date = getdate(from_date)
-    # to_date = getdate(to_date)
-    from_date="2025-10-29"
-    to_date="2025-10-29"
+
+    
+    # from_date="2025-10-29"
+    # to_date="2025-10-29"
     
 
     current_date = from_date
@@ -457,10 +457,11 @@ def get_24_hour_working_hours(employee, date):
     """, (employee, date), as_dict=True)
 
     if not logs:
-        return None, None, None, 0, 0   # no logs
+        return None, None, None, None, 0, 0  # ✅ 6
+
 
     if len(logs) < 2:
-        return None, None, logs[-1]["name"], 0, len(logs)
+        return None, None,logs[0]["name"], logs[-1]["name"], 0, len(logs)
 
     first_in = logs[0]["time"]
     last_out = logs[-1]["time"]
@@ -561,12 +562,9 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
         
         half_day_hours = float(shift.working_hours_threshold_for_half_day or 8)
         absent_hours = float(shift.working_hours_threshold_for_absent or 3)
-        print(working_hours)
         if working_hours <= absent_hours:
-            print("yes")
             status = "Absent"
         elif working_hours < half_day_hours:
-            print("yes")
             
             status = "Half Day"
         else:
