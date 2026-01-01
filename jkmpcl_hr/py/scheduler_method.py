@@ -531,8 +531,8 @@ def get_night_shift_logs(employee, att_date):
     OUT -> last log before 9 PM of next date
     """
 
-    start_dt = get_datetime(att_date).replace(hour=21, minute=0,)
-    end_dt = get_datetime(add_days(att_date, 1)).replace(hour=21, minute=0, second=0)
+    start_dt = get_datetime(att_date).replace(hour=09, minute=0,)
+    end_dt = get_datetime(add_days(att_date, 1)).replace(hour=08, minute=59, second=0)
 
     logs = frappe.get_all(
         "Employee Checkin",
