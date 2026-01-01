@@ -6,7 +6,7 @@ from hrms.hr.doctype.leave_allocation.leave_allocation import OverlapError
 
 
 def custom_validate_allocation_overlap(self):
-		if self.leave_type == "Compensatory Off":
+		if frappe.db.get_value("Leave Type", self.leave_type, "is_compensatory"):
 			return
 
 		leave_allocation = frappe.db.sql(
