@@ -232,7 +232,7 @@ def normalize_to_minute(dt):
 
 
 def run_daily_attendance(att_date=None,only_for_jammu=False):
-    frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date} only_for_jammu: {only_for_jammu}")    
+    frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")    
     if not att_date:
         att_date = add_days(getdate(), -1)
     else:
@@ -258,7 +258,6 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
 
             shift_type = get_employee_shift(emp, att_date)
             
-            frappe.log_error("shift_type_check", f"emp: {emp}, date: {att_date}, shift_type: {shift_type}")
             if not shift_type:
                 log_attendance_error(emp, att_date, "Shift not assigned")
                 continue
@@ -292,7 +291,7 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
             #             skip_shift_time_rules=True
             #         )
             is_holiday = is_holiday_or_weekoff(emp, att_date)
-            frappe.log_error("holiday_check", f"emp: {emp}, date: {att_date}, is_holiday: {is_holiday}")
+        
             
             if shift_custom_type == "24 hours":
 
@@ -341,11 +340,11 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
                 
             
             if shift_custom_type == "Night":
-                frappe.log_error("night_shift_processing", f"Processing Night Shift for emp: {emp} on date: {att_date}")
+        
                 in_time, out_time, first_id, last_id, working_hours, log_count = \
                     get_night_shift_logs(emp, att_date)
 
-                frappe.log_error("night_shift_logs", f"emp: {emp}, date: {att_date}, in_time: {in_time}, out_time: {out_time}, working_hours: {working_hours}, log_count: {log_count}, first_id: {first_id}, last_id: {last_id}")
+        
                 if log_count == 0:
                     if is_holiday:
                         continue
@@ -418,6 +417,7 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
             # create_or_update_attendance(
             #     emp, att_date, in_time, out_time, working_hours
             # )
+
             logs = frappe.db.sql("""
                 SELECT
                     name,
@@ -974,6 +974,12 @@ def create_leave_ledger(
         if not allocation:
             return
 
+    t_date = getdate(date)
+    if t_date.month >= 4:
+        to_date = getdate(f"{t_date.year + 1}-03-31")
+    else:
+        to_date = getdate(f"{t_date.year}-03-31")
+    
     doc = frappe.get_doc({
         "doctype": "Leave Ledger Entry",
         "employee": employee,
@@ -983,7 +989,7 @@ def create_leave_ledger(
         "leave_type": leave_type,
         "posting_date": date,
         "from_date": date,
-        "to_date": date,
+        "to_date": to_date,
         "leaves": -leave_days,
         "is_lwp": 1 if leave_type_doc.is_lwp or is_lwp else 0,
         "custom_is_penalty": 1,
