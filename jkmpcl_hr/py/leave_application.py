@@ -38,7 +38,7 @@ def on_submit(doc, method):
     
 @frappe.whitelist()
 def get_leave_type(leave_type):
-    return frappe.db.get_value("Leave Type", {"name": leave_type}, ["name", "is_compensatory", "custom_applied_once"], as_dict=True)
+    return frappe.db.get_value("Leave Type", {"name": leave_type}, ["name", "is_compensatory", "custom_applied_once", "custom_leave_type"], as_dict=True)
 
 
 @frappe.whitelist()

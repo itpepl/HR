@@ -7,6 +7,26 @@ frappe.ui.form.on("Leave Application", {
     },
     leave_type(frm) {
         toggle_comp_off_fields(frm, true);
+
+        frm.set_df_property("custom_proof_document", "reqd", 0);
+        frm.set_df_property("description", "reqd", 0);
+
+        if (!frm.doc.leave_type) return;
+        frappe.call({
+            method: "jkmpcl_hr.py.leave_application.get_leave_type",
+            args: {
+                leave_type: frm.doc.leave_type
+            },
+            callback(r) {
+                if (!r.message) return;
+
+                const leave_type = r.message.custom_leave_type;
+                if (leave_type === "Medical Emergency Leave") {
+                    frm.set_df_property("custom_proof_document", "reqd", 1);
+                    frm.set_df_property("description", "reqd", 1);
+                }
+            }
+        });
     },
     from_date(frm) {
         toggle_comp_off_fields(frm, true);
