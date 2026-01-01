@@ -172,3 +172,39 @@ def create_shift_assignment_rec(emp_id, from_date, to_date, shift_type_id):
     doc.insert(ignore_permissions=True)
     doc.submit()    
     frappe.db.commit()
+    
+
+
+# *METHOD TO GET OTHER EMPLOYEE'S USER ID BASED ON DEPARTMENT OF THE GIVEN EMPLOYEE
+def get_other_department_emp(emp_id):
+    try:
+        
+        
+        emp_department = frappe.db.get_value("Employee", emp_id, "department")
+
+        frappe.log_error("Department Fetch", f"Employee ID: {emp_id}, Department: {emp_department}")
+        if not emp_department:
+            return None
+
+        department_emps = frappe.db.get_all(
+            "Employee",
+            filters={"department": emp_department, "name": ["!=", emp_id]},
+            fields=["user_id"],
+        )
+
+        user_list = []
+        if department_emps:
+            for user in department_emps:
+                if user.get("user_id"):
+                    user_name = frappe.db.get_value("User", user.get("user_id"), "full_name") or ''
+                    user_list.append({"user_id": user.get("user_id"), "username": user_name})
+        
+        return user_list
+        
+
+    except Exception as e:
+        frappe.log_error(
+            title="Error Fetching Department Employee",
+            message=f"Error fetching department employee for {emp_id}: {str(e)}",
+        )
+        return None

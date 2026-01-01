@@ -5,6 +5,8 @@ from frappe.utils import getdate
 from frappe.utils.file_manager import save_file
 import shutil
 
+from jkmpcl_hr.py.utils import get_other_department_emp
+
 
 #leave type list api
 @frappe.whitelist()
@@ -31,7 +33,28 @@ def get_leave_types():
             "data": leave_types
         }
 
- 
+
+@frappe.whitelist()
+def get_user_for_cc(emp_id):
+    try:
+        user_list = get_other_department_emp(emp_id) or []
+
+    except Exception as e:
+        frappe.log_error("Error While Getting Users", str(e))
+        frappe.clear_messages()
+        frappe.local.response["message"] = {
+            "success": False,
+            "message": f"Error while fetching Users: {str(e)}",
+            "data": None
+        }
+    else:
+        frappe.local.response["message"] = {
+            "success": True,
+            "message": "User fetched successfully",
+            "data": user_list
+        }
+
+
 @frappe.whitelist()
 def list(
     filters=None,
