@@ -175,19 +175,22 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
 
         return [[s.name, s.name] for s in shift_types]
     elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
+        is_field = False
         
         if emp_attendance_source:
             if emp_attendance_source in ["Biometric", "Punch"]:
                 conditions["custom_attendance_source"] = ["not in", ["Field", "Punch"]]
                     
             elif emp_attendance_source == "Field":
+                is_field = True
+                
                 conditions["name"] = ["not in", ["Jammu-General-8hours", "Jammu-General-7hours"]]
                 
         
         if not gender:
-            is_female = True if frappe.db.get_value("Employee", employee_id, "gender") == "Female" else False
+            is_female = True if frappe.db.get_value("Employee", employee_id, "gender") == "Female" and is_field else False
         else:
-            is_female = True if gender == "Female" else False
+            is_female = True if gender == "Female" and is_field else False
     
         if is_female:        
             if (4<= as_on_date.month <= 11) or (2 <= as_on_date.month <= 3):
