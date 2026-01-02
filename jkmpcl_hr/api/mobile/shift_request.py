@@ -96,18 +96,48 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
     branch = filters.get("branch")
     date_str = filters.get("as_on_date")
     employee_id = filters.get("emp_id")
-
+    emp_attendance_source = frappe.get_value("Employee", employee_id, "custom_attendance_source")
+    
+    conditions = {} 
+    
+    
     if not branch:
         return []
     as_on_date = getdate(date_str) if date_str else getdate()
 
     if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
+        if emp_attendance_source:
+            if emp_attendance_source == "Biometric":
+                conditions["custom_attendance_source"] = ["not in", ["Field", "Punch"]]
+            
+            elif emp_attendance_source == "Punch":
+                conditions["custom_attendance_source"] = ["!=", "Field"]                
+                conditions["name"] = ["not in", ["Srinagar-General-8hours", "Srinagar-General-7hours"]]
+                                            
+            elif emp_attendance_source == "Field":
+                conditions["custom_attendance_source"] = ["!=", "Punch"]
+                conditions["name"] = ["not in", ["Srinagar-General-8hours", "Srinagar-General-7hours"]]
+        
         if 4 <= as_on_date.month <= 9:
             required_hours = "8hours"
         else:
             required_hours = "7hours"
 
     elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
+        
+        
+        if emp_attendance_source:
+            if emp_attendance_source in ["Biometric", "Punch"]:
+                conditions["custom_attendance_source"] = ["not in", ["Field", "Punch"]]
+                    
+            elif emp_attendance_source == "Field":
+                conditions["name"] = ["not in", ["Jammu-General-8hours", "Jammu-General-7hours"]]
+        
+        is_female = (
+            frappe.db.get_value("Employee", employee_id, "gender") == "Female" and (emp_attendance_source and emp_attendance_source == "Field")
+        )
+        
+        
         is_female = (
             frappe.db.get_value("Employee", employee_id, "gender") == "Female"
         )
