@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.utils import getdate
-
+from jkmpcl_hr.overrides.attendance_request import revert_penalty_leave
 def validate(doc, method):
     leave_details = get_leave_type(doc.leave_type)
     if not leave_details.is_compensatory:
@@ -33,7 +33,17 @@ def on_submit(doc, method):
             "leave_application",
             doc.name
         )
-
+    attendance_name = frappe.db.get_value(
+        "Attendance",
+        {
+            "employee": doc.employee,
+            "attendance_date": doc.from_date
+        },
+        "name"
+    )
+ 
+    if attendance_name:
+        revert_penalty_leave(attendance_name)
         
     
 @frappe.whitelist()
