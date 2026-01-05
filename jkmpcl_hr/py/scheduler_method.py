@@ -4,6 +4,7 @@ from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
 from frappe.utils import get_datetime
 from datetime import datetime, time,timedelta
+from frappe.utils import flt
 
 
 from jkmpcl_hr.py.utils import create_shift_assignment_rec
@@ -815,26 +816,23 @@ def deduct_leave_by_priority(employee, date, status, attendance):
         "Leave Without Pay"
     ]
 
-    total_penalty_days = 0.5 if status == "Half Day" else 1
+    total_penalty_days = 0.5 if status == "Half Day" else 1.0
     remaining_days = total_penalty_days
 
     att = frappe.get_doc("Attendance", attendance)
 
-    for leave_type in priority:
-        leave_type_doc = frappe.get_cached_doc("Leave Type", leave_type)
+    if att.custom_is_penalize:
+        return
 
-        balance = get_leave_balance_on(employee, leave_type, date)
+    for leave_type in priority:
+        balance = flt(get_leave_balance_on(employee, leave_type, date), 2)
 
         if balance <= 0:
             continue
 
-        # How much we can deduct from this leave type
-        deduct_days = min(balance, remaining_days)
-
-        if deduct_days <= 0:
+        if balance < remaining_days:
             continue
 
-        # Mark attendance penalty info (only once)
         att.db_set({
             "custom_penalty_leave_type": leave_type,
             "custom_penalty_leave_count": total_penalty_days,
@@ -847,38 +845,31 @@ def deduct_leave_by_priority(employee, date, status, attendance):
             date=date,
             status=status,
             attendance=attendance,
-            leave_days=deduct_days
+            leave_days=remaining_days
         )
 
-        remaining_days -= deduct_days
+        return 
 
-        if remaining_days <= 0:
-            return
+    lwp_type = frappe.db.get_value(
+        "Leave Type", {"is_lwp": 1}, "name"
+    )
 
-    # If still remaining → deduct as LWP
-    if remaining_days > 0:
-        lwp_type = next(
-            (lt for lt in priority
-             if frappe.get_cached_doc("Leave Type", lt).is_lwp),
-            None
+    if lwp_type:
+        att.db_set({
+            "custom_penalty_leave_type": lwp_type,
+            "custom_penalty_leave_count": remaining_days,
+            "custom_is_penalize": 1
+        })
+
+        create_leave_ledger(
+            employee=employee,
+            leave_type=lwp_type,
+            date=date,
+            status=status,
+            attendance=attendance,
+            leave_days=remaining_days,
+            is_lwp=1
         )
-
-        if lwp_type:
-            att.db_set({
-                "custom_penalty_leave_type": lwp_type,
-                "custom_penalty_leave_count": remaining_days,
-                "custom_is_penalize": 1
-            })
-
-            create_leave_ledger(
-                employee=employee,
-                leave_type=lwp_type,
-                date=date,
-                status=status,
-                attendance=attendance,
-                leave_days=remaining_days,
-                is_lwp=1
-            )
 
 
 def get_leave_allocation(employee, leave_type, date):
