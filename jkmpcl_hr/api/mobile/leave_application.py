@@ -273,3 +273,61 @@ def status_list():
             }
         ]
     }
+    
+    
+@frappe.whitelist()
+def get_valid_comp_off(employeeId, from_date, to_date, leave_type_name):
+    from_date = getdate(from_date)
+    to_date = getdate(to_date)
+
+    if from_date != to_date:
+        return {
+            "valid": False,
+            "message": "Compensatory Off is applicable for only one day.",
+            "allowed_date": from_date
+        }
+
+    leave_allocation = frappe.db.get_all(
+        "Leave Allocation",
+        filters={
+            "employee": employeeId,
+            "leave_type": leave_type_name,
+            "docstatus": 1,
+            "from_date": ["<=", from_date],
+            "to_date": [">=", from_date]
+        },
+        fields=["name"],
+        order_by="from_date asc"
+    )
+
+    if not leave_allocation:
+        return {
+            "valid": False,
+            "message": "No valid Compensatory Off allocation found."
+        }
+
+    for allocation in leave_allocation:
+        record = frappe.db.get_value(
+            "Off-Day Work Request",
+            {
+                "employee": employeeId,
+                "comp_off_created": 1,
+                "leave_allocation": allocation.name,
+                "leave_application": ["is", "not set"],
+                "docstatus": 1
+            },
+            ["name", "date"],
+            as_dict=True
+        )
+
+        if record:
+            return {
+                "valid": True,
+                "date": record.date,
+                "message": "Valid Compensatory Off available."
+            }
+
+    return {
+        "valid": False,
+        "message": "Compensatory Off already used or expired."
+    }
