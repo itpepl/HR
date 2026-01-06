@@ -1578,7 +1578,7 @@ def allocate_casual_leaves_to_confirmed_employee():
 @frappe.whitelist()
 def allocate_cl_to_probation_and_contract_employees():
     try:
-        frappe.log_error("CL Allocation to Probation and Contractual Employees Job Started", "CL Allocation to Probation and Contractual Employees")
+        frappe.log_error("CL Allocation to Probation and Contractual Employees Job Started", "CL Allocation to Probation and Contractual Employees rty")
         today_date = getdate()
         month_start_date = getdate(f"{today_date.year}-{today_date.month}-01")
         
@@ -1598,7 +1598,7 @@ def allocate_cl_to_probation_and_contract_employees():
         for emp in p_and_employees:
             try:
                 
-                if emp.employment_type == "Contractual" and emp.contract_end_date:
+                if emp.employment_type == "Contractual" and emp.contract_end_date and getdate(emp.contract_end_date) > month_start_date:
                     to_date = min(getdate(emp.contract_end_date), fy_end_date)
                 else:
                     to_date = fy_end_date
@@ -1610,14 +1610,17 @@ def allocate_cl_to_probation_and_contract_employees():
                 
                 if allocation_name:
                     allocation = frappe.get_doc("Leave Allocation", allocation_name)
-                    if allocation.custom_last_allocation_date and getdate(allocation.custom_last_allocation_date) > today_date:
+                    last_allocation_date = getdate(allocation.custom_last_allocation_date)
+                    if last_allocation_date and (last_allocation_date >= today_date or last_allocation_date.month == today_date.month):
+                        frappe.log_error(f"last_allocation_date: {last_allocation_date}", f"Employee: {emp.name} {last_allocation_date.month} {today_date.month} 123")
                         continue
+                    
                     allocation.new_leaves_allocated += 1
                     allocation.custom_last_allocation_date = today_date
                     allocation.save(ignore_permissions=True)
                 
                 else:
-                    allocation = frappe.db.get_doc({
+                    allocation = frappe.get_doc({
                         "doctype": "Leave Allocation",
                         "employee": emp.name,
                         "leave_type": leave_type,
@@ -1630,7 +1633,7 @@ def allocate_cl_to_probation_and_contract_employees():
                     allocation.submit()
                 
             except Exception as e:
-                frappe.log_error(f"error_allocate_cl_to_probation_and_contract_employees_{emp.name}", frappe.get_traceback())
+                frappe.log_error(f"error_allocate_cl_to_probation_and_contract_employees_{emp.name}", f"{frappe.get_traceback()} \n \n {month_start_date} {to_date}")
                 continue
         frappe.db.commit()
         frappe.log_error("CL Allocation to Probation and Contractual Employees Job Completed", "CL Allocated to Probation and Contractual Employees")
