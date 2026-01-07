@@ -1,11 +1,22 @@
 import frappe
-from frappe.utils import getdate, today,add_days,now_datetime
+from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day
+# import calendar
 from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
 
 from jkmpcl_hr.py.utils import create_shift_assignment_rec
 
+
+
+
+def on_update(doc, event):
+    pass
+
+
 def after_insert(doc, event):
+    
+    allocate_cl_on_employee_creation(doc)
+    
     if not doc.default_shift:
         return
 
@@ -24,12 +35,9 @@ def after_insert(doc, event):
         else:
             create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year)
             
-            
-
-
-
-
-
+    
+    employment_type = frappe.db.get_value("Employee", doc.name, "employment_type")
+    
 
 def create_shift_assignment_for_srinagar(today_date, emp_id, default_shift_type_id, start_year):
     
@@ -163,7 +171,83 @@ def create_shift_assignment_for_jammu(today_date, emp_id, default_shift_type_id,
             frappe.throw(e)
     
 
-        
-        
+# * METHOD TO ALLOCATE CASUAL LEAVE ON EMPLOYEE CREATION BASED ON EMPLOYMENT TYPE AND DATE OF JOINING
+def allocate_cl_on_employee_creation(employee):
+    if not employee.date_of_joining:
+        return
+
+    # Check CL Leave Type
+    leave_type = "Casual Leave"
+    correct_leave_type = ""
+    if not frappe.db.get_value("Leave Type", leave_type, "custom_leave_type") == "Casual Leave":
+        leave_type = frappe.db.get_value("Leave Type", {"custom_leave_type": "Casual Leave"}, "name")
+    else:
+        correct_leave_type = leave_type
+
     
+    joining_date = getdate(employee.date_of_joining)
+    from_date = joining_date
+
+    fy_end_date = get_fy_end_date(joining_date)
+
     
+    if employee.employment_type == "Probation":
+        to_date = fy_end_date
+
+    elif employee.employment_type == "Contractual":
+        contract_end = getdate(employee.contract_end_date) if employee.contract_end_date else fy_end_date
+        to_date = min(fy_end_date, contract_end)
+    else:
+        return  
+
+    # Calculate CL
+    cl_days = calculate_prorata_cl(joining_date)
+
+    # Avoid duplicate allocation
+    if frappe.db.exists(
+        "Leave Allocation",
+        {
+            "employee": employee.name,
+            "leave_type": correct_leave_type,
+            "from_date": from_date,
+            "to_date": to_date,
+            "docstatus": ["!=", 2],
+        },
+    ):
+        frappe.log_error("error_allocate_cl_on_employee_creation", f"Leave Allocation already exists for Employee {employee.name} from {from_date} to {to_date}")
+        return
+
+    # Create Leave Allocation
+    allocation = frappe.get_doc({
+        "doctype": "Leave Allocation",
+        "employee": employee.name,
+        "employee_name": employee.employee_name,
+        "leave_type": leave_type,
+        "from_date": from_date,
+        "to_date": to_date,
+        "new_leaves_allocated": cl_days,
+        "custom_last_allocation_date": from_date,
+        "carry_forward": 0,
+    })
+
+    allocation.insert(ignore_permissions=True)
+    allocation.submit()
+
+
+
+@frappe.whitelist()
+def calculate_prorata_cl(joining_date):
+    joining_date = getdate(joining_date)
+    
+    total_days = get_last_day(joining_date).day
+    remaining_days = total_days - joining_date.day + 1
+    
+    return round(remaining_days / total_days, 2)
+    
+def get_fy_end_date(joining_date):
+    joining_date = getdate(joining_date)
+    if joining_date.month < 4:
+        return getdate(f"{joining_date.year}-03-31")
+    else:
+        return getdate(f"{joining_date.year + 1}-03-31")
+
