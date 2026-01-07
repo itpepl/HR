@@ -21,18 +21,6 @@ def validate(doc, method):
         
 
 def on_submit(doc, method):
-    leave_details = get_leave_type(doc.leave_type)
-    if not leave_details.is_compensatory:
-        return
-    
-    # Link Leave Application to Off-Day Work Request
-    if doc.custom_off_day_work_request:
-        frappe.db.set_value(
-            "Off-Day Work Request",
-            doc.custom_off_day_work_request,
-            "leave_application",
-            doc.name
-        )
     attendance_name = frappe.db.get_value(
         "Attendance",
         {
@@ -41,9 +29,21 @@ def on_submit(doc, method):
         },
         "name"
     )
- 
     if attendance_name:
         revert_penalty_leave(attendance_name)
+    leave_details = get_leave_type(doc.leave_type)
+    if not leave_details.is_compensatory:
+        return
+    
+    if doc.custom_off_day_work_request:
+        frappe.db.set_value(
+            "Off-Day Work Request",
+            doc.custom_off_day_work_request,
+            "leave_application",
+            doc.name
+        )
+    
+ 
         
     
 @frappe.whitelist()

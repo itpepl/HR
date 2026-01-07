@@ -59,7 +59,7 @@ def get_user_for_cc(emp_id):
 def list(
     filters=None,
     or_filters=None,
-    fields=["name","employee","leave_type","from_date","to_date","status","total_leave_days","leave_approver_name","leave_approver_name","workflow_state","description","custom_half_day_time","half_day_date","half_day"],
+    fields=["name","employee","leave_type","from_date","to_date","status","total_leave_days","leave_approver_name","workflow_state","description","custom_half_day_time","half_day_date","half_day"],
     order_by=None,
     limit_page_length=0,
     limit_start=0,
@@ -119,7 +119,9 @@ def list(
 
 
 
+from jkmpcl_hr.py.utils import get_emp_reporting_manager
 
+from frappe.utils import today, getdate
 
 
 @frappe.whitelist()
@@ -138,27 +140,23 @@ def create(**args):
         for field, label in mandatory_fields.items():
             if not args.get(field):
                 frappe.throw(f"Please Fill {label}", frappe.MandatoryError)
+        employee = args.get("employee")
 
         if not args.get("leave_approver"):
-            leave_approver = frappe.db.get_value(
-                "Employee",
-                args.get("employee"),
-                "leave_approver"
-            )
 
+            leave_approver = get_emp_reporting_manager(
+                employee,
+                args.get("from_date") or today()
+            )
             if not leave_approver:
                 leave_approver = frappe.db.get_value(
                     "Employee",
-                    args.get("employee"),
-                    "reports_to"
+                    employee,
+                    "leave_approver"
                 )
-
-            if not leave_approver:
-                frappe.throw("Leave Approver not set for this Employee")
-
             leave_approver_name = frappe.db.get_value(
                 "Employee",
-                {"user_id":leave_approver},
+                {"user_id": leave_approver},
                 "employee_name"
             )
             args["leave_approver"] = leave_approver
