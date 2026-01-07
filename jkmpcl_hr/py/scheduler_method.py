@@ -5,6 +5,7 @@ from hrms.hr.doctype.leave_application.leave_application import get_leave_balanc
 from frappe.utils import get_datetime
 from datetime import datetime, time,timedelta
 from frappe.utils import flt
+import calendar
 
 
 from jkmpcl_hr.py.utils import create_shift_assignment_rec
@@ -232,7 +233,7 @@ def normalize_to_minute(dt):
     return dt.replace(second=0, microsecond=0)
 
 
-def run_daily_attendance(att_date=None,only_for_jammu=False):
+def run_daily_attendance(att_date="2025-12-29",only_for_jammu=False):
     frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")    
     if not att_date:
         att_date = add_days(getdate(), -1)
@@ -242,7 +243,7 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
     if only_for_jammu:
         employees = frappe.get_all(
             "Employee",
-            filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"},
+            filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu" },
             pluck="name"
         )
     else:
@@ -292,12 +293,11 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
             #             skip_shift_time_rules=True
             #         )
             is_holiday = is_holiday_or_weekoff(emp, att_date)
-        
             
             if shift_custom_type == "24 hours":
-
+                
                 first_in, last_out,first_checkin_id, last_checkin_id, working_hours, log_count = (
-                    get_24_hour_working_hours(emp, att_date)
+                    get_24_hour_working_hours(emp, att_date,shift_type)
                 )
                 if log_count == 0:
                     if is_holiday:
@@ -498,32 +498,92 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
 #     working_hours = working_seconds / 3600 
 
 #     return first_in, last_out, last_checkin_id, working_hours
-def get_24_hour_working_hours(employee, date):
+# def get_24_hour_working_hours(employee, date):
+#     logs = frappe.db.sql("""
+#         SELECT name, time
+#         FROM `tabEmployee Checkin`
+#         WHERE employee=%s
+#           AND DATE(time)=%s
+#         ORDER BY time ASC
+#     """, (employee, date), as_dict=True)
+
+#     if not logs:
+#         return None, None, None, None, 0, 0  # ✅ 6
+
+
+#     if len(logs) < 2:
+#         return None, None,logs[0]["name"], logs[-1]["name"], 0, len(logs)
+
+#     first_in = logs[0]["time"]
+#     last_out = logs[-1]["time"]
+#     first_checkin_id=logs[0]["name"],
+#     last_checkin_id = logs[-1]["name"]
+
+#     working_hours = (last_out - first_in).total_seconds() / 3600
+
+#     return first_in, last_out,first_checkin_id, last_checkin_id, working_hours, len(logs)
+def get_24_hour_working_hours(employee, date, shift_type):
+    shift = frappe.db.get_value(
+        "Shift Type",
+        shift_type,
+        ["start_time", "end_time", "custom_shift_type"],
+        as_dict=True
+    )
+
+    if not shift:
+        return None, None, None, None, 0, 0
+
+    is_24_hour = shift.custom_shift_type == "24 hours"
+    shift_start, shift_end = get_24_hour_shift_window(
+        date,
+        shift.start_time,
+        shift.end_time,
+        force_next_day=is_24_hour  # 🔥 THIS IS THE FIX
+    )
+
     logs = frappe.db.sql("""
         SELECT name, time
         FROM `tabEmployee Checkin`
-        WHERE employee=%s
-          AND DATE(time)=%s
+        WHERE employee = %s
+          AND time >= %s
+          AND time < %s
         ORDER BY time ASC
-    """, (employee, date), as_dict=True)
-
+    """, (employee, shift_start, shift_end), as_dict=True)
     if not logs:
-        return None, None, None, None, 0, 0  # ✅ 6
-
+        return None, None, None, None, 0, 0 
 
     if len(logs) < 2:
-        return None, None,logs[0]["name"], logs[-1]["name"], 0, len(logs)
-
+        return None, None, logs[0]["name"], logs[-1]["name"], 0, len(logs)
     first_in = logs[0]["time"]
     last_out = logs[-1]["time"]
-    first_checkin_id=logs[0]["name"],
-    last_checkin_id = logs[-1]["name"]
 
     working_hours = (last_out - first_in).total_seconds() / 3600
 
-    return first_in, last_out,first_checkin_id, last_checkin_id, working_hours, len(logs)
+    return (
+        first_in,
+        last_out,
+        logs[0]["name"],
+        logs[-1]["name"],
+        working_hours,
+        len(logs),
+    )
 
 
+from frappe.utils import get_datetime, add_days
+
+def get_24_hour_shift_window(date, start_time, end_time, force_next_day=False):
+    shift_start = get_datetime(f"{date} {start_time}")
+    shift_end = get_datetime(f"{date} {end_time}")
+
+    # 🔥 FORCE next day for 24-hour shifts
+    if force_next_day:
+        shift_end = add_days(shift_end, 1)
+
+    # Normal cross-day logic (for night shifts)
+    elif end_time <= start_time:
+        shift_end = add_days(shift_end, 1)
+
+    return shift_start, shift_end
 
 def get_night_shift_logs(employee, att_date):
     """
@@ -609,6 +669,53 @@ def is_holiday_or_weekoff(employee, date):
         }
     )
 
+# def is_holiday_or_weekoff(employee, date):
+#     date = getdate(date)
+
+#     branch, emp_holiday_list = frappe.db.get_value(
+#         "Employee", employee, ["branch", "holiday_list"]
+#     )
+
+#     # 🔹 Find active holiday list by branch + date
+#     holiday_list = frappe.db.get_value(
+#         "Holiday List",
+#         {
+#             "custom_branch": branch,
+#             "from_date": ("<=", date),
+#             "to_date": (">=", date),
+#         },
+#         "name"
+#     )
+
+#     if not holiday_list:
+#         return False, None
+
+#     # 🔹 Check holiday
+#     is_holiday = frappe.db.exists(
+#         "Holiday",
+#         {
+#             "parent": holiday_list,
+#             "holiday_date": date
+#         }
+#     )
+
+#     # 🔹 Check weekly off
+#     weekly_off = frappe.db.get_value(
+#         "Holiday List", holiday_list, "weekly_off"
+#     )
+
+#     if weekly_off:
+#         import calendar
+#         weekday = calendar.day_name[date.weekday()]
+#         if weekday in [d.strip() for d in weekly_off.split(",")]:
+#             is_holiday = True
+#     return is_holiday, holiday_list
+
+
+
+
+
+    return False
 
 # =========================================================
 # MISSING CHECKOUT HANDLER
@@ -639,6 +746,7 @@ def handle_missing_checkout(employee, date, in_time, shift_type):
 def create_or_update_attendance(employee, date, in_time, out_time, working_hours,first_checkin_id=None,
                         last_checkin_id=None,skip_shift_time_rules=True):
     try:
+
         shift_type = get_employee_shift(employee, date)
         if not shift_type:
             return
@@ -1160,7 +1268,7 @@ def get_employee_shift(employee, date):
         },
         "name"
     )
-
+    
     # 6️⃣ Return matched shift or fallback
     return shift or emp.default_shift
 def get_shift_end_datetime(shift_type, date):
