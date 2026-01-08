@@ -154,7 +154,8 @@ doc_events = {
         "on_submit": "jkmpcl_hr.py.shift_request.on_submit"
     },
     "Employee": {
-        "after_insert": "jkmpcl_hr.py.employee.after_insert"
+        "after_insert": "jkmpcl_hr.py.employee.after_insert",
+        "on_update": "jkmpcl_hr.py.employee.on_update"
     },
     "Leave Application": {
         "validate": "jkmpcl_hr.py.leave_application.validate",
