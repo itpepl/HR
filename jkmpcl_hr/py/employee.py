@@ -1,5 +1,7 @@
 import frappe
-from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day
+from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day, add_months
+
+
 # import calendar
 from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
@@ -11,11 +13,12 @@ from jkmpcl_hr.py.utils import create_shift_assignment_rec
 
 def on_update(doc, event):
     pass
+    # update_cl_after_confirmation(doc)
 
 
 def after_insert(doc, event):
     
-    allocate_cl_on_employee_creation(doc)
+    # allocate_cl_on_employee_creation(doc)
     
     if not doc.default_shift:
         return
@@ -173,65 +176,70 @@ def create_shift_assignment_for_jammu(today_date, emp_id, default_shift_type_id,
 
 # * METHOD TO ALLOCATE CASUAL LEAVE ON EMPLOYEE CREATION BASED ON EMPLOYMENT TYPE AND DATE OF JOINING
 def allocate_cl_on_employee_creation(employee):
-    if not employee.date_of_joining:
-        return
+    try:
+        if not employee.date_of_joining or not employee.employment_type:
+            return
 
-    # Check CL Leave Type
-    leave_type = "Casual Leave"
-    correct_leave_type = ""
-    if not frappe.db.get_value("Leave Type", leave_type, "custom_leave_type") == "Casual Leave":
-        leave_type = frappe.db.get_value("Leave Type", {"custom_leave_type": "Casual Leave"}, "name")
-    else:
-        correct_leave_type = leave_type
+        # Check CL Leave Type
+        leave_type = "Casual Leave"
+        correct_leave_type = ""
+        if not frappe.db.get_value("Leave Type", leave_type, "custom_leave_type") == "Casual Leave":
+            leave_type = frappe.db.get_value("Leave Type", {"custom_leave_type": "Casual Leave"}, "name")
+        else:
+            correct_leave_type = leave_type
 
-    
-    joining_date = getdate(employee.date_of_joining)
-    from_date = joining_date
+        
+        joining_date = getdate(employee.date_of_joining)
+        from_date = joining_date
 
-    fy_end_date = get_fy_end_date(joining_date)
+        fy_end_date = get_fy_end_date(joining_date)
 
-    
-    if employee.employment_type == "Probation":
-        to_date = fy_end_date
+        
+        if employee.employment_type in ["Probation", "Confirmed"]:
+            to_date = fy_end_date
 
-    elif employee.employment_type == "Contractual":
-        contract_end = getdate(employee.contract_end_date) if employee.contract_end_date else fy_end_date
-        to_date = min(fy_end_date, contract_end)
-    else:
-        return  
+        elif employee.employment_type == "Contractual":
+            contract_end = getdate(employee.contract_end_date) if employee.contract_end_date else fy_end_date
+            to_date = min(fy_end_date, contract_end)
+        else:
+            return  
 
-    # Calculate CL
-    cl_days = calculate_prorata_cl(joining_date)
+        # Calculate CL
+        cl_days = calculate_prorata_cl(joining_date)
 
-    # Avoid duplicate allocation
-    if frappe.db.exists(
-        "Leave Allocation",
-        {
+        # Avoid duplicate allocation
+        if frappe.db.exists(
+            "Leave Allocation",
+            {
+                "employee": employee.name,
+                "leave_type": correct_leave_type,
+                "from_date": from_date,
+                "to_date": to_date,
+                "docstatus": ["!=", 2],
+            },
+        ):
+            frappe.log_error("error_allocate_cl_on_employee_creation", f"Leave Allocation already exists for Employee {employee.name} from {from_date} to {to_date}")
+            return
+
+        print(f"\n\n  {cl_days} \n\n")
+        # Create Leave Allocation
+        allocation = frappe.get_doc({
+            "doctype": "Leave Allocation",
             "employee": employee.name,
-            "leave_type": correct_leave_type,
+            "employee_name": employee.employee_name,
+            "leave_type": leave_type,
             "from_date": from_date,
             "to_date": to_date,
-            "docstatus": ["!=", 2],
-        },
-    ):
-        frappe.log_error("error_allocate_cl_on_employee_creation", f"Leave Allocation already exists for Employee {employee.name} from {from_date} to {to_date}")
-        return
+            "new_leaves_allocated": cl_days,
+            "custom_last_allocation_date": from_date,
+            "carry_forward": 0,
+        })
 
-    # Create Leave Allocation
-    allocation = frappe.get_doc({
-        "doctype": "Leave Allocation",
-        "employee": employee.name,
-        "employee_name": employee.employee_name,
-        "leave_type": leave_type,
-        "from_date": from_date,
-        "to_date": to_date,
-        "new_leaves_allocated": cl_days,
-        "custom_last_allocation_date": from_date,
-        "carry_forward": 0,
-    })
-
-    allocation.insert(ignore_permissions=True)
-    allocation.submit()
+        allocation.insert(ignore_permissions=True)
+        allocation.submit()
+    except Exception as e:
+        frappe.log_error("error_allocate_cl_on_employee_creation", frappe.get_traceback())
+        frappe.throw(e)
 
 
 
@@ -250,4 +258,100 @@ def get_fy_end_date(joining_date):
         return getdate(f"{joining_date.year}-03-31")
     else:
         return getdate(f"{joining_date.year + 1}-03-31")
+    
+    
+def update_cl_after_confirmation(doc):
+    try:
+        old_doc = doc.get_doc_before_save()
+        if not old_doc:
+            return
 
+        # Trigger only once
+        if (
+            old_doc.employment_type != "Confirmed"
+            and doc.employment_type == "Confirmed"
+            and not doc.custom_leave_allocated_on_confirmation
+        ):
+            employee = doc.name
+            leave_type = "Casual Leave"
+            confirmation_date = getdate()
+
+            # ---------------------------
+            # 1. Financial Year End
+            # ---------------------------
+            if confirmation_date.month < 4:
+                fy_end = getdate(f"{confirmation_date.year}-03-31")
+            else:
+                fy_end = getdate(f"{confirmation_date.year + 1}-03-31")
+
+            # ---------------------------
+            # 2. Get Remaining CL Balance
+            # ---------------------------
+            remaining_balance = get_leave_balance_on(
+                employee=employee,
+                leave_type=leave_type,
+                date=confirmation_date
+            ) or 0
+
+            # ---------------------------
+            # 3. Close Current Allocation
+            # ---------------------------
+            # current_alloc = frappe.get_all(
+            #     "Leave Allocation",
+            #     filters={
+            #         "employee": employee,
+            #         "leave_type": leave_type,
+            #         "from_date": ["<=", confirmation_date],
+            #         "to_date": [">=", confirmation_date],
+            #         "docstatus": 1
+            #     },
+            #     fields=["name"],
+            #     limit=1
+            # )
+
+            # if current_alloc:
+            #     alloc_doc = frappe.get_doc("Leave Allocation", current_alloc[0].name)
+            #     alloc_doc.to_date = confirmation_date
+            #     alloc_doc.save(ignore_permissions=True)
+
+            # ---------------------------
+            # 4. Calculate CL From Next Month
+            # ---------------------------
+            next_month_start = get_first_day(add_months(confirmation_date, 1))
+
+            months_remaining = (
+                (fy_end.year - next_month_start.year) * 12
+                + fy_end.month - next_month_start.month
+                + 1
+            )
+            months_remaining = max(months_remaining, 0)
+
+            
+            print(f"\n\n  {months_remaining}  {remaining_balance}\n\n")
+            # # ---------------------------
+            # # 5. Create New Allocation
+            # # ---------------------------
+            # new_alloc = frappe.get_doc({
+            #     "doctype": "Leave Allocation",
+            #     "employee": employee,
+            #     "leave_type": leave_type,
+            #     "from_date": next_month_start,
+            #     "to_date": fy_end,
+            #     "opening_balance": remaining_balance,
+            #     "new_leaves_allocated": months_remaining,
+            #     "carry_forward": 1,
+            #     "description": "Auto CL allocation after confirmation"
+            # })
+
+            # new_alloc.insert(ignore_permissions=True)
+            # new_alloc.submit()
+
+            # # ---------------------------
+            # # 6. Set Flag
+            # # ---------------------------
+            # doc.custom_leave_allocated_on_confirmation = 1
+
+    
+    except Exception as e:
+        frappe.log_error("error_update_cl_after_confirmation", frappe.get_traceback())
+        frappe.throw(e)
