@@ -109,109 +109,116 @@ def add_custom_hr_rows_to_employees(department, rows):
 # * METHOD TO GET THE SHIFT TYPE BASED ON THE DATE AND BRANCH
 @frappe.whitelist()
 def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
-    branch = filters.get("branch")
-    date_str = filters.get("as_on_date")
-    employee_id = filters.get("emp_id")
-    gender = filters.get("gender", False)
-    emp_attendance_source = filters.get("attendance_source", frappe.get_value("Employee", employee_id, "custom_attendance_source")) 
-    
-    conditions = {}    
+    try:
+        branch = filters.get("branch")
+        date_str = filters.get("as_on_date")
+        employee_id = filters.get("emp_id")
+        gender = filters.get("gender", False)
+        emp_attendance_source = filters.get("attendance_source", frappe.get_value("Employee", employee_id, "custom_attendance_source")) 
+        
+        conditions = {}    
+                
+        current_user = frappe.session.user
+
+        user_roles = frappe.get_roles(current_user)
+        
+        allowed_roles = get_roles_from_hr_settings_by_module("custom_roles_allowed_to_assign_24hours_shift")
+
+        if not any(r in user_roles for r in allowed_roles):
+            conditions["custom_shift_type"] = ["!=", "24 hours"]
+
+        if not branch:
+            return []
+
+        
+        as_on_date = getdate(date_str) if date_str else getdate()
+        if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar": 
             
-    current_user = frappe.session.user
-
-    user_roles = frappe.get_roles(current_user)
-    
-    allowed_roles = get_roles_from_hr_settings_by_module("custom_roles_allowed_to_assign_24hours_shift")
-
-    if not any(r in user_roles for r in allowed_roles):
-        conditions["custom_shift_type"] = ["!=", "24 hours"]
-
-    if not branch:
-        return []
-
-    
-    as_on_date = getdate(date_str) if date_str else getdate()
-    if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar": 
-        
-        
-        if emp_attendance_source:
-            if emp_attendance_source == "Biometric":
-                conditions["custom_attendance_source"] = ["not in", ["Field", "Punch"]]
             
-            elif emp_attendance_source == "Punch":
-                conditions["custom_attendance_source"] = ["!=", "Field"]
-                # conditions["name"] = ["!=", "Jammu-General-8hours"]
-                conditions["name"] = ["not in", ["Srinagar-General-8hours", "Srinagar-General-7hours"]]
+            if emp_attendance_source:
+                if emp_attendance_source == "Biometric":
+                    conditions["custom_attendance_source"] = ["not in", ["Field", "Punch"]]
                 
-                
-
-                
-            elif emp_attendance_source == "Field":
-                conditions["custom_attendance_source"] = ["!=", "Punch"]
-                # conditions["name"] = ["!=", "Srinagar-General-8hours"]
-                conditions["name"] = ["not in", ["Srinagar-General-8hours", "Srinagar-General-7hours"]]
-                
-        
-        
-        if 4 <= as_on_date.month <= 9:   
-            required_hours = "8hours"
-        else:                          
-            required_hours = "7hours"
-        
-        conditions["custom_hours"]= required_hours
-        
-        
-        if branch:
-            conditions["custom_branch"] = branch
-
-        shift_types = frappe.db.get_list(
-            "Shift Type",
-            filters=conditions,
-            fields=["name"],
-            order_by="name",
-            start=start,
-            page_length=page_len
-        )
-
-        return [[s.name, s.name] for s in shift_types]
-    elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
-        is_field = False
-        
-        if emp_attendance_source:
-            if emp_attendance_source in ["Biometric", "Punch"]:
-                conditions["custom_attendance_source"] = ["not in", ["Field", "Punch"]]
+                elif emp_attendance_source == "Punch":
+                    conditions["custom_attendance_source"] = ["!=", "Field"]
+                    # conditions["name"] = ["!=", "Jammu-General-8hours"]
+                    conditions["name"] = ["not in", ["Srinagar-General-8hours", "Srinagar-General-7hours"]]
                     
-            elif emp_attendance_source == "Field":
-                is_field = True
-                
-                conditions["name"] = ["not in", ["Jammu-General-8hours", "Jammu-General-7hours"]]
-                
-        
-        if not gender:
-            is_female = True if frappe.db.get_value("Employee", employee_id, "gender") == "Female" and is_field else False
-        else:
-            is_female = True if gender == "Female" and is_field else False
-    
-        if is_female:        
-            if (4<= as_on_date.month <= 11) or (2 <= as_on_date.month <= 3):
-                required_hours = "8hours"
-            else:
-                required_hours = "7hours"
-        else:
-            required_hours = "8hours"
-        
-        conditions["custom_hours"]= required_hours
-        
-        if branch:
-            conditions["custom_branch"] = branch
+                    
 
-        shift_types = frappe.db.get_list(
-            "Shift Type",
-            filters=conditions,
-            fields=["name"],
-            order_by="name",
-            start=start,
-            page_length=page_len
-        )
-        return [[s.name, s.name] for s in shift_types] if shift_types else []
+                    
+                elif emp_attendance_source == "Field":
+                    conditions["custom_attendance_source"] = ["!=", "Punch"]
+                    # conditions["name"] = ["!=", "Srinagar-General-8hours"]
+                    conditions["name"] = ["not in", ["Srinagar-General-8hours", "Srinagar-General-7hours"]]
+                    
+            
+            
+            if 4 <= as_on_date.month <= 9:   
+                required_hours = "8hours"
+            else:                          
+                required_hours = "7hours"
+            
+            conditions["custom_hours"]= required_hours
+            
+            
+            if branch:
+                conditions["custom_branch"] = branch
+
+            shift_types = frappe.db.get_list(
+                "Shift Type",
+                filters=conditions,
+                fields=["name"],
+                order_by="name",
+                start=start,
+                page_length=page_len
+            )
+
+            return [[s.name, s.name] for s in shift_types]
+        elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
+            is_field = False
+            
+            if emp_attendance_source:
+                if emp_attendance_source in ["Biometric", "Punch"]:
+                    conditions["custom_attendance_source"] = ["not in", ["Field", "Punch"]]
+                        
+                elif emp_attendance_source == "Field":
+                    is_field = True
+                    
+                    conditions["name"] = ["not in", ["Jammu-General-8hours", "Jammu-General-7hours"]]
+                    
+            
+            if not gender:
+                is_female = True if frappe.db.get_value("Employee", employee_id, "gender") == "Female" and is_field else False
+            else:
+                is_female = True if gender == "Female" and is_field else False
+        
+            if is_female:        
+                if (4<= as_on_date.month <= 11) or (2 <= as_on_date.month <= 3):
+                    required_hours = "8hours"
+                else:
+                    required_hours = "7hours"
+            else:
+                required_hours = "8hours"
+            
+            conditions["custom_hours"]= required_hours
+            
+            if branch:
+                conditions["custom_branch"] = branch
+
+            shift_types = frappe.db.get_list(
+                "Shift Type",
+                filters=conditions,
+                fields=["name"],
+                order_by="name",
+                start=start,
+                page_length=page_len
+            )
+            frappe.log_error(f"shift_types_jammu", str(shift_types))
+            return [[s.name, s.name] for s in shift_types] if shift_types else []
+        else:
+            return []
+    except Exception as e:
+        frappe.log_error(f"error_determine_shift_types", frappe.get_traceback())
+        frappe.throw(e)
         
