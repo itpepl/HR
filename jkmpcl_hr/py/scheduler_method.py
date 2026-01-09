@@ -233,7 +233,7 @@ def normalize_to_minute(dt):
     return dt.replace(second=0, microsecond=0)
 
 
-def run_daily_attendance(att_date="2025-12-29",only_for_jammu=False):
+def run_daily_attendance(att_date=None,only_for_jammu=False):
     frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")    
     if not att_date:
         att_date = add_days(getdate(), -1)
@@ -558,7 +558,7 @@ def get_24_hour_working_hours(employee, date, shift_type):
     last_out = logs[-1]["time"]
 
     working_hours = (last_out - first_in).total_seconds() / 3600
-
+    print(working_hours,first_in,last_out,"working_hoursworking_hoursworking_hours")
     return (
         first_in,
         last_out,
@@ -746,7 +746,6 @@ def handle_missing_checkout(employee, date, in_time, shift_type):
 def create_or_update_attendance(employee, date, in_time, out_time, working_hours,first_checkin_id=None,
                         last_checkin_id=None,skip_shift_time_rules=True):
     try:
-
         shift_type = get_employee_shift(employee, date)
         if not shift_type:
             return
@@ -833,8 +832,24 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
                 "late_entry": late_entry,
                 "custom_branch": frappe.db.get_value("Employee", employee, "branch")
             })
-            att.insert(ignore_permissions=True)
+
+            # 🔥 IGNORE FLAGS
+            att.flags.ignore_permissions = True
+            att.flags.ignore_mandatory = True
+            att.flags.ignore_validate = True
+            att.flags.ignore_links = True
+            att.flags.ignore_on_submit_validate = True
+            att.flags.ignore_workflow = True
+
+            # insert
+            att.insert(
+                ignore_permissions=True,
+                ignore_mandatory=True
+            )
+
+            # submit
             att.submit()
+
 
         if first_checkin_id :
             emp_checkin = frappe.get_doc("Employee Checkin", first_checkin_id)

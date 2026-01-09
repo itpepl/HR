@@ -6,7 +6,9 @@ from datetime import datetime, date,timedelta, time
 from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority ,get_employee_leave_type, create_leave_ledger
 from jkmpcl_hr.py.utils import send_notification_email
 from erpnext.setup.doctype.employee.employee import is_holiday
-from jkmpcl_hr.py.scheduler_method import get_employee_shift
+from jkmpcl_hr.py.scheduler_method import get_employee_shift,create_or_update_attendance
+
+
 class AttendanceRequest(HRMSAttendanceRequest):
 
     def validate(self):
@@ -201,38 +203,92 @@ class AttendanceRequest(HRMSAttendanceRequest):
 
         return attendance_warnings
 
+    # def create_auto_checkin_and_attendance(self):
+    #     if not self.employee or not self.custom_punch_type:
+    #         return
+
+    #     try:
+    #         if self.custom_punch_type in ["In", "Both"] and self.custom_in_time:
+    #             create_checkin(
+    #                 self.name,
+    #                 self.employee,
+    #                 self.custom_in_time,
+    #                 "IN",
+    #                 self.name,
+    #                 self.from_date
+    #             )
+
+    #         if self.custom_punch_type in ["Out", "Both"] and self.custom_out_time:
+    #             create_checkin(
+    #                 self.name,
+    #                 self.employee,
+    #                 self.custom_out_time,
+    #                 "OUT",
+    #                 self.name,
+    #                 self.from_date
+    #             )
+
+    #         if self.custom_in_time and self.custom_out_time:
+    #             create_or_update_attendance_from_request(self)
+    #         recalculate_attendance_after_manual_log(self.employee, self.from_date)
+        
+    #     except Exception as e:
+    #         frappe.log_error(frappe.get_traceback(), "Attendance Request Error")
+    #         frappe.throw(str(e))
     def create_auto_checkin_and_attendance(self):
         if not self.employee or not self.custom_punch_type:
             return
 
         try:
-            if self.custom_punch_type in ["In", "Both"] and self.custom_in_time:
+            # 🔁 Decide datetime fields based on shift type
+            if self.custom_shift_type == "Night":
+                in_time = self.custom_shift_in_time
+                out_time = self.custom_shift_in_out
+                is_full_datetime = True
+            else:
+                in_time = self.custom_in_time
+                out_time = self.custom_out_time
+                is_full_datetime = False
+
+            # ✅ IN checkin
+            if self.custom_punch_type in ["In", "Both"] and in_time:
                 create_checkin(
                     self.name,
                     self.employee,
-                    self.custom_in_time,
+                    in_time,
                     "IN",
                     self.name,
-                    self.from_date
+                    request_date=self.from_date,
+                    is_full_datetime=is_full_datetime
                 )
 
-            if self.custom_punch_type in ["Out", "Both"] and self.custom_out_time:
+            # ✅ OUT checkin
+            if self.custom_punch_type in ["Out", "Both"] and out_time:
                 create_checkin(
                     self.name,
                     self.employee,
-                    self.custom_out_time,
+                    out_time,
                     "OUT",
                     self.name,
+                    request_date=self.from_date,
+                    is_full_datetime=is_full_datetime
+                )
+
+            # ✅ Attendance
+            if in_time and out_time:
+                create_or_update_attendance_from_request(self)
+                recalculate_attendance_after_manual_log(
+                    self.employee,
                     self.from_date
                 )
 
-            if self.custom_in_time and self.custom_out_time:
-                create_or_update_attendance_from_request(self)
-            recalculate_attendance_after_manual_log(self.employee, self.from_date)
-        
-        except Exception as e:
-            frappe.log_error(frappe.get_traceback(), "Attendance Request Error")
-            frappe.throw(str(e))
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                "Attendance Request Error"
+            )
+            frappe.throw("Failed to create checkin / attendance")
+
 
     def validate_dates_custom(self):
         """Custom date validation for Attendance Request."""
@@ -521,22 +577,43 @@ def revert_penalty_leave(attendance_name):
 
     # ✅ Recalculate leave balance (important)
     frappe.db.commit()
-
-
-def create_checkin(name, employee, time_str, log_type, request_name, request_date):
+def create_checkin(
+    name,
+    employee,
+    time_input,
+    log_type,
+    request_name,
+    request_date=None,
+    is_full_datetime=False
+):
     """
-    Create Employee Checkin in correct DB datetime format → YYYY-MM-DD HH:MM:SS
-    Returns a message string instead of calling frappe.msgprint.
+    time_input:
+        - datetime
+        - string datetime ("2025-11-22 22:00:00")
+        - string time ("09:00")
     """
-    full_datetime = make_datetime(request_date, time_str)
+
+    # ✅ Normalize to datetime
+    if is_full_datetime:
+        full_datetime = get_datetime(time_input)
+    else:
+        # time_input like "09:00"
+        full_datetime = make_datetime(request_date, time_input)
+
+    if not full_datetime:
+        return
+
     db_datetime = full_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Avoid duplicate checkin insertion
-    exists = frappe.db.exists("Employee Checkin", {
-        "employee": employee,
-        "time": db_datetime,
-        "log_type": log_type
-    })
+    # ✅ Avoid duplicate checkin
+    exists = frappe.db.exists(
+        "Employee Checkin",
+        {
+            "employee": employee,
+            "time": db_datetime,
+            "log_type": log_type
+        }
+    )
     if exists:
         return f"Checkin already exists: {exists}"
 
@@ -551,6 +628,7 @@ def create_checkin(name, employee, time_str, log_type, request_name, request_dat
 
     checkin.insert(ignore_permissions=True)
     frappe.db.commit()
+
     return f"Checkin created: {checkin.name}"
 
 # def create_attendance_from_request(doc):
@@ -624,114 +702,69 @@ def create_checkin(name, employee, time_str, log_type, request_name, request_dat
 #     message = f"Attendance created: {status} ({round(working_hours, 2)} hrs)"
 #     return message
 
+
 def create_or_update_attendance_from_request(doc):
-    date = doc.from_date
 
-    shift_type = get_employee_shift(doc.employee, date)
-    if not shift_type:
-        frappe.throw(
-            f"No Shift found for employee {doc.employee} on {date}"
-        )
-
-    shift = frappe.db.get_value(
-        "Shift Type",
-        shift_type,
-        [
-            "working_hours_threshold_for_half_day",
-            "working_hours_threshold_for_absent"
-        ],
-        as_dict=True
+    frappe.enqueue(
+        "jkmpcl_hr.overrides.attendance_request._process_attendance_request",
+        queue="long",
+        enqueue_after_commit=True,
+        doc_name=doc.name
     )
 
-    in_datetime = make_datetime(date, doc.custom_in_time)
-    out_datetime = make_datetime(date, doc.custom_out_time)
 
-    if out_datetime < in_datetime:
-        frappe.throw("Out time cannot be less than In time")
+
+def _process_attendance_request(doc_name):
+    doc = frappe.get_doc("Attendance Request", doc_name)
+
+    date_val = doc.from_date
+
+    shift_type = get_employee_shift(doc.employee, date_val)
+    if not shift_type:
+        frappe.throw(f"No Shift found for employee {doc.employee} on {date_val}")
+
+    def parse_datetime(val):
+        if isinstance(val, datetime):
+            return val
+        if isinstance(val, str):
+            try:
+                return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                frappe.throw(f"Invalid datetime: {val}")
+        frappe.throw(f"Invalid datetime: {val}")
+
+    if doc.custom_shift_type == "Night":
+        in_datetime = parse_datetime(doc.custom_shift_in_time)
+        out_datetime = parse_datetime(doc.custom_shift_in_out)
+
+        if out_datetime <= in_datetime:
+            out_datetime += timedelta(days=1)
+
+    else:
+        in_datetime = make_datetime(date_val, doc.custom_in_time)
+        out_datetime = make_datetime(date_val, doc.custom_out_time)
+
+        if out_datetime < in_datetime:
+            frappe.throw("Out time cannot be less than In time")
 
     working_hours = (out_datetime - in_datetime).total_seconds() / 3600
-    status = get_attendance_status(working_hours, shift)
 
-    attendance_name = frappe.db.get_value(
-        "Attendance",
-        {
-            "employee": doc.employee,
-            "attendance_date": date,
-            "docstatus": ("!=", 2)
-        },
-        "name"
+    attendance_name = create_or_update_attendance(
+        employee=doc.employee,
+        date=date_val,
+        in_time=in_datetime,
+        out_time=out_datetime,
+        working_hours=working_hours,
+        skip_shift_time_rules=True
     )
 
     if attendance_name:
-        frappe.db.sql("""
-            UPDATE `tabAttendance`
-            SET
-                in_time=%s,
-                out_time=%s,
-                working_hours=%s,
-                status=%s,
-                shift=%s,
-                attendance_request=%s
-            WHERE name=%s
-        """, (
-            in_datetime,
-            out_datetime,
-            working_hours,
-            status,
-            shift_type,
-            doc.name,          
-            attendance_name
-        ))
+        att = frappe.get_doc("Attendance", attendance_name)
+        att.attendance_request = doc.name
+        att.flags.ignore_validate_update_after_submit = True
+        att.save(ignore_permissions=True)
 
-
-        frappe.db.delete(
-            "Leave Ledger Entry",
-            {
-                "employee": doc.employee,
-                "transaction_type": "Attendance",
-                "transaction_name": attendance_name
-            }
-        )
-
-        if status == "Present":
-            revert_penalty_leave(attendance_name)
-
-        elif status in ("Half Day", "Absent"):
-            deduct_leave_by_priority(
-                doc.employee,
-                date,
-                status,
-                attendance_name
-            )
-
-        frappe.db.commit()
-        return f"Attendance updated: {status} ({round(working_hours, 2)} hrs)"
-
-
-    attendance = frappe.get_doc({
-        "doctype": "Attendance",
-        "employee": doc.employee,
-        "attendance_date": date,
-        "shift": shift_type,
-        "in_time": in_datetime,
-        "out_time": out_datetime,
-        "working_hours": working_hours,
-        "status": status,
-        "attendance_request": doc.name
-    })
-
-    attendance.insert(ignore_permissions=True)
-    attendance.submit()
-    if status in ("Half Day", "Absent"):
-        deduct_leave_by_priority(
-            doc.employee,
-            date,
-            status,
-            attendance.name
-        )
-
-    return f"Attendance created: {status} ({round(working_hours, 2)} hrs)"
-
+    return attendance_name
 
 def apply_attendance_regularisation(doc):
     """
@@ -806,15 +839,15 @@ def apply_attendance_regularisation(doc):
     msg = f"Attendance updated to {status} with {round(working_hours,2)} hrs and leave reversed successfully."
     return msg
 
+
 def make_datetime(date_value, time_value):
     """Safely combine Date and Time into Datetime"""
     if isinstance(date_value, str):
         date_value = datetime.strptime(date_value, "%Y-%m-%d").date()
 
-
     if isinstance(time_value, timedelta):
         time_value = (datetime.min + time_value).time()
-    
+
     elif isinstance(time_value, str):
         try:
             time_value = datetime.strptime(time_value, "%H:%M:%S").time()
@@ -826,7 +859,9 @@ def make_datetime(date_value, time_value):
 
     if not isinstance(date_value, date) or not isinstance(time_value, time):
         frappe.throw("Invalid date or time format")
+
     return datetime.combine(date_value, time_value)
+
 
 def get_datetime_object(value):
     if isinstance(value, str):
@@ -1023,3 +1058,23 @@ def create_auto_checkin_and_attendance(docname):
         # log full traceback for debugging, then re-raise original exception
         frappe.log_error(frappe.get_traceback(), "create_auto_checkin_and_attendance")
         raise
+    
+    
+    
+@frappe.whitelist()
+def get_employee_custom_shift_type(employee, date):
+    shift_name = get_employee_shift(employee, date)
+ 
+    if not shift_name:
+        return None
+ 
+    custom_shift_type = frappe.db.get_value(
+        "Shift Type",
+        shift_name,
+        "custom_shift_type"
+    )
+ 
+    return {
+        "custom_shift_type": custom_shift_type,
+        "shift_name": shift_name
+    }
