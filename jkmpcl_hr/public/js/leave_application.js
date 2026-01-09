@@ -4,6 +4,7 @@ frappe.ui.form.on("Leave Application", {
     },
     employee(frm) {
         toggle_comp_off_fields(frm, true);
+        fetch_reporting_manager(frm);
     },
     leave_type(frm) {
         toggle_comp_off_fields(frm, true);
@@ -36,6 +37,21 @@ frappe.ui.form.on("Leave Application", {
     }
 });
 
+function fetch_reporting_manager(frm) {
+    
+    frappe.call({
+        method: "jkmpcl_hr.py.utils.get_emp_reporting_manager",
+        args: {
+            emp_id: frm.doc.employee
+        },
+        callback(r) {
+            if (!r.message) return;
+
+            frm.set_value("leave_approver", r.message);
+        }
+    });
+}
+
 function toggle_comp_off_fields(frm, validate = false) {
     frm.set_df_property("custom_off_day_work_request", "hidden", 1);
     frm.set_df_property("custom_off_day_date", "hidden", 1);
@@ -56,8 +72,15 @@ function toggle_comp_off_fields(frm, validate = false) {
                 frm.set_df_property("custom_off_day_work_request", "hidden", 1);
                 frm.set_df_property("custom_off_day_date", "hidden", 1);
 
-                frm.set_value("custom_off_day_work_request", null);
-                frm.set_value("custom_off_day_date", null); 
+                if (frm.doc.custom_off_day_work_request) {
+                    frm.set_value("custom_off_day_work_request", null);
+                }
+
+                if (frm.doc.custom_off_day_date) {
+                    frm.set_value("custom_off_day_date", null);
+                }
+                
+                frm.refresh_fields();
                 return;
             }
 
