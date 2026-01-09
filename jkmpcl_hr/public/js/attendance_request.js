@@ -22,9 +22,11 @@ frappe.ui.form.on("Attendance Request", {
     },
     employee: function(frm) {
         update_manual_punch_note(frm);
+        set_custom_shift_type(frm);
     },
     from_date: function(frm) {
         update_manual_punch_note(frm);
+        set_custom_shift_type(frm);
     },
     reason: function(frm) {
         if (frm.doc.reason === "Field Visit") {
@@ -174,6 +176,30 @@ function update_manual_punch_note(frm) {
 
                 frm.set_value("custom_note", html);
                 frm.refresh_field("custom_note");
+            }
+        }
+    });
+}
+
+
+
+function set_custom_shift_type(frm) {
+    if (!frm.doc.employee || !frm.doc.from_date) {
+        return;
+    }
+ 
+    frappe.call({
+        method: "jkmpcl_hr.overrides.attendance_request.get_employee_custom_shift_type",
+        args: {
+            employee: frm.doc.employee,
+            date: frm.doc.from_date
+        },
+        callback: function(r) {
+            if (r.message) {
+                frm.set_value("custom_shift_type", r.message.custom_shift_type);
+                frm.set_value("shift", r.message.shift_name); // optional
+            } else {
+                frm.set_value("custom_shift_type", null);
             }
         }
     });
