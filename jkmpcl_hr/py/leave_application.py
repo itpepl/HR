@@ -2,6 +2,8 @@ import frappe
 from frappe import _
 from frappe.utils import getdate
 from jkmpcl_hr.overrides.attendance_request import revert_penalty_leave
+
+
 def validate(doc, method):
     leave_details = get_leave_type(doc.leave_type)
     if not leave_details.is_compensatory:
@@ -44,6 +46,8 @@ def on_submit(doc, method):
         )
     
  
+def before_submit(doc, method):
+    doc.status = "Approved"
         
     
 @frappe.whitelist()
