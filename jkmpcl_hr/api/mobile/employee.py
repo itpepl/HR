@@ -3,6 +3,7 @@ from frappe.utils import getdate, nowdate
 from datetime import timedelta  
 import frappe
 from frappe.utils import today
+from frappe.utils import strip_html
 
 @frappe.whitelist(allow_guest=True)
 def get_employee_details(email):
@@ -145,7 +146,6 @@ def get_upcoming_holidays(employeeId=None):
         final_result = []
         today = getdate(nowdate())
         start_of_month = today.replace(day=1)
-
         if today.month == 12:
             end_of_month = today.replace(
                 year=today.year + 1, month=1, day=1
@@ -160,10 +160,12 @@ def get_upcoming_holidays(employeeId=None):
 
         if not employeeHolidayList:
             frappe.throw("Holiday list not found for this employee")
-
+        print("\n\n\n\n\n\n")
         holidays = frappe.get_doc("Holiday List", employeeHolidayList)
-
+        print(holidays,start_of_month,end_of_month)
         for row in holidays.get("holidays"):
+            print(row.holiday_date)
+            
             if (
                 row.holiday_date >= start_of_month
                 and row.holiday_date <= end_of_month
@@ -182,7 +184,7 @@ def get_upcoming_holidays(employeeId=None):
                     "month": month,
                     "display_date": f"{day} {month}",     # 2 OCT
                     "full_date": full_date,              # Thursday, 02 October 2025
-                    "occasion": row.description
+                    "occasion": strip_html(row.description) if row.description else ""
                 })
 
     except Exception as e:
