@@ -2,6 +2,7 @@ import frappe
 from frappe import _
 from frappe.utils import getdate
 from jkmpcl_hr.overrides.attendance_request import revert_penalty_leave
+from jkmpcl_hr.py.utils import send_notification_email
 
 
 def validate(doc, method):
@@ -20,7 +21,116 @@ def validate(doc, method):
     # 3️⃣ Set total leave days to 1.0
     if leave_details.custom_applied_once:
         doc.total_leave_days = 1.0
-        
+
+
+def on_update(doc, method):
+    handle_workflow_notification(doc)
+
+def handle_workflow_notification(doc):
+
+        recipients,notification_name = get_notification_recipients(doc)
+
+        notification_doc = frappe.get_doc("Notification", notification_name)
+        if notification_doc:
+
+            # Call your custom notification function
+            send_notification_email(
+                recipients=recipients,
+                doctype=doc.doctype,
+                docname=doc.name,
+                notification_name=notification_name,
+                send_link=False,
+                fallback_subject=f"Leave Application for {doc.from_date} to {doc.to_date})",
+                fallback_message=f"Leave Application for { doc.from_date } to {doc.to_date} is now in '{ doc.workflow_state }' state.",
+                enabled=notification_doc.enabled,
+                send_system_notification=notification_doc.send_system_notification,
+                channel=notification_doc.channel
+            )
+
+def get_notification_recipients(doc):
+        recipients = []
+        approver_user = None
+        notification_name = "Leave Application Approval"
+
+        if doc.workflow_state == "Pending":
+            approver = frappe.db.get_list(
+                "Approver",
+                filters={
+                    "parent": doc.employee,
+                    "effective_from": ["<=", frappe.utils.now_datetime()],
+                    "parentfield": "custom_reporting_manager"
+                },
+                fields=["name"],
+                order_by="effective_from desc",
+                ignore_permissions=True,
+                limit=1
+            )
+
+            if approver:
+                approver_user = frappe.db.get_value("Approver", approver[0].name, "user")
+
+        elif doc.workflow_state == "Approved by Reporting Manager":
+
+            approver = frappe.db.get_list(
+                "Approver",
+                filters={
+                    "parent": doc.employee,
+                    "effective_from": ["<=", frappe.utils.now_datetime()],
+                    "parentfield": "custom_review_manager"
+                },
+                fields=["name"],
+                order_by="effective_from desc",
+                ignore_permissions=True,
+                limit=1
+            )
+
+            if approver:
+                approver_user = frappe.db.get_value("Approver", approver[0].name, "user")
+
+        elif doc.workflow_state == "Approved by Review Manager":
+
+            approver = frappe.db.get_list(
+                "Approver",
+                filters={
+                    "parent": doc.employee,
+                    "effective_from": ["<=", frappe.utils.now_datetime()],
+                    "parentfield": "custom_hr_manager"
+                },
+                fields=["name"],
+                order_by="effective_from desc",
+                ignore_permissions=True,
+                limit=1
+            )
+
+            if approver:
+                approver_user = frappe.db.get_value("Approver", approver[0].name, "user")
+
+        elif doc.workflow_state == "Approved by HR":
+            users = frappe.get_all("Has Role", filters={"role": "CEO"}, pluck="parent") or []
+
+            ceo_users = frappe.get_all(
+                "User",
+                filters=[
+                    ["User", "name", "in", users],
+                    ["User", "enabled", "=", 1],
+                    ["User", "name", "!=", "Administrator"]
+                ],
+                pluck="name"
+            )
+            recipients.extend(ceo_users)
+            
+        elif doc.workflow_state in ["Final Approved", "Rejected", "Rejected by Reporting Manager", "Rejected by Review Manager", "Rejected by HR"]:
+            approver_user = frappe.db.get_value("Employee", doc.employee, "user_id")
+            if doc.workflow_state == "Final Approved":
+                notification_name = "Leave Application Approved"
+            else:
+                notification_name = "Leave Application Rejected"
+
+        if approver_user:
+            recipients.append(approver_user)
+
+        return recipients, notification_name
+
 
 def on_submit(doc, method):
     attendance_name = frappe.db.get_value(
@@ -104,3 +214,20 @@ def get_valid_comp_off(employee, leave_date, leave_type_name):
         return None
 
     return record   
+
+
+@frappe.whitelist()
+def get_open_leave_types():
+    """
+    Returns open leave types allowed for Leave Application dropdown
+    Ignores user permissions intentionally (controlled data)
+    """
+    return frappe.get_all(
+        "Leave Type",
+        filters={
+            "custom_is_open_leave": 1,
+            "custom_leave_type": "Medical Emergency Leave"
+        },
+        pluck="name",
+        ignore_permissions=True
+    )

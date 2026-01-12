@@ -1,0 +1,30 @@
+{
+ "attach_files": "",
+ "attach_print": 0,
+ "channel": "Email",
+ "condition_type": "Python",
+ "creation": "2026-01-12 17:08:27.338433",
+ "days_in_advance": 0,
+ "docstatus": 0,
+ "doctype": "Notification",
+ "document_type": "Leave Application",
+ "enabled": 1,
+ "event": "Custom",
+ "idx": 0,
+ "is_standard": 1,
+ "message": "<p>Dear Sir/Madam,</p>\n\n<p>\n    A Leave Application has been submitted by <b>{{ doc.employee }}</b>.  \n    Please review the details below and take the necessary action.\n</p>\n\n<p><b>Application Summary:</b></p>\n\n<ul>\n    <li><b>Employee:</b> {{ doc.employee }}</li>\n    <li><b>Leave Type:</b> {{ doc.leave_type }}</li>\n    <li><b>From Date:</b> {{ frappe.utils.format_date(doc.from_date, \"dd-MM-yyyy\") }}</li>\n    <li><b>To Date:</b> {{ frappe.utils.format_date(doc.to_date, \"dd-MM-yyyy\") }}</li>\n    <li><b>Total Leave Days:</b> {{ doc.total_leave_days }}</li>\n    <li><b>Workflow State:</b> {{ doc.workflow_state }}</li>\n    <li>\n        <b>View Request:</b>\n        {% set leave_app_link = frappe.utils.get_url() ~ '/app/leave-application/' ~ doc.name %}\n        <a href=\"{{ leave_app_link }}\">Click here</a>\n    </li>\n</ul>\n",
+ "message_type": "HTML",
+ "minutes_offset": 0,
+ "modified": "2026-01-12 17:08:27.338433",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Leave Application Approval",
+ "owner": "Administrator",
+ "recipients": [
+  {}
+ ],
+ "send_system_notification": 1,
+ "send_to_all_assignees": 0,
+ "subject": "Leave Application: {{doc.workflow_state}} - {{ doc.employee }}",
+ "value_changed": ""
+}

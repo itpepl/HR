@@ -159,7 +159,9 @@ doc_events = {
     },
     "Leave Application": {
         "validate": "jkmpcl_hr.py.leave_application.validate",
-        "on_submit": "jkmpcl_hr.py.leave_application.on_submit"
+        "on_submit": "jkmpcl_hr.py.leave_application.on_submit",
+        "before_submit":"jkmpcl_hr.py.leave_application.before_submit",
+        "on_update":"jkmpcl_hr.py.leave_application.on_update"
     }
   
 # 	"*": {
