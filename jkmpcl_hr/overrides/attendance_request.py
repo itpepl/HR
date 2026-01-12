@@ -696,12 +696,11 @@ def create_checkin(
 #     attendance.insert(ignore_permissions=True)
 #     attendance.submit()
 
-#     if working_hours < half_day_threshold:
-#         deduct_leave_by_priority(doc.employee, doc.from_date, status, attendance.name)
+    # if working_hours < half_day_threshold:
+    #     deduct_leave_by_priority(doc.employee, doc.from_date, status, attendance.name)
 
 #     message = f"Attendance created: {status} ({round(working_hours, 2)} hrs)"
 #     return message
-
 
 def create_or_update_attendance_from_request(doc):
 
@@ -711,6 +710,8 @@ def create_or_update_attendance_from_request(doc):
         enqueue_after_commit=True,
         doc_name=doc.name
     )
+
+    return "Attendance queued for processing"
 
 
 
