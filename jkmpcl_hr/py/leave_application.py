@@ -14,8 +14,8 @@ def validate(doc, method):
         frappe.throw(_("For Compensatory Off, From Date and To Date must be the same."))
 
     # 2️⃣ Ensure linkage exists
-    if not doc.custom_off_day_work_request:
-        frappe.throw(_("Comp-Off must be linked to an Off-Day Work Request"))
+    # if not doc.custom_off_day_work_request:
+    #     frappe.throw(_("Comp-Off must be linked to an Off-Day Work Request"))
 
     # 3️⃣ Set total leave days to 1.0
     if leave_details.custom_applied_once:
