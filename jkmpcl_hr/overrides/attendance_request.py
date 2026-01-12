@@ -275,12 +275,13 @@ class AttendanceRequest(HRMSAttendanceRequest):
                 )
 
             # ✅ Attendance
-            if in_time and out_time:
+            if in_time or out_time:
                 create_or_update_attendance_from_request(self)
                 recalculate_attendance_after_manual_log(
                     self.employee,
                     self.from_date
                 )
+
 
         except Exception:
             frappe.log_error(
