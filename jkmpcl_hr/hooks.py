@@ -138,7 +138,8 @@ doctype_js = {
 # Override doctype
 override_doctype_class = {
     "Attendance Request": "jkmpcl_hr.overrides.attendance_request.AttendanceRequest",
-    "Shift Request":"jkmpcl_hr.overrides.shift_request_override.CustomShiftRequest"
+    "Shift Request":"jkmpcl_hr.overrides.shift_request_override.CustomShiftRequest",
+    "Leave Allocation": "jkmpcl_hr.overrides.leave_allocation.CustomLeaveAllocation"
 }
 
 # Document Events

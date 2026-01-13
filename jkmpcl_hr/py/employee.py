@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day, add_months
+from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day, add_months, month_diff
 
 
 # import calendar
@@ -12,13 +12,13 @@ from jkmpcl_hr.py.utils import create_shift_assignment_rec
 
 
 def on_update(doc, event):
-    pass
-    # update_cl_after_confirmation(doc)
+
+    update_cl_after_confirmation(doc)
 
 
 def after_insert(doc, event):
     
-    # allocate_cl_on_employee_creation(doc)
+    allocate_cl_on_employee_creation(doc)
     
     if not doc.default_shift:
         return
@@ -29,20 +29,30 @@ def after_insert(doc, event):
 
     
     if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
-        create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year)
+        if doc.custom_attendance_source == "Field":
+            create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year, is_field=True)
+        elif doc.custom_attendance_source == "Punch":
+            create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year, is_punch=True)
+        else:
+            create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year)
 
     elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
-        if doc.gender == "Female":
-            print(f"\n\n CALLED For Female \n\n")
-            create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year,is_female=True)
+        
+        if doc.custom_attendance_source == "Field":
+            if doc.gender == "Female":
+                create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year, is_female=True, is_field=True)
+            else:
+                create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year, is_field=True)
+            
         else:
             create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year)
+
             
     
     employment_type = frappe.db.get_value("Employee", doc.name, "employment_type")
     
 
-def create_shift_assignment_for_srinagar(today_date, emp_id, default_shift_type_id, start_year):
+def create_shift_assignment_for_srinagar(today_date, emp_id, default_shift_type_id, start_year, is_field = False, is_punch = False):
     
     assign_both = False
     assign_seven_hours = False
@@ -58,12 +68,28 @@ def create_shift_assignment_for_srinagar(today_date, emp_id, default_shift_type_
         default_shift_branch = emp_default_shift_details[0].get("custom_branch")
         
         if default_shift_hours == "8hours":
-            eight_hours_shift_id = default_shift_type_id
-            seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours"}, "name")
+            
+            if is_field and default_shift_type == "General":
+                eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name")
+                seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
+            elif is_punch and default_shift_type == "General":
+                eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Punch"}, "name")
+                seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Punch"}, "name")
+            else:
+                eight_hours_shift_id = default_shift_type_id
+                seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours"}, "name")
         
         if default_shift_hours == "7hours":
-            seven_hours_shift_id = default_shift_type_id
-            eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours"}, "name")
+            
+            if is_field and default_shift_type == "General":
+                seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
+                eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name")
+            elif is_punch and default_shift_type == "General":
+                seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Punch"}, "name")
+                eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Punch"}, "name")
+            else:        
+                seven_hours_shift_id = default_shift_type_id
+                eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours"}, "name")
 
     else:
         frappe.throw("error_create_shift_assignment_for_srinagar", f"No Shift Details found for the default shift {default_shift_type_id}")
@@ -91,7 +117,7 @@ def create_shift_assignment_for_srinagar(today_date, emp_id, default_shift_type_
 
 
 
-def create_shift_assignment_for_jammu(today_date, emp_id, default_shift_type_id, start_year, is_female = False):
+def create_shift_assignment_for_jammu(today_date, emp_id, default_shift_type_id, start_year, is_female = False, is_field=False):
     
     assign_all = False
     assign_seven_hours = False
@@ -108,18 +134,27 @@ def create_shift_assignment_for_jammu(today_date, emp_id, default_shift_type_id,
         default_shift_branch = emp_default_shift_details[0].get("custom_branch")
         
         if default_shift_hours == "8hours":
-            eight_hours_shift_id = default_shift_type_id
-            seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours"}, "name")
+            if is_field and default_shift_type == "General":
+                seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
+                eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name")                
+            else:
+                eight_hours_shift_id = default_shift_type_id
+                seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours"}, "name")
+                
         
         if default_shift_hours == "7hours":
-            seven_hours_shift_id = default_shift_type_id
-            eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours"}, "name")
+            if is_field and default_shift_type == "General":
+                seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
+                eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name") 
+            else:
+                seven_hours_shift_id = default_shift_type_id
+                eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours"}, "name")
 
     else:
         frappe.throw("error_create_shift_assignment_for_srinagar", f"No Shift Details found for the default shift {default_shift_type_id}")
         return
 
-    if is_female:
+    if is_female and is_field:
         first_eight_hours_start = getdate(f"{start_year}-04-01")
         first_eight_hours_end = getdate(f"{start_year}-11-30")
             
@@ -140,12 +175,7 @@ def create_shift_assignment_for_jammu(today_date, emp_id, default_shift_type_id,
             
         elif 2<= today_date.month <=3:
             assign_second_eight_hours = True
-        
-        
-            
-            
-        print(f"\n\n  {assign_all} \n {assign_second_eight_hours} \n {assign_seven_hours} \n\n")
-        
+                                        
         try:
             # pass
             if assign_all:                        
@@ -266,7 +296,6 @@ def update_cl_after_confirmation(doc):
         if not old_doc:
             return
 
-        # Trigger only once
         if (
             old_doc.employment_type != "Confirmed"
             and doc.employment_type == "Confirmed"
@@ -274,82 +303,70 @@ def update_cl_after_confirmation(doc):
         ):
             employee = doc.name
             leave_type = "Casual Leave"
-            confirmation_date = getdate()
+            confirmation_date = doc.final_confirmation_date
+            
+            if not confirmation_date:
+                frappe.throw("Confirmation Date is required to allocate Casual Leave after confirmation.")
+                frappe.log_error("error_update_cl_after_confirmation", f"Confirmation Date missing for Employee {employee}")
+                return
 
-            # ---------------------------
-            # 1. Financial Year End
-            # ---------------------------
             if confirmation_date.month < 4:
                 fy_end = getdate(f"{confirmation_date.year}-03-31")
             else:
                 fy_end = getdate(f"{confirmation_date.year + 1}-03-31")
 
-            # ---------------------------
-            # 2. Get Remaining CL Balance
-            # ---------------------------
+
             remaining_balance = get_leave_balance_on(
                 employee=employee,
                 leave_type=leave_type,
                 date=confirmation_date
             ) or 0
 
-            # ---------------------------
-            # 3. Close Current Allocation
-            # ---------------------------
-            # current_alloc = frappe.get_all(
-            #     "Leave Allocation",
-            #     filters={
-            #         "employee": employee,
-            #         "leave_type": leave_type,
-            #         "from_date": ["<=", confirmation_date],
-            #         "to_date": [">=", confirmation_date],
-            #         "docstatus": 1
-            #     },
-            #     fields=["name"],
-            #     limit=1
-            # )
 
-            # if current_alloc:
-            #     alloc_doc = frappe.get_doc("Leave Allocation", current_alloc[0].name)
-            #     alloc_doc.to_date = confirmation_date
-            #     alloc_doc.save(ignore_permissions=True)
+            current_alloc = frappe.get_all(
+                "Leave Allocation",
+                filters={
+                    "employee": employee,
+                    "leave_type": leave_type,
+                    "from_date": ["<=", confirmation_date],
+                    "to_date": [">=", confirmation_date],
+                    "docstatus": 1
+                },
+                fields=["name"],
+                limit=1
+            )
 
-            # ---------------------------
-            # 4. Calculate CL From Next Month
-            # ---------------------------
+            if current_alloc:
+                frappe.db.set_value("Leave Allocation", current_alloc[0].name, "to_date", confirmation_date)
+                frappe.db.set_value("Leave Allocation", current_alloc[0].name, "custom_last_allocation_date", getdate())
+                # alloc_doc.to_date = confirmation_date
+                # alloc_doc.save(ignore_permissions=True)
+                
             next_month_start = get_first_day(add_months(confirmation_date, 1))
 
-            months_remaining = (
-                (fy_end.year - next_month_start.year) * 12
-                + fy_end.month - next_month_start.month
-                + 1
-            )
-            months_remaining = max(months_remaining, 0)
+            months_remaining = month_diff(fy_end, next_month_start)
 
+            total_leaves_allocated = remaining_balance + months_remaining
             
-            print(f"\n\n  {months_remaining}  {remaining_balance}\n\n")
-            # # ---------------------------
-            # # 5. Create New Allocation
-            # # ---------------------------
-            # new_alloc = frappe.get_doc({
-            #     "doctype": "Leave Allocation",
-            #     "employee": employee,
-            #     "leave_type": leave_type,
-            #     "from_date": next_month_start,
-            #     "to_date": fy_end,
-            #     "opening_balance": remaining_balance,
-            #     "new_leaves_allocated": months_remaining,
-            #     "carry_forward": 1,
-            #     "description": "Auto CL allocation after confirmation"
-            # })
 
-            # new_alloc.insert(ignore_permissions=True)
-            # new_alloc.submit()
+            new_alloc = frappe.get_doc({
+                "doctype": "Leave Allocation",
+                "employee": employee,
+                "leave_type": leave_type,
+                "from_date": next_month_start,
+                "to_date": fy_end,
+                "custom_opening_balance": remaining_balance,
+                "new_leaves_allocated": months_remaining,
+                "custom_last_allocation_date": getdate(),
+                # "total_leaves_allocated": total_leaves_allocated,
+                "description": "Auto CL allocation after confirmation"
+            })
 
-            # # ---------------------------
-            # # 6. Set Flag
-            # # ---------------------------
-            # doc.custom_leave_allocated_on_confirmation = 1
+            new_alloc.insert(ignore_permissions=True)
+            new_alloc.submit()
+
+            doc.custom_leave_allocated_on_confirmation = 1
+            
 
     
     except Exception as e:
