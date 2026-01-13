@@ -185,6 +185,9 @@ scheduler_events = {
         ],
         "0 10 * * *": [
             "jkmpcl_hr.py.scheduler_method.process_comp_off_scheduler"
+        ],
+        "0 2 5 * *": [
+            "jkmpcl_hr.py.pl_accrual.process_pl_after_payroll"
         ]
     }
 # 	"all": [

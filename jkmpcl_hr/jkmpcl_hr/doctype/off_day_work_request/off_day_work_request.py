@@ -4,6 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document, getdate
+from jkmpcl_hr.py.utils import send_notification_email
 
 
 class OffDayWorkRequest(Document):
@@ -34,6 +35,71 @@ class OffDayWorkRequest(Document):
                     self.employee, self.date
                 )
             )
+
+    def on_update(self):
+        self.handle_workflow_notification()
+
+    def handle_workflow_notification(self):
+
+        recipients,notification_name = self.get_notification_recipients()
+
+        notification_doc = frappe.get_doc("Notification", notification_name)
+        if notification_doc:
+
+            # Call your custom notification function
+            send_notification_email(
+                recipients=recipients,
+                doctype=self.doctype,
+                docname=self.name,
+                notification_name=notification_name,
+                send_link=False,
+                fallback_subject=f"Off-Day Work Request for {self.date}",
+                fallback_message=f"Off-Day Work Request for { self.date } is now in '{ self.workflow_state }' state.",
+                enabled=notification_doc.enabled,
+                send_system_notification=notification_doc.send_system_notification,
+                channel=notification_doc.channel
+            )
+
+    def get_notification_recipients(self):
+        recipients = []
+        approver_user = None
+        notification_name = "Off-Day Work Request Approval"
+
+        if self.owner == frappe.db.get_value("Employee", self.employee, "user_id"):
+            if self.workflow_state == "Pending":
+                approver = frappe.db.get_list(
+                    "Approver",
+                    filters={
+                        "parent": self.employee,
+                        "effective_from": ["<=", frappe.utils.now_datetime()],
+                        "parentfield": "custom_reporting_manager"
+                    },
+                    fields=["name"],
+                    order_by="effective_from desc",
+                    ignore_permissions=True,
+                    limit=1
+                )
+
+                if approver:
+                    approver_user = frappe.db.get_value("Approver", approver[0].name, "user")
+
+            elif self.workflow_state in ["Approved", "Rejected"]:
+                approver_user = frappe.db.get_value("Employee", self.employee, "user_id")
+                if self.workflow_state == "Approved":
+                    notification_name = "Off-Day Work Request Approved"
+                else:
+                    notification_name = "Off-Day Work Request Rejected"
+
+        else:
+            if self.workflow_state == "Approved":
+                approver_user = frappe.db.get_value("Employee", self.employee, "user_id")
+                notification_name = "Off-Day Work Request Assigned"
+
+        if approver_user:
+            recipients.append(approver_user)
+
+        return recipients, notification_name
+
 
 @frappe.whitelist()
 def check_working_day_valid(employee, date):

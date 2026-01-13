@@ -1,0 +1,29 @@
+{
+ "attach_files": "",
+ "attach_print": 0,
+ "channel": "Email",
+ "condition_type": "Python",
+ "creation": "2026-01-13 15:58:29.825624",
+ "days_in_advance": 0,
+ "docstatus": 0,
+ "doctype": "Notification",
+ "document_type": "Off-Day Work Request",
+ "enabled": 1,
+ "event": "Custom",
+ "idx": 0,
+ "is_standard": 1,
+ "message": "<p>Dear {{ doc.employee_name }},</p>\n\n<p>Your Off-Day Work Request for {{ doc.date }} has been reviewed and has unfortunately been {{ doc.workflow_state }} - {{ frappe.session.user }}.</p>",
+ "message_type": "HTML",
+ "minutes_offset": 0,
+ "modified": "2026-01-13 15:58:34.452586",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Off-Day Work Request Rejected",
+ "owner": "Administrator",
+ "recipients": [
+  {}
+ ],
+ "send_system_notification": 1,
+ "send_to_all_assignees": 0,
+ "subject": "Off-Day Work Request Rejected for {{ doc.date }}"
+}
