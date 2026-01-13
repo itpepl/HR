@@ -1,0 +1,29 @@
+{
+ "attach_files": "",
+ "attach_print": 0,
+ "channel": "Email",
+ "condition_type": "Python",
+ "creation": "2026-01-13 16:53:46.025787",
+ "days_in_advance": 0,
+ "docstatus": 0,
+ "doctype": "Notification",
+ "document_type": "Leave Allocation",
+ "enabled": 1,
+ "event": "Custom",
+ "idx": 0,
+ "is_standard": 1,
+ "message": "<p>Dear <b>{{ doc.employee }}</b>,</p>\n\n<p>\n    A Compensatory Off has been Created for the date <b>{{ doc.date }}</b>.\n\n</p>",
+ "message_type": "HTML",
+ "minutes_offset": 0,
+ "modified": "2026-01-13 16:53:50.070532",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Compensatory Off Created",
+ "owner": "Administrator",
+ "recipients": [
+  {}
+ ],
+ "send_system_notification": 1,
+ "send_to_all_assignees": 0,
+ "subject": "Compensatory Off : Created - {{doc.employee}}"
+}

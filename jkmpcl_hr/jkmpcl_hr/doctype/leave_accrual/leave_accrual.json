@@ -1,0 +1,57 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-01-13 13:56:57.409660",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "from_date",
+  "to_date",
+  "eligible_days",
+  "leave_allocated"
+ ],
+ "fields": [
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "From Date"
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "To Date"
+  },
+  {
+   "fieldname": "eligible_days",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Eligible Days",
+   "precision": "2"
+  },
+  {
+   "fieldname": "leave_allocated",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Leave Allocated",
+   "precision": "2"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-01-13 13:59:07.630814",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Leave Accrual",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
