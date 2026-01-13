@@ -6,6 +6,7 @@ from frappe.utils import get_datetime
 from datetime import datetime, time,timedelta
 from frappe.utils import flt
 import calendar
+from jkmpcl_hr.py.utils import send_notification_email
 
 
 from jkmpcl_hr.py.utils import create_shift_assignment_rec
@@ -1417,6 +1418,7 @@ def process_working_day(req):
                 "comp_off_created": 1
             }
         )
+        handle_workflow_notification(req["name"])
         return
 
     # RH only
@@ -1506,6 +1508,7 @@ def handle_rh_only(req, attendance, holiday):
                 "comp_off_created": 1
             }
         )
+        handle_workflow_notification(req["name"])
         return
 
     # Pair is future RH-only → skip
@@ -1527,6 +1530,7 @@ def handle_rh_only(req, attendance, holiday):
                 "comp_off_created": 1
             }
         )
+        handle_workflow_notification(req["name"])
 
 
 # =========================================================
@@ -1585,6 +1589,32 @@ def already_created(employee, date):
         }
     )
 
+
+def handle_workflow_notification(req_name):
+    req = frappe.get_doc("Off-Day Work Request", req_name)
+    
+    recipients = []
+    user = frappe.db.get_value("Employee", req.employee, "user_id")
+    recipients.append(user)
+
+    notification_name = "Compensatory Off Created"
+
+    notification_doc = frappe.get_doc("Notification", notification_name)
+    if notification_doc:
+
+        # Call your custom notification function
+        send_notification_email(
+            recipients=recipients,
+            doctype=req.doctype,
+            docname=req.name,
+            notification_name=notification_name,
+            send_link=False,
+            fallback_subject=f"Off-Day Work Request for {req.date}",
+            fallback_message=f"Off-Day Work Request for { req.date } is now in '{ req.workflow_state }' state.",
+            enabled=notification_doc.enabled,
+            send_system_notification=notification_doc.send_system_notification,
+            channel=notification_doc.channel
+        )
 
 def allocate_leaves():
     pass

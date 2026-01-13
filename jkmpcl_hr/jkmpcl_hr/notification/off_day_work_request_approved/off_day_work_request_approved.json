@@ -1,0 +1,29 @@
+{
+ "attach_files": "",
+ "attach_print": 0,
+ "channel": "Email",
+ "condition_type": "Python",
+ "creation": "2026-01-13 15:57:06.251965",
+ "days_in_advance": 0,
+ "docstatus": 0,
+ "doctype": "Notification",
+ "document_type": "Off-Day Work Request",
+ "enabled": 1,
+ "event": "Custom",
+ "idx": 0,
+ "is_standard": 1,
+ "message": "<p>Dear <b>{{ doc.employee }}</b>,</p>\n\n<p>\n    Your Off-Day Work Request has been Approved by {{frappe.session.user}}.\n\n</p>",
+ "message_type": "HTML",
+ "minutes_offset": 0,
+ "modified": "2026-01-13 15:57:06.251965",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Off-Day Work Request Approved",
+ "owner": "Administrator",
+ "recipients": [
+  {}
+ ],
+ "send_system_notification": 1,
+ "send_to_all_assignees": 0,
+ "subject": "Off-Day Work Request: Approved - {{doc.employee}}"
+}

@@ -1,0 +1,29 @@
+{
+ "attach_files": "",
+ "attach_print": 0,
+ "channel": "Email",
+ "condition_type": "Python",
+ "creation": "2026-01-13 16:01:04.931555",
+ "days_in_advance": 0,
+ "docstatus": 0,
+ "doctype": "Notification",
+ "document_type": "Off-Day Work Request",
+ "enabled": 1,
+ "event": "Custom",
+ "idx": 0,
+ "is_standard": 1,
+ "message": "<p>Dear <b>{{ doc.employee }}</b>,</p>\n\n<p>\n    An Off-Day Work Request has been Assigned to you by {{frappe.session.user}} for the date <b>{{ doc.date }}</b>.\n\n</p>",
+ "message_type": "HTML",
+ "minutes_offset": 0,
+ "modified": "2026-01-13 16:04:27.617923",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Off-Day Work Request Assigned",
+ "owner": "Administrator",
+ "recipients": [
+  {}
+ ],
+ "send_system_notification": 1,
+ "send_to_all_assignees": 0,
+ "subject": "Off-Day Work Request: Assigned - {{doc.employee}}"
+}

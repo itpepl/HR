@@ -226,7 +226,6 @@ def get_open_leave_types():
         "Leave Type",
         filters={
             "custom_is_open_leave": 1,
-            "custom_leave_type": "Medical Emergency Leave"
         },
         pluck="name",
         ignore_permissions=True
