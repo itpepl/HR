@@ -87,10 +87,15 @@ frappe.ui.form.on("Employee", {
         }
     },
     
-    branch: function(frm){
+    branch: function (frm) {
+        
+        frm.set_value("default_shift", "")
         if(frm.doc.branch){
             apply_filter_in_shift_type(frm)
         }
+    },
+    custom_attendance_source: function (frm) {
+        frm.set_value("default_shift", "")
     }
     // default_shift: function(frm){
     //     if(frm.doc.branch){
