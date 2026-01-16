@@ -1,3 +1,8 @@
+
+
+
+
+
 frappe.ui.form.on("Employee", {
     onload: function(frm) {
         // set up filters for all three child tables on load
@@ -18,6 +23,13 @@ frappe.ui.form.on("Employee", {
             apply_filter_in_shift_type(frm)
         }
     },
+
+    validate: function (frm) { 
+        if(frm.doc.final_confirmation_date && frm.doc.final_confirmation_date < frm.doc.date_of_joining){
+            frappe.throw('Final Confirmation Date cannot be before Date of Joining.');
+        }
+    },
+
     department: async function (frm) {
         // if (!frm.is_new()) return;
         if (frm.doc.custom_stop_auto_update) return;
@@ -89,6 +101,7 @@ frappe.ui.form.on("Employee", {
         }
     },
     
+
     branch: function (frm) {
         
         frm.set_value("default_shift", "")
@@ -98,6 +111,19 @@ frappe.ui.form.on("Employee", {
     },
     custom_attendance_source: function (frm) {
         frm.set_value("default_shift", "")
+    },
+
+    date_of_joining: function (frm) {
+        console.log("Hello")
+        if (frm.doc.final_confirmation_date && frm.doc.date_of_joining > frm.doc.final_confirmation_date) {
+            frappe.throw('Date of Joining cannot be before Final Confirmation Date.');
+            // frm.set_value('date_of_joining', '');
+        }
+    },
+    final_confirmation_date: function(frm) {
+        if (frm.doc.date_of_joining && frm.doc.final_confirmation_date < frm.doc.date_of_joining) {
+            frappe.throw('Final Confirmation Date cannot be before Date of Joining.');
+        }
     }
     // default_shift: function(frm){
     //     if(frm.doc.branch){
@@ -110,8 +136,6 @@ frappe.ui.form.on("Employee", {
     //         })
     //     }
     // }
-
-
 });
 
 frappe.ui.form.on("Approver", {
