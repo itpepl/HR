@@ -13,7 +13,7 @@ from jkmpcl_hr.py.utils import create_shift_assignment_rec
 
 def on_update(doc, event):
 
-    update_cl_after_confirmation(doc)
+    update_cl_and_sl_after_confirmation(doc)
 
 
 def after_insert(doc, event):
@@ -290,7 +290,7 @@ def get_fy_end_date(joining_date):
         return getdate(f"{joining_date.year + 1}-03-31")
     
     
-def update_cl_after_confirmation(doc):
+def update_cl_and_sl_after_confirmation(doc):
     try:
         old_doc = doc.get_doc_before_save()
         if not old_doc:
@@ -303,6 +303,8 @@ def update_cl_after_confirmation(doc):
         ):
             employee = doc.name
             leave_type = "Casual Leave"
+            sl_leave_type = "Sick Leave"
+            confirmed_sl = 7
             confirmation_date = doc.final_confirmation_date
             
             if not confirmation_date:
@@ -316,13 +318,10 @@ def update_cl_after_confirmation(doc):
                 fy_end = getdate(f"{confirmation_date.year + 1}-03-31")
 
 
-            remaining_balance = get_leave_balance_on(
-                employee=employee,
-                leave_type=leave_type,
-                date=confirmation_date
-            ) or 0
+            remaining_balance = get_leave_balance_on(employee=employee,leave_type=leave_type,date=confirmation_date) or 0
 
-
+            remaining_sl_balance = get_leave_balance_on(employee=employee,leave_type=sl_leave_type,date=confirmation_date) or 0
+            
             current_alloc = frappe.get_all(
                 "Leave Allocation",
                 filters={
@@ -336,18 +335,37 @@ def update_cl_after_confirmation(doc):
                 limit=1
             )
 
+            current_sl_alloc = frappe.get_all(
+                "Leave Allocation",
+                filters={
+                    "employee": employee,
+                    "leave_type": sl_leave_type,
+                    "from_date": ["<=", confirmation_date],
+                    "to_date": [">=", confirmation_date],
+                    "docstatus": 1
+                },
+                fields=["name"],
+                limit=1
+            )
+                        
             if current_alloc:
                 frappe.db.set_value("Leave Allocation", current_alloc[0].name, "to_date", confirmation_date)
                 frappe.db.set_value("Leave Allocation", current_alloc[0].name, "custom_last_allocation_date", getdate())
+                frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_alloc[0].name}, "to_date", confirmation_date)
                 # alloc_doc.to_date = confirmation_date
                 # alloc_doc.save(ignore_permissions=True)
-                
+            
+            
+            if current_sl_alloc:
+                frappe.db.set_value("Leave Allocation", current_sl_alloc[0].name, "to_date", confirmation_date)
+                frappe.db.set_value("Leave Allocation", current_sl_alloc[0].name, "custom_last_allocation_date", getdate())
+                frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_sl_alloc[0].name}, "to_date", confirmation_date)
+            
+            
             next_month_start = get_first_day(add_months(confirmation_date, 1))
 
             months_remaining = month_diff(fy_end, next_month_start)
 
-            total_leaves_allocated = remaining_balance + months_remaining
-            
 
             new_alloc = frappe.get_doc({
                 "doctype": "Leave Allocation",
@@ -358,17 +376,36 @@ def update_cl_after_confirmation(doc):
                 "custom_opening_balance": remaining_balance,
                 "new_leaves_allocated": months_remaining,
                 "custom_last_allocation_date": getdate(),
-                # "total_leaves_allocated": total_leaves_allocated,
                 "description": "Auto CL allocation after confirmation"
             })
 
             new_alloc.insert(ignore_permissions=True)
             new_alloc.submit()
-
-            doc.custom_leave_allocated_on_confirmation = 1
+            # SL Allocation after confirmation
             
-
+            if remaining_balance:
+                if remaining_balance < confirmed_sl:
+                    new_sl = confirmed_sl - remaining_sl_balance
+            else:
+                new_sl = 7
+            
+            sl_alloc = frappe.get_doc({
+                "doctype": "Leave Allocation",
+                "employee": employee,
+                "leave_type": sl_leave_type,
+                "from_date": next_month_start,
+                "to_date": fy_end,
+                "custom_opening_balance": remaining_sl_balance,
+                "new_leaves_allocated": new_sl,
+                "custom_last_allocation_date": getdate(),
+                "description": "Auto SL allocation after confirmation"
+            })
+            sl_alloc.insert(ignore_permissions=True)
+            sl_alloc.submit()
+            # doc.custom_leave_allocated_on_confirmation = 1            
+            frappe.db.set_value("Employee", doc.name, "custom_leave_allocated_on_confirmation", 1)
+            
     
     except Exception as e:
-        frappe.log_error("error_update_cl_after_confirmation", frappe.get_traceback())
+        frappe.log_error("error_update_cl_and_sl_after_confirmation", frappe.get_traceback())
         frappe.throw(e)

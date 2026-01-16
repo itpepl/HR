@@ -178,7 +178,8 @@ doc_events = {
 scheduler_events = {
     "cron":{
         "0 0 1 4 *": [
-            "jkmpcl_hr.py.scheduler_method.create_shift_assignments"
+            "jkmpcl_hr.py.scheduler_method.create_shift_assignments",
+            "jkmpcl_hr.py.scheduler_method.allocate_leaves_to_confirmed_employee"
         ],
          "0 9 * * *": [
             "jkmpcl_hr.py.scheduler_method.run_daily_attendance"
@@ -188,7 +189,14 @@ scheduler_events = {
         ],
         "0 2 5 * *": [
             "jkmpcl_hr.py.pl_accrual.process_pl_after_payroll"
+        ],
+        "0 0 1 * *": [
+            "jkmpcl_hr.py.scheduler_method.allocate_cl_to_probation_and_contract_employees"
+        ],
+        "0 0 * * *":[
+            "jkmpcl_hr.py.scheduler_method.allocate_sl_to_probation_and_contract_employees"
         ]
+        
     }
 # 	"all": [
 # 		"jkmpcl_hr.tasks.all"
@@ -202,9 +210,7 @@ scheduler_events = {
 # 	"weekly": [
 # 		"jkmpcl_hr.tasks.weekly"
 # 	],
-# 	"monthly": [
-# 		"jkmpcl_hr.tasks.monthly"
-# 	],
+	
 }
 
 # Testing
