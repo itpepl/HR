@@ -6,6 +6,7 @@ frappe.ui.form.on("Employee", {
 
     refresh: function(frm){
         frm.set_df_property("holiday_list", "hidden", 0);
+        
         if(frm.doc.branch){
             // frm.set_query("default_shift", function(){
             //     return{
