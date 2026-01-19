@@ -9,16 +9,51 @@ from jkmpcl_hr.py.utils import get_other_department_emp
 
 
 #leave type list api
+# @frappe.whitelist()
+# def get_leave_types():
+#     try:
+#         leave_types = frappe.get_all(
+#             "Leave Type",
+#             pluck="name"
+#         )
+
+#     except Exception as e:
+#         frappe.log_error("Error While Getting Leave Types", str(e))
+#         frappe.clear_messages()
+#         frappe.local.response["message"] = {
+#             "success": False,
+#             "message": f"Error while fetching leave types: {str(e)}",
+#             "data": None
+#         }
+
+#     else:
+#         frappe.local.response["message"] = {
+#             "success": True,
+#             "message": "Leave types fetched successfully",
+#             "data": leave_types
+#         }
+
 @frappe.whitelist()
-def get_leave_types():
+def get_leave_types(employeeId, as_on_date=None):
     try:
+        from frappe.utils import today, getdate
+
+        if not as_on_date:
+            as_on_date = today()
+
         leave_types = frappe.get_all(
-            "Leave Type",
-            pluck="name"
+            "Leave Allocation",
+            filters={
+                "employee": employeeId,
+                "from_date": ["<=", getdate(as_on_date)],
+                "to_date": [">=", getdate(as_on_date)],
+                "docstatus": 1
+            },
+            pluck="leave_type"
         )
 
     except Exception as e:
-        frappe.log_error("Error While Getting Leave Types", str(e))
+        frappe.log_error("Error While Getting Employee Leave Types", str(e))
         frappe.clear_messages()
         frappe.local.response["message"] = {
             "success": False,
@@ -29,10 +64,9 @@ def get_leave_types():
     else:
         frappe.local.response["message"] = {
             "success": True,
-            "message": "Leave types fetched successfully",
+            "message": "Employee leave types fetched successfully",
             "data": leave_types
         }
-
 
 @frappe.whitelist()
 def get_user_for_cc(emp_id):
@@ -59,7 +93,7 @@ def get_user_for_cc(emp_id):
 def list(
     filters=None,
     or_filters=None,
-    fields=["name","employee","leave_type","from_date","to_date","status","total_leave_days","leave_approver_name","workflow_state","description","custom_half_day_time","half_day_date","half_day"],
+    fields=["name","employee","leave_type","from_date","to_date","status","workflow_state","total_leave_days","leave_approver_name","workflow_state","description","custom_half_day_time","half_day_date","half_day"],
     order_by=None,
     limit_page_length=0,
     limit_start=0,

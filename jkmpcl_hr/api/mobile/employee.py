@@ -4,7 +4,7 @@ from datetime import timedelta
 import frappe
 from frappe.utils import today
 from frappe.utils import strip_html
-
+from jkmpcl_hr.py.utils import get_emp_reporting_manager
 @frappe.whitelist(allow_guest=True)
 def get_employee_details(email):
 
@@ -29,7 +29,8 @@ def get_employee_details(email):
                 "cell_number",
                 "company_email",
                 "shift_request_approver",
-                "designation"
+                "designation",
+                "custom_attendance_source"
             ],
         )
 
@@ -99,7 +100,10 @@ def get_employee_details(email):
                 "gender": employee.get("gender", "N/A"),
                 "date_of_birth": employee.get("date_of_birth", "N/A"),
                 "date_of_joining": employee.get("date_of_joining", "N/A"),
-                "shift_request_approver": employee.get("shift_request_approver", "N/A"),
+                # "shift_request_approver": employee.get("shift_request_approver", "N/A"),
+                "shift_request_approver" : get_emp_reporting_manager(employee_name),
+                "custom_attendance_source":employee.get("custom_attendance_source","N/A")
+
             },
             "contact_info": {
                 "personal_email": employee.get("personal_email", "N/A"),
