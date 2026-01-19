@@ -29,20 +29,20 @@ frappe.ui.form.on("Attendance Request", {
         set_custom_shift_type(frm);
     },
     reason: function(frm) {
-        if (frm.doc.reason === "Field Visit") {
-            frm.set_df_property("custom_punch_type", "options", [
-                "",
-                "In",
-                "Out"
-            ]);
-        } else {
-            frm.set_df_property("custom_punch_type", "options", [
-                "",
-                "In",
-                "Out",
-                "Both"
-            ]);
-        }
+        // if (frm.doc.reason === "Field Visit") {
+        //     frm.set_df_property("custom_punch_type", "options", [
+        //         "",
+        //         "In",
+        //         "Out"
+        //     ]);
+        // } else {
+        //     frm.set_df_property("custom_punch_type", "options", [
+        //         "",
+        //         "In",
+        //         "Out",
+        //         "Both"
+        //     ]);
+        // }
         update_manual_punch_note(frm);
     },
     custom_punch_type: function(frm) {
