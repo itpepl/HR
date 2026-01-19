@@ -193,9 +193,9 @@ scheduler_events = {
         "0 0 1 * *": [
             "jkmpcl_hr.py.scheduler_method.allocate_cl_to_probation_and_contract_employees"
         ],
-        "0 0 * * *":[
-            "jkmpcl_hr.py.scheduler_method.allocate_sl_to_probation_and_contract_employees"
-        ]
+        # "0 0 * * *":[
+        #     "jkmpcl_hr.py.scheduler_method.allocate_sl_to_probation_and_contract_employees"
+        # ]
         
     }
 # 	"all": [
