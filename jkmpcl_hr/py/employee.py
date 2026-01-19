@@ -12,13 +12,13 @@ from jkmpcl_hr.py.utils import create_shift_assignment_rec
 
 
 def on_update(doc, event):
-
-    update_cl_and_sl_after_confirmation(doc)
+    pass
+    # update_cl_and_sl_after_confirmation(doc)
 
 
 def after_insert(doc, event):
-    
-    allocate_cl_on_employee_creation(doc)
+    pass    
+    # allocate_cl_on_employee_creation(doc)
     
     if not doc.default_shift:
         return
@@ -251,7 +251,7 @@ def allocate_cl_on_employee_creation(employee):
             frappe.log_error("error_allocate_cl_on_employee_creation", f"Leave Allocation already exists for Employee {employee.name} from {from_date} to {to_date}")
             return
 
-        print(f"\n\n  {cl_days} \n\n")
+        # print(f"\n\n  {cl_days} \n\n")
         # Create Leave Allocation
         allocation = frappe.get_doc({
             "doctype": "Leave Allocation",
