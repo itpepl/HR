@@ -800,7 +800,23 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
             as_dict=True
         )
         late_entry = 0
-        
+        if first_checkin_id and last_checkin_id:
+            if first_checkin_id == last_checkin_id:
+                single_time = frappe.db.get_value(
+                    "Employee Checkin", first_checkin_id, "time"
+                )
+                in_time = in_time or single_time
+                out_time = None 
+            else:
+                if in_time is None:
+                    in_time = frappe.db.get_value(
+                        "Employee Checkin", first_checkin_id, "time"
+                    )
+                if out_time is None:
+                    out_time = frappe.db.get_value(
+                        "Employee Checkin", last_checkin_id, "time"
+                    )
+
         half_day_hours = float(shift.working_hours_threshold_for_half_day or 8)
         absent_hours = float(shift.working_hours_threshold_for_absent or 3)
         if working_hours <= absent_hours:
