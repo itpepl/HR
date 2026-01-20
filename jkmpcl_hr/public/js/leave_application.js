@@ -118,11 +118,11 @@ function fetch_valid_comp_off(frm, leave_type_name) {
                 frm.set_value("custom_off_day_work_request", null);
                 frm.set_value("custom_off_day_date", null);
 
-                frappe.throw({
-                    title: __("No Valid Comp-Off"),
-                    message: __("No valid Compensatory Off found for the selected date."),
-                    indicator: "red"
-                });
+                // frappe.throw({
+                //     title: __("No Valid Comp-Off"),
+                //     message: __("No valid Compensatory Off found for the selected date."),
+                //     indicator: "red"
+                // });
                 return;
             }
             const comp_off_record_name = r.message.name;
