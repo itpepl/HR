@@ -1,6 +1,6 @@
 import frappe
 from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day, add_months, month_diff
-
+from jkmpcl_hr.py.utils import get_emp_reporting_manager
 
 # import calendar
 from datetime import date,datetime
@@ -14,8 +14,29 @@ from jkmpcl_hr.py.utils import create_shift_assignment_rec
 def on_update(doc, event):
     # pass
     update_cl_and_sl_after_confirmation(doc)
+    set_approvers(doc)
 
 
+
+def set_approvers(doc):
+    try:
+        if doc.name:
+            actual_emp_rm = get_emp_reporting_manager(doc.name)
+            if actual_emp_rm:
+                emp_rm_emp = frappe.db.get_value("Employee", {"user_id": actual_emp_rm}, "name") if actual_emp_rm else None
+                if doc.shift_request_approver != actual_emp_rm:
+                    frappe.db.set_value("Employee", doc.name, "shift_request_approver", actual_emp_rm)
+                if doc.leave_approver != actual_emp_rm:
+                    frappe.db.set_value("Employee", doc.name, "leave_approver", actual_emp_rm)
+                if emp_rm_emp and doc.reports_to != emp_rm_emp:
+                    frappe.db.set_value("Employee", doc.name, "reports_to", emp_rm_emp)
+    except Exception as e:
+        frappe.log_error("error_set_approvers_on_employee_update", frappe.get_traceback())
+        
+            
+            
+    
+    
 def after_insert(doc, event):
     pass    
     # allocate_cl_on_employee_creation(doc)
