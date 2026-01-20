@@ -152,6 +152,7 @@ async function set_leave_type_query_extended(frm) {
 
     if (r.exc || !r.message) return;
 
+
     leave_details = r.message.leave_allocation || {};
     lwps = r.message.lwps || [];
 
@@ -159,9 +160,15 @@ async function set_leave_type_query_extended(frm) {
     let allowed_leave_types = Object.keys(leave_details).concat(lwps);
 
     // Fetch OPEN leave types from Python (permission-safe)
-    const open_leave_res = await frappe.call({
-        method: "jkmpcl_hr.py.leave_application.get_open_leave_types"
-    });
+    if (frm.doc.employee) {
+        const open_leave_res = await frappe.call({
+            method: "jkmpcl_hr.py.leave_application.get_open_leave_types",
+            args: {
+                employee: frm.doc.employee
+            }
+        });
+    }
+    
 
     const open_leave_types = open_leave_res.message || [];
 
