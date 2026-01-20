@@ -141,6 +141,71 @@ def get_employee_details(email):
         }
 
 
+# @frappe.whitelist()
+# def get_upcoming_holidays(employeeId=None):
+#     try:
+#         if not employeeId:
+#             frappe.throw("Employee ID is required")
+
+#         final_result = []
+#         today = getdate(nowdate())
+#         start_of_month = today.replace(day=1)
+#         if today.month == 12:
+#             end_of_month = today.replace(
+#                 year=today.year + 1, month=1, day=1
+#             ) - timedelta(days=1)
+#         else:
+#             end_of_month = today.replace(
+#                 month=today.month + 1, day=1
+#             ) - timedelta(days=1)
+
+#         employeeRecord = frappe.get_doc("Employee", employeeId)
+#         employeeHolidayList = employeeRecord.get("holiday_list")
+
+#         if not employeeHolidayList:
+#             frappe.throw("Holiday list not found for this employee")
+#         holidays = frappe.get_doc("Holiday List", employeeHolidayList)
+#         print(holidays,start_of_month,end_of_month)
+#         for row in holidays.get("holidays"):
+#             print(row.holiday_date)
+            
+#             if (
+#                 row.holiday_date >= start_of_month
+#                 and row.holiday_date <= end_of_month
+#                 and row.weekly_off == 0
+#             ):
+
+#                 # Date formatting
+#                 holiday_date = getdate(row.holiday_date)
+#                 day = holiday_date.day
+#                 month = holiday_date.strftime("%b").upper()    # OCT
+#                 full_date = holiday_date.strftime("%A, %d %B %Y")  # Thursday, 02 October 2025
+
+#                 final_result.append({
+#                     "date": row.holiday_date,
+#                     "day": day,
+#                     "month": month,
+#                     "display_date": f"{day} {month}",     # 2 OCT
+#                     "full_date": full_date,              # Thursday, 02 October 2025
+#                     "occasion": strip_html(row.description) if row.description else ""
+#                 })
+
+#     except Exception as e:
+#         frappe.log_error("Error While Getting Upcoming Holidays", str(e))
+#         frappe.clear_messages()
+
+#         frappe.local.response["message"] = {
+#             "success": False,
+#             "message": str(e),
+#             "data": None
+#         }
+
+#     else:
+#         frappe.local.response["message"] = {
+#             "success": True,
+#             "message": "Upcoming holidays loaded successfully",
+#             "data": final_result
+#         }
 @frappe.whitelist()
 def get_upcoming_holidays(employeeId=None):
     try:
@@ -148,53 +213,38 @@ def get_upcoming_holidays(employeeId=None):
             frappe.throw("Employee ID is required")
 
         final_result = []
+
         today = getdate(nowdate())
-        start_of_month = today.replace(day=1)
-        if today.month == 12:
-            end_of_month = today.replace(
-                year=today.year + 1, month=1, day=1
-            ) - timedelta(days=1)
-        else:
-            end_of_month = today.replace(
-                month=today.month + 1, day=1
-            ) - timedelta(days=1)
+        start_of_year = today.replace(month=1, day=1)
+        end_of_year = today.replace(month=12, day=31)
 
-        employeeRecord = frappe.get_doc("Employee", employeeId)
-        employeeHolidayList = employeeRecord.get("holiday_list")
+        employee = frappe.get_doc("Employee", employeeId)
+        holiday_list_name = employee.holiday_list
 
-        if not employeeHolidayList:
+        if not holiday_list_name:
             frappe.throw("Holiday list not found for this employee")
-        print("\n\n\n\n\n\n")
-        holidays = frappe.get_doc("Holiday List", employeeHolidayList)
-        print(holidays,start_of_month,end_of_month)
-        for row in holidays.get("holidays"):
-            print(row.holiday_date)
-            
-            if (
-                row.holiday_date >= start_of_month
-                and row.holiday_date <= end_of_month
-                and row.weekly_off == 0
-            ):
 
-                # Date formatting
+        holiday_list = frappe.get_doc("Holiday List", holiday_list_name)
+
+        for row in holiday_list.holidays:
+            if (
+                row.holiday_date
+                and start_of_year <= row.holiday_date <= end_of_year
+                and not row.weekly_off
+            ):
                 holiday_date = getdate(row.holiday_date)
-                day = holiday_date.day
-                month = holiday_date.strftime("%b").upper()    # OCT
-                full_date = holiday_date.strftime("%A, %d %B %Y")  # Thursday, 02 October 2025
 
                 final_result.append({
                     "date": row.holiday_date,
-                    "day": day,
-                    "month": month,
-                    "display_date": f"{day} {month}",     # 2 OCT
-                    "full_date": full_date,              # Thursday, 02 October 2025
-                    "occasion": strip_html(row.description) if row.description else ""
+                    "day": holiday_date.day,
+                    "month": holiday_date.strftime("%b").upper(),
+                    "display_date": holiday_date.strftime("%d %b"),
+                    "full_date": holiday_date.strftime("%A, %d %B %Y"),
+                    "occasion": strip_html(row.description or "")
                 })
 
     except Exception as e:
-        frappe.log_error("Error While Getting Upcoming Holidays", str(e))
-        frappe.clear_messages()
-
+        frappe.log_error(frappe.get_traceback(), "Error While Getting Year Holidays")
         frappe.local.response["message"] = {
             "success": False,
             "message": str(e),
@@ -204,6 +254,6 @@ def get_upcoming_holidays(employeeId=None):
     else:
         frappe.local.response["message"] = {
             "success": True,
-            "message": "Upcoming holidays loaded successfully",
+            "message": "Year-wise holidays loaded successfully",
             "data": final_result
         }
