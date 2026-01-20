@@ -161,12 +161,18 @@ def get_leave_balance(employeeId, as_on_date=None):
                 AND to_date >= %s
             """, (employeeId, lt, as_on_date, as_on_date))[0][0] or 0
 
-            result.append({
+            remaining = earned - used
+
+            row = {
                 "leave_type": lt,
                 "allocated": round(earned, 2),
-                "used": round(used, 2),
-                "remaining": round(earned - used, 2)
-            })
+                "used": round(used, 2)
+            }
+
+            if remaining >= 0:
+                row["remaining"] = round(remaining, 2)
+
+            result.append(row)
 
         return {
             "success": True,
