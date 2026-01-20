@@ -12,8 +12,8 @@ from jkmpcl_hr.py.utils import create_shift_assignment_rec
 
 
 def on_update(doc, event):
-    pass
-    # update_cl_and_sl_after_confirmation(doc)
+    # pass
+    update_cl_and_sl_after_confirmation(doc)
 
 
 def after_insert(doc, event):
@@ -307,6 +307,7 @@ def update_cl_and_sl_after_confirmation(doc):
             confirmed_sl = 7
             confirmation_date = doc.final_confirmation_date
             
+            
             if not confirmation_date:
                 frappe.throw("Confirmation Date is required to allocate Casual Leave after confirmation.")
                 frappe.log_error("error_update_cl_after_confirmation", f"Confirmation Date missing for Employee {employee}")
@@ -371,7 +372,7 @@ def update_cl_and_sl_after_confirmation(doc):
                 "doctype": "Leave Allocation",
                 "employee": employee,
                 "leave_type": leave_type,
-                "from_date": next_month_start,
+                "from_date": confirmation_date or next_month_start,
                 "to_date": fy_end,
                 "custom_opening_balance": remaining_balance,
                 "new_leaves_allocated": months_remaining,
@@ -387,13 +388,13 @@ def update_cl_and_sl_after_confirmation(doc):
                 if remaining_balance < confirmed_sl:
                     new_sl = confirmed_sl - remaining_sl_balance
             else:
-                new_sl = 7
+                new_sl = confirmed_sl    
             
             sl_alloc = frappe.get_doc({
                 "doctype": "Leave Allocation",
                 "employee": employee,
                 "leave_type": sl_leave_type,
-                "from_date": next_month_start,
+                "from_date": confirmation_date or next_month_start,
                 "to_date": fy_end,
                 "custom_opening_balance": remaining_sl_balance,
                 "new_leaves_allocated": new_sl,

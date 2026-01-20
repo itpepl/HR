@@ -1632,16 +1632,17 @@ def handle_workflow_notification(req_name):
             channel=notification_doc.channel
         )
 
-def allocate_leaves():
-    pass
 
 # * METHOD TO ALLOCATE CASUAL LEAVE AND SICK LEAVE TO CONFIRMED EMPLOYEES
 # * THIS METHOD WILL RUN EVERY FIRST DAY OF THE FINANCIAL YEAR, I.E., 1ST APRIL
 @frappe.whitelist()
-def allocate_leaves_to_confirmed_employee():
+def allocate_leaves_to_confirmed_employee(dt=None):
     try:
         frappe.log_error("Leave Allocation Job Started", "Allocating Casual Leave And Sick Leave")
-        today_date = getdate("2026-04-01")
+        if dt:
+            today_date = getdate(dt)
+        else:
+            today_date = getdate()
         financial_year_start = getdate(f"{today_date.year}-04-01")
         financial_year_end = getdate(f"{today_date.year + 1}-03-31")
         
@@ -1709,6 +1710,7 @@ def allocate_leaves_to_confirmed_employee():
                                     "from_date": financial_year_start,
                                     "to_date": financial_year_end,
                                     "new_leaves_allocated": extra_sl,
+                                    "carry_forward": 1,
                                     "custom_extra_sl_carry_forwarded_to_pl": extra_sl,
                                     "custom_last_allocation_date": today_date
                                 })
@@ -1724,17 +1726,17 @@ def allocate_leaves_to_confirmed_employee():
     except Exception as e:
         frappe.log_error(f"error_allocate_leaves_main", frappe.get_traceback())
 
-
-
-
-
-
-
+# * METHOD TO ALLOCATE CASUAL LEAVE TO PROBATION AND CONTRACTUAL EMPLOYEES
+# * THIS METHOD WILL RUN EVERY FIRST DAY OF THE MONTH
 @frappe.whitelist()
-def allocate_cl_to_probation_and_contract_employees():
+def allocate_cl_to_probation_and_contract_employees(dt=None):
     try:
         frappe.log_error("CL Allocation to Probation and Contractual Employees Job Started", "CL Allocation to Probation and Contractual Employees rty")
-        today_date = getdate()
+        if dt:
+            today_date = getdate(dt)
+        else:
+            today_date = getdate()
+            
         month_start_date = getdate(f"{today_date.year}-{today_date.month}-01")
         
         if today_date == month_start_date:
@@ -1746,7 +1748,7 @@ def allocate_cl_to_probation_and_contract_employees():
             
             cl_leave_type = "Casual Leave"
             
-            is_casual_leave = True if frappe.db.get_value("Leave Type", cl_leave_type, "custom_leave_type") != "Casual Leave" else False
+            is_casual_leave = True if frappe.db.get_value("Leave Type", cl_leave_type, "custom_leave_type") == "Casual Leave" else False
             
             if is_casual_leave:
             
@@ -1796,13 +1798,15 @@ def allocate_cl_to_probation_and_contract_employees():
     except Exception as e:
         frappe.log_error(f"error_main_allocate_cl_to_probation_and_contract_employees", frappe.get_traceback())
 
-
-
-
+# * METHOD TO ALLOCATE SICK LEAVE TO PROBATION AND CONTRACTUAL EMPLOYEES
+# * THIS METHOD WILL RUN EVERY DAY
 @frappe.whitelist()
-def allocate_sl_to_probation_and_contract_employees():
+def allocate_sl_to_probation_and_contract_employees(dt=None):
     try:
-        today_date = getdate("2026-04-01")
+        if dt:
+            today_date = getdate(dt)
+        else:
+            today_date = getdate()
         # today_date = getdate()
         allocate_after_days = 52
         sl_leave_type = "Sick Leave"
