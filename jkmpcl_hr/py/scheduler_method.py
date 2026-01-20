@@ -6,10 +6,8 @@ from frappe.utils import get_datetime
 from datetime import datetime, time,timedelta
 from frappe.utils import flt
 import calendar
-from jkmpcl_hr.py.utils import send_notification_email
-
-
-from jkmpcl_hr.py.utils import create_shift_assignment_rec
+# from jkmpcl_hr.py.utils import send_notification_email
+from jkmpcl_hr.py.utils import create_shift_assignment_rec, send_notification_email, get_emp_reporting_manager
 
 @frappe.whitelist(allow_guest=True)
 def create_shift_assignments():
@@ -1955,4 +1953,42 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
         )
 
     
-    
+
+
+@frappe.whitelist()
+def set_approvers_in_employee():
+    try:
+        frappe.log_error("Set Approvers in Employee Job Started", "Set Approvers in Employee Job Started")
+        employees = frappe.get_all("Employee", {"status": "Active"}, "name")
+        if employees:
+            for emp in employees:
+                try:
+                    current_emp_shift_approver = frappe.db.get_value("Employee", emp.name, "shift_request_approver") or None
+                    current_emp_leave_approver = frappe.db.get_value("Employee", emp.name, "leave_approver") or None
+                    current_emp_reports_to = frappe.db.get_value("Employee", emp.name, "reports_to") or None
+                    
+                    
+                    emp_rm = get_emp_reporting_manager(emp.name)
+                    emp_rm_emp = frappe.db.get_value("Employee", {"user_id": emp_rm}, "name") if emp_rm else None
+                    if not emp_rm_emp:
+                        frappe.log_error(f"Reporting Manager Employee Not Found for User ID: {emp_rm}", f"Employee: {emp.name}")
+                    
+                    if emp_rm:
+                        if current_emp_shift_approver != emp_rm:
+                            frappe.db.set_value("Employee", emp.name, "shift_request_approver", emp_rm)
+                        if current_emp_leave_approver != emp_rm:
+                            frappe.db.set_value("Employee", emp.name, "leave_approver", emp_rm)                        
+                        if current_emp_reports_to != emp_rm_emp:
+                            frappe.db.set_value("Employee", emp.name, "reports_to", emp_rm_emp)
+                                                                                
+                except Exception as e:
+                    frappe.log_error(f"error_set_approvers_in_employee_{emp.name}", frappe.get_traceback())
+                    continue
+        
+        frappe.log_error("Set Approvers in Employee Job Completed", "Set Approvers in Employee Job Completed")
+        
+        
+    except Exception as e:        frappe.log_error(
+            f"error_set_approvers_in_employee",
+            frappe.get_traceback(),
+        )
