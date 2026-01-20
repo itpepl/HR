@@ -162,7 +162,7 @@ def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, i
         filters={
             "employee": employee,
             "leave_type": leave_type,
-            "from_date": year_start_date,
+            "from_date": ["between", [year_start_date, year_end_date]],
             "to_date": year_end_date,
             "docstatus": 1
         },

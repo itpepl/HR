@@ -306,27 +306,55 @@ class AttendanceRequest(HRMSAttendanceRequest):
     def validate_request_overlap_custom(self):
         if not self.name:
             self.name = "New Attendance Request"
+
         Request = frappe.qb.DocType("Attendance Request")
-        overlapping_request = (
+
+        existing_requests = (
             frappe.qb.from_(Request)
-            .select(Request.name)
+            .select(Request.name, Request.custom_punch_type)
             .where(
                 (Request.employee == self.employee)
                 & (Request.docstatus < 2)
                 & (Request.name != self.name)
-                & (self.from_date == Request.from_date)
+                & (Request.from_date == self.from_date)
             )
         ).run(as_dict=True)
-        if overlapping_request:
-            self.throw_overlap_error(overlapping_request[0].name)
+
+        if not existing_requests:
+            return
+
+        existing_types = {r.custom_punch_type for r in existing_requests}
+        new_type = self.custom_punch_type
+
+        # ❌ If BOTH already exists → nothing else allowed
+        if "Both" in existing_types:
+            self.throw_overlap_error(existing_requests[0].name)
+
+        # ❌ If trying to add BOTH when IN or OUT already exists
+        if new_type == "Both" and existing_types:
+            self.throw_overlap_error(existing_requests[0].name)
+
+        # ❌ Duplicate IN or OUT
+        if new_type in existing_types:
+            self.throw_overlap_error(existing_requests[0].name)
+
+        # ❌ If already have IN + OUT → block third entry
+        if existing_types == {"In", "Out"}:
+            self.throw_overlap_error(existing_requests[0].name)
+
 
     def throw_overlap_error(self, overlapping_request: str):
-        msg = _("Employee {0} already has an Attendance Request {1} that overlaps with this date").format(
+        msg = _("Employee {0} already has an Attendance Request(s) {1} that overlaps with this date").format(
             frappe.bold(self.employee),
             get_link_to_form("Attendance Request", overlapping_request),
         )
-        frappe.throw(msg, title=_("Overlapping Attendance Request"), exc=OverlappingAttendanceRequestError)
-    
+        frappe.throw(
+            msg,
+            title=_("Overlapping Attendance Request"),
+            exc=OverlappingAttendanceRequestError
+        )
+
+
 def recalculate_attendance_after_manual_log(employee, date):
     # Fetch all logs for the day
     logs = frappe.db.sql("""
