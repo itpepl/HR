@@ -114,7 +114,7 @@ frappe.ui.form.on("Employee", {
     },
 
     date_of_joining: function (frm) {
-        console.log("Hello")
+        
         if (frm.doc.final_confirmation_date && frm.doc.date_of_joining > frm.doc.final_confirmation_date) {
             frappe.throw('Date of Joining cannot be before Final Confirmation Date.');
             // frm.set_value('date_of_joining', '');
