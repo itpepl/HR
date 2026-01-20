@@ -391,12 +391,13 @@ def attendance_status_list():
             "status": "Half Day",
             "color": "#ffa500",     # Orange
             "code": "HD"
-        },
-        {
-            "status": "Work From Home",
-            "color": "#00bcd4",     # Sky Blue
-            "code": "WFH"
         }
+        # ,
+        # {
+        #     "status": "Work From Home",
+        #     "color": "#00bcd4",     # Sky Blue
+        #     "code": "WFH"
+        # }
     ]
 
     return {
