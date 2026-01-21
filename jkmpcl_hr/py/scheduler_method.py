@@ -249,7 +249,8 @@ def run_attendance_from_to(from_date,to_date):
     
     # from_date="2025-10-29"
     # to_date="2025-10-29"
-    
+    from_date = getdate(from_date)
+    to_date = getdate(to_date)
 
     current_date = from_date
 
