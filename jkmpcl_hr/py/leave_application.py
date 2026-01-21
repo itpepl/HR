@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import getdate
+from frappe.utils import getdate, add_years
 from jkmpcl_hr.overrides.attendance_request import revert_penalty_leave
 from jkmpcl_hr.py.utils import send_notification_email
 
@@ -217,15 +217,47 @@ def get_valid_comp_off(employee, leave_date, leave_type_name):
 
 
 @frappe.whitelist()
-def get_open_leave_types():
+def get_open_leave_types(employee=None):
     """
     Returns open leave types allowed for Leave Application dropdown
     Ignores user permissions intentionally (controlled data)
     """
+    
+    only_for_female_leave_types = ["Maternity Leave", "Child Adoption Leave"]
+    
+    is_female = True if frappe.db.get_value("Employee", employee, "gender") == "Female" else False
+    
+    joining_date = frappe.db.get_value("Employee", employee, "date_of_joining")
+    
+    
+        # only_for_female_leave_types.append("Special Maternity Leave")
+        
+    if is_female:
+        if joining_date and getdate() <= add_years(joining_date, 2):
+            return frappe.get_all(
+                "Leave Type",
+                filters={
+                    "custom_is_open_leave": 1,
+                },
+                pluck="name",
+                ignore_permissions=True
+            )
+        else:
+            return frappe.get_all(
+                "Leave Type",
+                filters={
+                    "custom_is_open_leave": 1,
+                    "name": ["not in", ["Special Maternity Leave"]]
+                },
+                pluck="name",
+                ignore_permissions=True
+            )
+        
     return frappe.get_all(
         "Leave Type",
         filters={
             "custom_is_open_leave": 1,
+            "name": ["not in", ["Maternity Leave", "Child Adoption Leave", "Special Maternity Leave"]]
         },
         pluck="name",
         ignore_permissions=True

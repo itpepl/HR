@@ -249,7 +249,8 @@ def run_attendance_from_to(from_date,to_date):
     
     # from_date="2025-10-29"
     # to_date="2025-10-29"
-    
+    from_date = getdate(from_date)
+    to_date = getdate(to_date)
 
     current_date = from_date
 
@@ -1656,7 +1657,7 @@ def allocate_leaves_to_confirmed_employee(dt=None):
             # if is_casual_leave_type:
                 for emp in confirmed_employees:
                     
-                    if is_casual_leave_type and not frappe.db.exists("Leave Allocation", {"employee": emp.name, "leave_type": "Casual Leave", "from_date":[">=", financial_year_start], "to_date": ["<=", financial_year_end]}):
+                    if is_casual_leave_type and not frappe.db.exists("Leave Allocation", {"employee": emp.name, "leave_type": "Casual Leave", "from_date":["<=", financial_year_start], "to_date": [">=", financial_year_end]}):
                     # if is_casual_leave_type:
                         try:                                                                                                                            
                             cl_leave_allocation = frappe.get_doc({
@@ -1675,7 +1676,7 @@ def allocate_leaves_to_confirmed_employee(dt=None):
                             
                             
                     
-                    if is_sick_leave_type and not frappe.db.exists("Leave Allocation", {"employee": emp.name, "leave_type": "Sick Leave", "from_date":[">=", financial_year_start], "to_date": ["<=", financial_year_end]}):
+                    if is_sick_leave_type and not frappe.db.exists("Leave Allocation", {"employee": emp.name, "leave_type": "Sick Leave", "from_date":["<=", financial_year_start], "to_date": [">=", financial_year_end]}):
                         try:
                             
                             last_year_leave_balance = get_leave_balance_on(emp.name, "Sick Leave", getdate(f"{financial_year_start.year}-03-31"))
