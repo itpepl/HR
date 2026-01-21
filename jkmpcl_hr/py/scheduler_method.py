@@ -907,12 +907,12 @@ def create_or_update_attendance(employee, date, in_time, out_time, working_hours
             emp_checkin = frappe.get_doc("Employee Checkin", first_checkin_id)
             emp_checkin.attendance = att.name
             emp_checkin.save(ignore_permissions=True)
-            emp_checkin.save()
+            # emp_checkin.save()
         if last_checkin_id :
             emp_checkin = frappe.get_doc("Employee Checkin", last_checkin_id)
             emp_checkin.attendance = att.name
             emp_checkin.save(ignore_permissions=True)
-            emp_checkin.save()
+            # emp_checkin.save()
         if status in ["Absent", "Half Day"]:
             deduct_leave_by_priority(employee, date, status, att.name)
 
