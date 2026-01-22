@@ -199,11 +199,17 @@ def create(**args):
         args["from_date"] = getdate(args.get("from_date"))
         args["to_date"] = getdate(args.get("to_date"))
         args["posting_date"] = getdate(args.get("posting_date"))
+        
 
         if args.get("half_day") in ("1", "true", "True"):
             if not args.get("half_day_date"):
                 frappe.throw("Half Day Date is required")
+
             args["half_day_date"] = getdate(args.get("half_day_date"))
+
+            if args.get("custom_half_day_time"):
+                args["custom_half_day_time"] = args.get("custom_half_day_time")
+
 
         if args.get("custom_email_cc"):
             args["custom_email_cc"] = frappe.parse_json(args.get("custom_email_cc"))
