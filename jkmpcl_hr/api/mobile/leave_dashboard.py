@@ -171,6 +171,8 @@ def get_leave_balance(employeeId, as_on_date=None):
 
             if remaining >= 0:
                 row["remaining"] = round(remaining, 2)
+            else :
+                row["remaining"]= 0
 
             result.append(row)
 
