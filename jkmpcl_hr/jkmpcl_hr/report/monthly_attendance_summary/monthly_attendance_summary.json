@@ -10,7 +10,7 @@
  "idx": 0,
  "is_standard": "Yes",
  "letter_head": null,
- "modified": "2026-01-08 12:20:09.429608",
+ "modified": "2026-01-22 15:39:06.700372",
  "modified_by": "Administrator",
  "module": "JKMPCL HR",
  "name": "Monthly Attendance Summary",
@@ -34,12 +34,6 @@
   },
   {
    "role": "Employee Self Service"
-  },
-  {
-   "role": "QA Test"
-  },
-  {
-   "role": "JKMPCL-HR"
   }
  ],
  "timeout": 0
