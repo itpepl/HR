@@ -142,8 +142,7 @@ frappe.query_reports["Monthly Attendance Summary"] = {
 					else if (value == "L") value = "<span style='color:#318AD8'>" + value + "</span>";
 					else value = "<span style='color:#878787'>" + value + "</span>";
 				}
-			}
-	
+			}	
 			return value;
 		},
 	};
@@ -169,3 +168,41 @@ frappe.query_reports["Monthly Attendance Summary"] = {
 		}
 		report.refresh();
 	}
+
+
+
+
+	// if (!summarized_view) {
+	// 	if ((group_by && column.colIndex > 3) || (!group_by && column.colIndex > 2)) {
+	
+	// 		// Half Day + Present (HD/P, CL/P, SL/P, etc.)
+	// 		if (value && value.endsWith("/P")) {
+	// 			value = `<span style="color:#914EE3">${value}</span>`;
+	// 		}
+	
+	// 		// Half Day + Absent (HD/A, CL/A, SL/A, etc.)
+	// 		else if (value && value.endsWith("/A")) {
+	// 			value = `<span style="color:orange">${value}</span>`;
+	// 		}
+	
+	// 		// Present / Work From Home
+	// 		else if (value === "P" || value === "WFH") {
+	// 			value = `<span style="color:green">${value}</span>`;
+	// 		}
+	
+	// 		// Absent
+	// 		else if (value === "A") {
+	// 			value = `<span style="color:red">${value}</span>`;
+	// 		}
+	
+	// 		// Full-day Leave (CL, SL, EL, ML, etc.)
+	// 		else if (value && /^[A-Z]{1,4}$/.test(value) && value !== "P" && value !== "A") {
+	// 			value = `<span style="color:#318AD8">${value}</span>`;
+	// 		}
+	
+	// 		// Holiday / Weekly Off / Empty
+	// 		else {
+	// 			value = `<span style="color:#878787">${value || ""}</span>`;
+	// 		}
+	// 	}
+	// }
