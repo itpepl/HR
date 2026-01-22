@@ -101,6 +101,9 @@ def get_attendance(
 @frappe.whitelist()
 def get_attendance_calendar(employeeId, date):
     try:
+        import calendar
+        from datetime import datetime, date as sys_date
+
         # -----------------------------
         # VALIDATION
         # -----------------------------
@@ -130,13 +133,29 @@ def get_attendance_calendar(employeeId, date):
                 "in_time",
                 "out_time",
                 "working_hours",
-                "leave_type"
+                "leave_type",
+                "half_day_status"
             ]
         )
 
         attendance_map = {
             str(row.attendance_date): row
             for row in attendance_data
+        }
+
+        # -----------------------------
+        # HARD-CODED LEAVE TYPE SHORT CODES
+        # -----------------------------
+        leave_map = {
+            "Casual Leave For Probation": "CLP",
+            "Medical Emergency Leave": "MEL",
+            "Special Maternity Leave": "SML",
+            "Maternity Leave": "ML",
+            "Leave Without Pay": "LWP",
+            "Privilege Leave": "PL",
+            "Sick Leave": "SL",
+            "Compensatory Off": "CO",
+            "Casual Leave": "CL"
         }
 
         # -----------------------------
@@ -158,7 +177,7 @@ def get_attendance_calendar(employeeId, date):
         month_data = []
 
         # -----------------------------
-        # LOOP MONTH DAYS
+        # LOOP THROUGH DAYS OF THE MONTH
         # -----------------------------
         for d in range(1, total_days + 1):
             date_obj = sys_date(current_year, current_month, d)
@@ -166,7 +185,7 @@ def get_attendance_calendar(employeeId, date):
 
             day_data = {
                 "date": date_str,
-                "status": "",              # ✅ DEFAULT BLANK
+                "status": "",
                 "in_time": None,
                 "out_time": None,
                 "working_hours": 0,
@@ -176,9 +195,9 @@ def get_attendance_calendar(employeeId, date):
             # -----------------------------
             # FUTURE DATE → BLANK
             # -----------------------------
-            if date_obj > today:
-                month_data.append(day_data)
-                continue
+            # if date_obj > today:
+            #     month_data.append(day_data)
+            #     continue
 
             # -----------------------------
             # HOLIDAY / WEEKLY OFF
@@ -196,16 +215,22 @@ def get_attendance_calendar(employeeId, date):
             if date_str in attendance_map:
                 record = attendance_map[date_str]
 
+                # ✅ PRESENT
                 if record.status == "Present":
                     day_data["status"] = "P"
 
+                # ✅ HALF DAY
                 elif record.status == "Half Day":
-                    day_data["status"] = "HD"
+                    short_code = leave_map.get(record.leave_type) or "HD"
+                    day_data["status"] = short_code
                     day_data["other_half_status"] = "HD"
 
+                # ✅ ON LEAVE
                 elif record.status == "On Leave":
-                    day_data["status"] = "L"
+                    short_code = leave_map.get(record.leave_type) or "L"
+                    day_data["status"] = short_code
 
+                # ✅ ABSENT
                 elif record.status == "Absent":
                     day_data["status"] = "A"
 
@@ -218,8 +243,6 @@ def get_attendance_calendar(employeeId, date):
             # -----------------------------
             elif date_obj < today and not day_data["status"]:
                 day_data["status"] = "A"
-
-            # 👉 TODAY without attendance stays BLANK
 
             month_data.append(day_data)
 
@@ -238,6 +261,147 @@ def get_attendance_calendar(employeeId, date):
             "success": False,
             "message": str(e)
         }
+
+# @frappe.whitelist()
+# def get_attendance_calendar(employeeId, date):
+#     try:
+#         # -----------------------------
+#         # VALIDATION
+#         # -----------------------------
+#         if not employeeId or not date:
+#             frappe.throw("Employee ID and Date are required")
+
+#         specific_date = datetime.strptime(date, "%Y-%m-%d").date()
+#         current_month = specific_date.month
+#         current_year = specific_date.year
+#         total_days = calendar.monthrange(current_year, current_month)[1]
+
+#         start_date = f"{current_year}-{current_month:02d}-01"
+#         end_date = f"{current_year}-{current_month:02d}-{total_days}"
+
+#         # -----------------------------
+#         # FETCH ATTENDANCE DATA
+#         # -----------------------------
+#         attendance_data = frappe.get_all(
+#             "Attendance",
+#             filters={
+#                 "employee": employeeId,
+#                 "attendance_date": ["between", [start_date, end_date]]
+#             },
+#             fields=[
+#                 "attendance_date",
+#                 "status",
+#                 "in_time",
+#                 "out_time",
+#                 "working_hours",
+#                 "leave_type"
+#             ]
+#         )
+
+#         attendance_map = {
+#             str(row.attendance_date): row
+#             for row in attendance_data
+#         }
+
+#         # -----------------------------
+#         # HOLIDAY LIST
+#         # -----------------------------
+#         holiday_map = {}
+#         employee = frappe.get_doc("Employee", employeeId)
+
+#         if employee.holiday_list:
+#             holiday_doc = frappe.get_doc("Holiday List", employee.holiday_list)
+#             for h in holiday_doc.holidays:
+#                 holiday_map[str(h.holiday_date)] = {
+#                     "weekly_off": h.weekly_off,
+#                     "description": h.description,
+#                     "is_half_day": h.is_half_day
+#                 }
+
+#         today = sys_date.today()
+#         month_data = []
+
+#         # -----------------------------
+#         # LOOP MONTH DAYS
+#         # -----------------------------
+#         for d in range(1, total_days + 1):
+#             date_obj = sys_date(current_year, current_month, d)
+#             date_str = str(date_obj)
+
+#             day_data = {
+#                 "date": date_str,
+#                 "status": "",              # ✅ DEFAULT BLANK
+#                 "in_time": None,
+#                 "out_time": None,
+#                 "working_hours": 0,
+#                 "other_half_status": None
+#             }
+
+#             # -----------------------------
+#             # FUTURE DATE → BLANK
+#             # -----------------------------
+#             if date_obj > today:
+#                 month_data.append(day_data)
+#                 continue
+
+#             # -----------------------------
+#             # HOLIDAY / WEEKLY OFF
+#             # -----------------------------
+#             if date_str in holiday_map:
+#                 holiday = holiday_map[date_str]
+#                 if holiday["weekly_off"]:
+#                     day_data["status"] = "WO"
+#                 else:
+#                     day_data["status"] = "H"
+
+#             # -----------------------------
+#             # ATTENDANCE OVERRIDES ALL
+#             # -----------------------------
+#             if date_str in attendance_map:
+#                 record = attendance_map[date_str]
+
+#                 if record.status == "Present":
+#                     day_data["status"] = "P"
+
+#                 elif record.status == "Half Day":
+#                     day_data["status"] = "HD"
+#                     day_data["other_half_status"] = "HD"
+
+#                 elif record.status == "On Leave":
+#                     day_data["status"] = "L"
+
+#                 elif record.status == "Absent":
+#                     day_data["status"] = "A"
+
+#                 day_data["in_time"] = record.in_time
+#                 day_data["out_time"] = record.out_time
+#                 day_data["working_hours"] = record.working_hours or 0
+
+#             # -----------------------------
+#             # PAST DATE WITHOUT ATTENDANCE
+#             # -----------------------------
+#             elif date_obj < today and not day_data["status"]:
+#                 day_data["status"] = "A"
+
+#             # 👉 TODAY without attendance stays BLANK
+
+#             month_data.append(day_data)
+
+#         # -----------------------------
+#         # RESPONSE
+#         # -----------------------------
+#         return {
+#             "success": True,
+#             "month": f"{current_year}-{current_month:02d}",
+#             "attendance": month_data
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Calendar Attendance API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
 
             
 
@@ -349,56 +513,38 @@ def get_attendance_calendar(employeeId, date):
 #             "message": str(e)
 #         }
 
-
 @frappe.whitelist(allow_guest=True)
 def attendance_status_list():
     """
-    Returns a list of predefined attendance statuses with colors
+    Returns a list of predefined attendance statuses and leave types with colors
     """
 
+    # Predefined attendance statuses
     status_list = [
-        {
-            "status": "Present",
-            "color": "#28a745",     # Green
-            "code": "P"
-        },
-        {
-            "status": "Absent",
-            "color": "#dc3545",     # Red
-            "code": "A"
-        },
-        {
-            "status": "Week Off",
-            "color": "#1f2a56",     # Dark Blue
-            "code": "WO"
-        },
-        {
-            "status": "Holiday",
-            "color": "#6f7dff",     # Purple/Blue
-            "code": "H"
-        },
-        {
-            "status": "Leave Not Approved",
-            "color": "#ffc0cb",     # Light Pink
-            "code": "LNA"
-        },
-        {
-            "status": "Leave Approved",
-            "color": "#9e9e9e",     # Grey
-            "code": "LA"
-        },
-        {
-            "status": "Half Day",
-            "color": "#ffa500",     # Orange
-            "code": "HD"
-        }
-        # ,
-        # {
-        #     "status": "Work From Home",
-        #     "color": "#00bcd4",     # Sky Blue
-        #     "code": "WFH"
-        # }
+        {"status": "Present", "color": "#28a745", "code": "P"},       # Green
+        {"status": "Absent", "color": "#dc3545", "code": "A"},        # Red
+        {"status": "Week Off", "color": "#1f2a56", "code": "WO"},     # Dark Blue
+        {"status": "Holiday", "color": "#6f7dff", "code": "H"},       # Purple/Blue
+        {"status": "Leave Not Approved", "color": "#ffc0cb", "code": "LNA"},  # Light Pink
+        {"status": "Leave Approved", "color": "#9e9e9e", "code": "LA"},       # Grey
+        {"status": "Half Day", "color": "#ffa500", "code": "HD"}      # Orange
     ]
+
+    # Hardcoded leave types from your Leave Type DocType
+    leave_types = [
+        {"status": "Casual Leave For Probation", "color": "#007bff", "code": "CLP"},   # Blue
+        {"status": "Medical Emergency Leave", "color": "#17a2b8", "code": "MEL"},      # Teal
+        {"status": "Special Maternity Leave", "color": "#6610f2", "code": "SML"},      # Purple
+        {"status": "Maternity Leave", "color": "#6f42c1", "code": "ML"},               # Dark Purple
+        {"status": "Leave Without Pay", "color": "#343a40", "code": "LWP"},            # Dark Grey
+        {"status": "Privilege Leave", "color": "#20c997", "code": "PL"},              # Greenish
+        {"status": "Sick Leave", "color": "#fd7e14", "code": "SL"},                    # Orange
+        {"status": "Compensatory Off", "color": "#e83e8c", "code": "CO"},              # Pink
+        {"status": "Casual Leave", "color": "#0dcaf0", "code": "CL"}                   # Cyan
+    ]
+
+    # Combine both lists
+    status_list.extend(leave_types)
 
     return {
         "success": True,
