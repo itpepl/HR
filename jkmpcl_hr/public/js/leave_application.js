@@ -299,7 +299,7 @@ function set_ml_leave_dates(frm) {
                 args: {
                     employee: frm.doc.employee,
                     leave_type: leave_type,
-                    maturity_leave_type: frm.doc.custom_maternity_leave_type,
+                    maternity_leave_type: frm.doc.custom_maternity_leave_type,
                     from_date: frm.doc.from_date
                 },
                 async callback(r) {
