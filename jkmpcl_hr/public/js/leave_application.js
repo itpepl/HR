@@ -5,9 +5,6 @@ frappe.ui.form.on("Leave Application", {
         toggle_maternity_fields(frm)
     },
 
-    before_save(frm) {
-        validate_for_adoption_leave(frm);
-    },
     employee(frm) {
         toggle_comp_off_fields(frm, true);
         fetch_reporting_manager(frm);
@@ -20,8 +17,10 @@ frappe.ui.form.on("Leave Application", {
 
         toggle_comp_off_fields(frm, true);
         toggle_maternity_fields(frm);
+        validate_for_maternity_leave(frm)
+
         if (frm.doc.employee) {
-            set_ml_leave_dates(frm)            
+            set_ml_leave_dates(frm)
         }
 
         frm.set_df_property("custom_proof_document", "reqd", 0);
@@ -48,6 +47,15 @@ frappe.ui.form.on("Leave Application", {
     custom_maternity_leave_type(frm) {
         set_ml_leave_dates(frm)
     },
+
+    custom_no_of_surviving_children(frm) {
+        validate_for_maternity_leave(frm)
+    },
+
+    custom_adopting_child_age(frm) {
+        validate_for_maternity_leave(frm)  
+    },
+
     from_date(frm) {
         toggle_comp_off_fields(frm, true);
         set_leave_type_query_extended(frm);
@@ -142,12 +150,15 @@ function toggle_maternity_fields(frm) {
             const leave_type = r.message.custom_leave_type;
             if (leave_type === "Maternity Leave" || leave_type === "Special Maternity Leave") {
                 frm.set_df_property("custom_maternity_leave_type", "hidden", 0);
+                frm.set_df_property("custom_no_of_surviving_children", "hidden", 0)
                 frm.set_df_property("custom_maternity_leave_type", "reqd", 1);                    
+                frm.set_df_property("custom_no_of_surviving_children", "reqd", 1);
+                frm.set_df_property("to_date", "read_only", 1);
             }
 
             if (leave_type === "Child Adoption Leave") {
-                frm.set_df_property("custom_no_of_surviving_children", "hidden", 0)
                 frm.set_df_property("custom_adopting_child_age", "hidden", 0)
+                frm.set_df_property("custom_no_of_surviving_children", "hidden", 0)
 
                 frm.set_df_property("custom_no_of_surviving_children", "reqd", 1);
                 frm.set_df_property("custom_adopting_child_age", "reqd", 1);
@@ -205,7 +216,17 @@ async function set_leave_type_query_extended(frm) {
     let leave_details = {};
     let lwps = [];
 
-    if (!frm.doc.employee) return;
+    // if (!frm.doc.employee) return;
+    if (!frm.doc.employee) {
+        frm.set_query("leave_type", function () {
+            return {
+                filters: {
+                    "custom_leave_type": ["not in", ["Maternity Leave", "Child Adoption Leave", "Special Maternity Leave"]]
+                }
+            };
+        });
+        return; 
+    }
     
     // Call default ERPNext method
     const r = await frappe.call({
@@ -308,7 +329,7 @@ function set_ml_leave_dates(frm) {
 }
 
 
-function validate_for_adoption_leave(frm) {
+function validate_for_maternity_leave(frm) {
     frappe.call({
         method: "jkmpcl_hr.py.leave_application.get_leave_type",
         args: {
@@ -317,12 +338,16 @@ function validate_for_adoption_leave(frm) {
         callback(r) {
             if (!r.message) return;
             const leave_type = r.message.custom_leave_type;
-            if (leave_type !== "Child Adoption Leave") return;
-            if (frm.doc.custom_adopting_child_age > 1) {
-                frappe.throw("Adopting Child Age must be less than or equal to 1 year for Child Adoption Leave.");
+            if (leave_type !== "Child Adoption Leave" && leave_type !== "Maternity Leave" && leave_type !== "Special Maternity Leave") {   
+                return;
             }
+
             if (frm.doc.custom_no_of_surviving_children > 2) {
-                frappe.throw("Number of Surviving Children must be less than to 2 for Child Adoption Leave.");
+                frappe.throw("You are not eligible for " + leave_type + ". Please Choose another Leave Type.");
+            }
+
+            if (leave_type==="Child Adoption Leave" && frm.doc.custom_adopting_child_age > 1) {
+                frappe.throw("You are not eligible for Child Adoption Leave. Please Choose another Leave Type.");
             }
         }
     });

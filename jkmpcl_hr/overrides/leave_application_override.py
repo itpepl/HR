@@ -34,7 +34,6 @@ def custom_validate_balance_leaves(self):
                 for_consumption=True,
             )
             
-            print(f"\n\n dasdsadasd  {leave_balance} \n\n")
             
             leave_balance_for_consumption = flt(
                 leave_balance.get("leave_balance_for_consumption"), precision
@@ -42,7 +41,7 @@ def custom_validate_balance_leaves(self):
 
             leave_type = frappe.db.get_value("Leave Type", self.leave_type, "custom_leave_type")
 
-            if leave_type not in ["Medical Emergency Leave", "Maternity Leave"] and self.status != "Rejected" and (
+            if leave_type not in ["Medical Emergency Leave", "Maternity Leave", "Special Maternity Leave", "Child Adoption Leave"] and self.status != "Rejected" and (
                 leave_balance_for_consumption < self.total_leave_days or not leave_balance_for_consumption
             ):
                 self.show_insufficient_balance_message(leave_balance_for_consumption)
