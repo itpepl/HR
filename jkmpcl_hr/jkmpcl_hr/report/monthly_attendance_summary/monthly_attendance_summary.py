@@ -905,6 +905,9 @@ def merge_shift_attendance_for_day(entries: list[dict]) -> str | None:
 	if "Half Day/Other Half Absent" in statuses:
 		return "Half Day/Other Half Absent"
 
+	if "Half Day" in statuses:
+		return "<span style='color:orange'>HD</span>"
+
 	if "On Leave" in statuses:
 		return "On Leave"
 
