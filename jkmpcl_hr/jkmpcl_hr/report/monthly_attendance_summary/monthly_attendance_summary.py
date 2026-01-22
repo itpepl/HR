@@ -25,6 +25,7 @@ status_map = {
 	"Half Day/Other Half Absent": "HD/A",
 	"Half Day/Other Half Present": "HD/P",
 	"Work From Home": "WFH",
+	# "Half Day": "HD",
 	"On Leave": "L",
 	"Holiday": "H",
 	"Weekly Off": "WO",
@@ -91,12 +92,13 @@ def get_message() -> str:
 
 	count = 0
 	for status, abbr in status_map.items():
-		message += f"""
-			<span style='border-left: 2px solid {colors[count]}; padding-right: 12px; padding-left: 5px; margin-right: 3px;'>
-				{_(status)} - {abbr}
-			</span>
-		"""
-		count += 1
+		# if not status == "Half Day":
+			message += f"""
+				<span style='border-left: 2px solid {colors[count]}; padding-right: 12px; padding-left: 5px; margin-right: 3px;'>
+					{_(status)} - {abbr}
+				</span>
+			"""
+			count += 1
 
 	return message
 
@@ -178,7 +180,7 @@ def get_columns(filters: Filters) -> list[dict]:
 			]
 		)
 	else:
-		columns.append({"label": _("Shift"), "fieldname": "shift", "fieldtype": "Data", "width": 120})
+		# columns.append({"label": _("Shift"), "fieldname": "shift", "fieldtype": "Data", "width": 120})
 		columns.extend(get_columns_for_days(filters))
 
 	return columns
@@ -256,48 +258,93 @@ def get_data(filters: Filters, attendance_map: dict) -> list[dict]:
 	return data
 
 
+# def get_attendance_map(filters: Filters) -> dict:
+# 	"""Returns a dictionary of employee wise attendance map as per shifts for all the days of the month like
+# 	{
+# 	    'employee1': {
+# 	            'Morning Shift': {1: 'Present', 2: 'Absent', ...}
+# 	            'Evening Shift': {1: 'Absent', 2: 'Present', ...}
+# 	    },
+# 	    'employee2': {
+# 	            'Afternoon Shift': {1: 'Present', 2: 'Absent', ...}
+# 	            'Night Shift': {1: 'Absent', 2: 'Absent', ...}
+# 	    },
+# 	    'employee3': {
+# 	            None: {1: 'On Leave'}
+# 	    }
+# 	}
+# 	"""
+# 	attendance_list = get_attendance_records(filters)
+# 	attendance_map = {}
+# 	leave_map = {}
+
+# 	for d in attendance_list:
+# 		if d.status == "On Leave":
+# 			leave_map.setdefault(d.employee, {}).setdefault(d.shift, []).append(d.attendance_date)
+# 			continue
+
+# 		if d.shift is None:
+# 			d.shift = ""
+
+# 		# attendance_map.setdefault(d.employee, {}).setdefault(d.shift, {})
+# 		# attendance_map[d.employee][d.shift][d.attendance_date] = d.status
+
+# 		attendance_map.setdefault(d.employee, {}).setdefault(d.shift, {})
+# 		attendance_map[d.employee][d.shift][d.attendance_date] = {
+# 			"status": d.status,
+# 			"leave_type": d.leave_type
+# 		}
+
 def get_attendance_map(filters: Filters) -> dict:
-	"""Returns a dictionary of employee wise attendance map as per shifts for all the days of the month like
+	"""
+	Returns a dictionary of employee-wise attendance map per shift and date.
+	Each date entry ALWAYS stores a dict:
 	{
-	    'employee1': {
-	            'Morning Shift': {1: 'Present', 2: 'Absent', ...}
-	            'Evening Shift': {1: 'Absent', 2: 'Present', ...}
-	    },
-	    'employee2': {
-	            'Afternoon Shift': {1: 'Present', 2: 'Absent', ...}
-	            'Night Shift': {1: 'Absent', 2: 'Absent', ...}
-	    },
-	    'employee3': {
-	            None: {1: 'On Leave'}
-	    }
+		"status": "Present" / "On Leave" / "Half Day/Other Half Present" ...
+		"leave_type": "Casual Leave" / None
 	}
 	"""
+
 	attendance_list = get_attendance_records(filters)
 	attendance_map = {}
-	leave_map = {}
 
 	for d in attendance_list:
-		if d.status == "On Leave":
-			leave_map.setdefault(d.employee, {}).setdefault(d.shift, []).append(d.attendance_date)
-			continue
+		# normalize shift
+		shift = d.shift or ""
 
-		if d.shift is None:
-			d.shift = ""
+		attendance_map.setdefault(d.employee, {}).setdefault(shift, {})
 
-		attendance_map.setdefault(d.employee, {}).setdefault(d.shift, {})
-		attendance_map[d.employee][d.shift][d.attendance_date] = d.status
+		attendance_map[d.employee][shift][d.attendance_date] = {
+			"status": d.status,
+			"leave_type": d.leave_type
+		}
+
+	return attendance_map
+
 
 	# leave is applicable for the entire day so all shifts should show the leave entry
 
+	# for employee, leave_days in leave_map.items():
+	# 	for assigned_shift, dates in leave_days.items():
+	# 		# no attendance records exist except leaves
+	# 		if employee not in attendance_map:
+	# 			attendance_map.setdefault(employee, {}).setdefault(assigned_shift, {})
+
+	# 		for d in dates:
+	# 			for shift in attendance_map[employee].keys():
+	# 				attendance_map[employee][shift][d] = "On Leave"
+
 	for employee, leave_days in leave_map.items():
 		for assigned_shift, dates in leave_days.items():
-			# no attendance records exist except leaves
 			if employee not in attendance_map:
 				attendance_map.setdefault(employee, {}).setdefault(assigned_shift, {})
 
 			for d in dates:
 				for shift in attendance_map[employee].keys():
-					attendance_map[employee][shift][d] = "On Leave"
+					attendance_map[employee][shift][d] = {
+						"status": "On Leave",
+						"leave_type": None
+					}
 
 	return attendance_map
 
@@ -324,6 +371,7 @@ def get_attendance_records(filters: Filters) -> list[dict]:
 			Attendance.attendance_date,
 			(status).as_("status"),
 			Attendance.shift,
+			Attendance.leave_type,
 		)
 		.where(
 			(Attendance.docstatus == 1)
@@ -491,14 +539,25 @@ def get_rows(employee_details: dict, filters: Filters, holiday_map: dict, attend
 			if not employee_attendance:
 				continue
 
-			attendance_for_employee = get_attendance_status_for_detailed_view(
+			# attendance_for_employee = get_attendance_status_for_detailed_view(
+			# 	employee, filters, employee_attendance, holidays
+			# )
+			# # set employee details in the first row
+			# for record in attendance_for_employee:
+			# 	record.update({"employee": employee, "employee_name": details.employee_name})
+
+			# records.extend(attendance_for_employee)
+   
+			attendance_row = get_attendance_status_for_detailed_view(
 				employee, filters, employee_attendance, holidays
 			)
-			# set employee details in the first row
-			for record in attendance_for_employee:
-				record.update({"employee": employee, "employee_name": details.employee_name})
 
-			records.extend(attendance_for_employee)
+			attendance_row.update({
+				"employee": employee,
+				"employee_name": details.employee_name
+			})
+
+			records.append(attendance_row)
 
 	return records
 
@@ -596,36 +655,64 @@ def get_attendance_summary_and_days(employee: str, filters: Filters) -> tuple[di
 
 def get_attendance_status_for_detailed_view(
 	employee: str, filters: Filters, employee_attendance: dict, holidays: list
-) -> list[dict]:
-	"""Returns list of shift-wise attendance status for employee
-	[
-	        {'shift': 'Morning Shift', 1: 'A', 2: 'P', 3: 'A'....},
-	        {'shift': 'Evening Shift', 1: 'P', 2: 'A', 3: 'P'....}
-	]
-	"""
+) -> dict:
 	total_days = get_dates_in_period(filters)
-	attendance_values = []
+	row = {}
 
-	for shift, status_dict in employee_attendance.items():
-		row = {"shift": shift}
-		"""{
-	            'Morning Shift': {1: 'Present', 2: 'Absent', ...}
-	            'Evening Shift': {1: 'Absent', 2: 'Present', ...}
-	    },"""
-		for d in total_days:
-			d = getdate(d)
+	for d in total_days:
+		dt = getdate(d)
+		entries = []
 
-			status = status_dict.get(d)
+		for shift, status_dict in employee_attendance.items():
+			if dt in status_dict:
+				entries.append(status_dict[dt])
 
-			if status is None and holidays:
-				status = get_holiday_status(d, holidays)
+		status = merge_shift_attendance_for_day(entries)
 
-			abbr = status_map.get(status, "")
-			row[d.strftime("%d-%m-%Y")] = abbr
+		if status is None and holidays:
+			status = get_holiday_status(dt, holidays)
 
-		attendance_values.append(row)
+		row[dt.strftime("%d-%m-%Y")] = status_map.get(status, status or "")
 
-	return attendance_values
+	return row
+
+# def get_attendance_status_for_detailed_view(
+# 	employee: str, filters: Filters, employee_attendance: dict, holidays: list
+# ) -> dict:
+# 	total_days = get_dates_in_period(filters)
+# 	row = {}
+
+# 	for d in total_days:
+# 		dt = getdate(d)
+# 		entries = []
+
+# 		for shift, status_dict in employee_attendance.items():
+# 			if dt in status_dict:
+# 				entries.append(status_dict[dt])
+
+# 		# ✅ FIRST: check holiday
+# 		holiday_status = get_holiday_status(dt, holidays) if holidays else None
+
+# 		# ✅ SECOND: merge attendance
+# 		status = merge_shift_attendance_for_day(entries)
+
+# 		# ✅ FINAL DECISION
+# 		if status:
+# 			# already colored HTML or value
+# 			row[dt.strftime("%d-%m-%Y")] = status
+
+# 		elif holiday_status == "Holiday":
+# 			row[dt.strftime("%d-%m-%Y")] = "H"
+
+# 		elif holiday_status == "Weekly Off":
+# 			row[dt.strftime("%d-%m-%Y")] = "WO"
+
+# 		else:
+# 			row[dt.strftime("%d-%m-%Y")] = ""
+
+# 	return row
+
+
 
 
 def get_holiday_status(holiday_date: date, holidays: list) -> str:
@@ -760,17 +847,85 @@ def get_chart_data(attendance_map: dict, filters: Filters) -> dict:
 		"colors": ["red", "green", "blue"],
 	}
 
+# def merge_shift_attendance_for_day(statuses: list[str]) -> str | None:
+# 	if not statuses:
+# 		return None
+
+# 	# Highest priority
+# 	if any(s in ("Present", "Work From Home") for s in statuses):
+# 		return "Present"
+
+# 	# Preserve HD/P explicitly
+# 	if any(s == "Half Day/Other Half Present" for s in statuses):
+# 		return "Half Day/Other Half Present"
+
+# 	# Preserve HD/A explicitly
+# 	if any(s == "Half Day/Other Half Absent" for s in statuses):
+# 		return "Half Day/Other Half Absent"
+
+# 	# Generic Half Day
+# 	if any(s == "Half Day" for s in statuses):
+# 		return "Half Day"
+
+# 	if any(s == "On Leave" for s in statuses):
+# 		return "On Leave"
+
+# 	if any(s == "Absent" for s in statuses):
+# 		return "Absent"
+
+# 	return None
+def merge_shift_attendance_for_day(entries: list[dict]) -> str | None:
+	if not entries:
+		return None
+
+	statuses = [e["status"] for e in entries]
+	leave_types = [e.get("leave_type") for e in entries if e.get("leave_type")]
+	
+	leave_abbr = get_leave_type_abbr(leave_types[0]) if leave_types else None
+
+	# Present overrides everything
+	if any(s in ("Present", "Work From Home") for s in statuses):
+		return "Present"
+
+	# Half Day + Leave Type
+	if leave_abbr:
+		if "Half Day/Other Half Present" in statuses:
+			return f"<span style='color:#914EE3'>{leave_abbr}/P</span>"
+
+		if "Half Day/Other Half Absent" in statuses:
+			return f"<span style='color:orange'>{leave_abbr}/A</span>"
+
+		if "On Leave" in statuses:
+			return f"<span style='color:#3187D8'>{leave_abbr}</span>"
+
+	# Half Day without Leave Type
+	if "Half Day/Other Half Present" in statuses:
+		return "Half Day/Other Half Present"
+
+	if "Half Day/Other Half Absent" in statuses:
+		return "Half Day/Other Half Absent"
+
+	if "On Leave" in statuses:
+		return "On Leave"
+
+	if "Absent" in statuses:
+		return "Absent"
+
+	if "Holiday" in statuses:
+		return "H"
+
+	if "Weekly Off" in statuses:
+		return "WO"
+
+	return None
 
 
 
-
-
-
-
-
-
-
-
+def get_leave_type_abbr(leave_type: str) -> str:
+	if not leave_type:
+		return ""
+	words = leave_type.split()
+	return "".join(word[0] for word in words).upper()
 
 
 
