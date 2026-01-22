@@ -1,6 +1,7 @@
 import frappe
 import  calendar
 from frappe import _
+from math import floor
 from frappe.utils import getdate, add_years, date_diff, add_days, flt
 from jkmpcl_hr.overrides.attendance_request import revert_penalty_leave
 from jkmpcl_hr.py.utils import send_notification_email
@@ -8,20 +9,26 @@ from jkmpcl_hr.py.utils import send_notification_email
 
 def validate(doc, method):
     leave_details = get_leave_type(doc.leave_type)
-    if not leave_details.is_compensatory:
-        return
-    
-    # 1️⃣ Enforce single day
-    if doc.from_date != doc.to_date:
-        frappe.throw(_("For Compensatory Off, From Date and To Date must be the same."))
+    if leave_details.is_compensatory:
+        # 1️⃣ Enforce single day
+        if doc.from_date != doc.to_date:
+            frappe.throw(_("For Compensatory Off, From Date and To Date must be the same."))
 
-    # 2️⃣ Ensure linkage exists
-    # if not doc.custom_off_day_work_request:
-    #     frappe.throw(_("Comp-Off must be linked to an Off-Day Work Request"))
+        
+        # 2️⃣ Ensure linkage exists
+        # if not doc.custom_off_day_work_request:
+        #     frappe.throw(_("Comp-Off must be linked to an Off-Day Work Request"))
 
-    # 3️⃣ Set total leave days to 1.0
-    if leave_details.custom_applied_once:
-        doc.total_leave_days = 1.0
+        # 3️⃣ Set total leave days to 1.0
+        if leave_details.custom_applied_once:
+            doc.total_leave_days = 1.0
+            
+    if leave_details.custom_leave_type in ["Maternity Leave", "Child Adoption Leave", "Special Maternity Leave"]:
+        if doc.custom_no_of_surviving_children >= 2:
+            frappe.throw(_(f"You are not eligible for {leave_details.custom_leave_type}. Please Choose another Leave Type."))
+        
+        if leave_details.custom_leave_type == "Child Adoption Leave" and not doc.custom_adopting_child_age <= 1:
+            frappe.throw(_(f"You are not eligible for {leave_details.custom_leave_type}. Please Choose another Leave Type."))
 
 
 def on_update(doc, method):
@@ -264,33 +271,98 @@ def get_open_leave_types(employee=None):
     )
     
 
+# @frappe.whitelist()
+# def get_days_for_ml(employee, leave_type, maternity_leave_type=None,from_date=getdate()):
+#     try:
+#         full_maternity_leave_days = frappe.db.get_value("Leave Type", {"custom_leave_type": leave_type}, "custom_maximum_leave_balance") or 90
+        
+#         from_date = getdate(from_date)
+        
+#         emp_joining_date = frappe.db.get_value("Employee", employee, "date_of_joining")
+#         if not emp_joining_date:
+#             frappe.throw(_("Date of Joining not set for Employee {0}").format(employee))
+        
+#         joining_date = getdate(emp_joining_date)
+#         serving_days = date_diff(from_date, joining_date)
+        
+#         if serving_days >= 365 or (leave_type == "Special Maternity Leave"):
+#             if leave_type == "Maternity Leave" and maternity_leave_type in ["Miscarriage", "Abortion"]:
+#                 return 42
+#             return full_maternity_leave_days
+        
+#         year = from_date.year
+#         total_days_in_year = 366 if calendar.isleap(year) else 365
+#         lwp_leave_types = frappe.get_all(
+#             "Leave Type",
+#             filters={"is_lwp": 1},
+#             pluck="name",
+#         )
+            
+#         working_days = len(
+#             frappe.get_all(
+#                 "Attendance",
+#                 filters={
+#                     "employee": employee,
+#                     "attendance_date": ["between", [joining_date, from_date]],
+#                     "status": ["in", ["Present", "Work From Home", "Half Day", "On Leave"]],
+#                     "leave_type": ["not in", lwp_leave_types],
+#                 },
+#                 pluck="name",
+#             )
+#         )
+        
+#         if working_days >= total_days_in_year:
+#             return full_maternity_leave_days
+        
+        
+#         pro_rata_days = (full_maternity_leave_days * working_days) / total_days_in_year
+        
+        
+#         if leave_type == "Maternity Leave" and maternity_leave_type in ["Miscarriage", "Abortion"]:
+#             if pro_rata_days > 42:
+#                 return flt(42)
+#         return round(flt(pro_rata_days), 1)
+#         # return roundflt(pro_rata_days)
+        
+#     except Exception as e:
+#         frappe.log_error("error_get_days_for_ml", frappe.get_traceback())
+#         frappe.throw(e)
+
 @frappe.whitelist()
-def get_days_for_ml(employee, leave_type, maturity_leave_type=None,from_date=getdate()):
+def get_days_for_ml(employee, leave_type, maternity_leave_type=None, from_date=getdate()):
     try:
-        full_maternity_leave_days = frappe.db.get_value("Leave Type", {"custom_leave_type": leave_type}, "custom_maximum_leave_balance") or 90
-        
         from_date = getdate(from_date)
-        
-        emp_joining_date = frappe.db.get_value("Employee", employee, "date_of_joining")
-        if not emp_joining_date:
-            frappe.throw(_("Date of Joining not set for Employee {0}").format(employee))
-        
-        joining_date = getdate(emp_joining_date)
+
+        joining_date = frappe.db.get_value(
+            "Employee", employee, "date_of_joining"
+        )
+        if not joining_date:
+            frappe.throw(f"Date of Joining not set for Employee {employee}")
+
+        joining_date = getdate(joining_date)
         serving_days = date_diff(from_date, joining_date)
-        
-        if serving_days >= 365 or (leave_type == "Special Maternity Leave"):
-            if leave_type == "Maternity Leave" and maturity_leave_type in ["Miscarriage", "Abortion"]:
-                return 42
-            return full_maternity_leave_days
-        
+
         year = from_date.year
         total_days_in_year = 366 if calendar.isleap(year) else 365
+        
+        if leave_type == "Special Maternity Leave":
+            return 90
+
+        if leave_type == "Maternity Leave" and maternity_leave_type in ["Miscarriage", "Abortion"]:
+            full_entitlement = 42
+        else:
+            
+            full_entitlement = 90
+
+        if serving_days >= total_days_in_year:
+            return full_entitlement
+
         lwp_leave_types = frappe.get_all(
             "Leave Type",
             filters={"is_lwp": 1},
             pluck="name",
         )
-            
+
         working_days = len(
             frappe.get_all(
                 "Attendance",
@@ -304,20 +376,14 @@ def get_days_for_ml(employee, leave_type, maturity_leave_type=None,from_date=get
             )
         )
         
-        if working_days >= total_days_in_year:
-            return full_maternity_leave_days
-        
-        
-        pro_rata_days = (full_maternity_leave_days * working_days) / total_days_in_year
-        
-        
-        if leave_type == "Maternity Leave" and maturity_leave_type in ["Miscarriage", "Abortion"]:
-            if pro_rata_days > 42:
-                return flt(42)
-        return round(flt(pro_rata_days), 1)
-        # return roundflt(pro_rata_days)
-        
-    except Exception as e:
-        frappe.log_error("error_get_days_for_ml", frappe.get_traceback())
-        frappe.throw(e)
+        pro_rata_days = (full_entitlement * working_days) / total_days_in_year
 
+        integer_part = floor(pro_rata_days)
+        decimal_part = pro_rata_days - integer_part
+
+        final_days = integer_part + 1 if decimal_part >= 0.5 else integer_part
+        return flt(final_days)
+
+    except Exception:
+        frappe.log_error("error_get_days_for_ml", frappe.get_traceback())
+        frappe.throw("Error while calculating maternity leave days")
