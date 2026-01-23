@@ -78,7 +78,7 @@ def get_leave_balance(employeeId, as_on_date=None):
             "Sick Leave",
             "Privilege Leave",
             "Medical Emergency Leave",
-            "Leave Without Pay",
+            # "Leave Without Pay",
             "Maternity Leave",
             "Special Maternity Leave",
             "Child Adoption Leave",
