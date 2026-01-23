@@ -240,17 +240,17 @@ def get_employee_leave_type(employee):
 # MAIN SCHEDULER METHOD
 # =========================================================
 @frappe.whitelist(allow_guest=True)
-def run_attendance_from_to(from_date,to_date):
-# def run_attendance_from_to():
+# def run_attendance_from_to(from_date,to_date):
+def run_attendance_from_to():
     # if not from_date or not to_date:
     #     frappe.throw("From Date and To Date are required")
 
 
     
-    # from_date="2026-01-25"
-    # to_date="2026-01-25"
-    from_date = getdate(from_date)
-    to_date = getdate(to_date)
+    from_date="2026-01-27"
+    to_date="2026-01-27"
+    # from_date = getdate(from_date)
+    # to_date = getdate(to_date)
 
     current_date = from_date
 
@@ -277,7 +277,6 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
         att_date = getdate(att_date)
 
     if only_for_jammu:
-        if employees=="HR-EMP-00004":
             employees = frappe.get_all(
                 "Employee",
                 filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu" },
@@ -294,7 +293,6 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
     for emp in employees:
         try:
             if has_approved_leave(emp, att_date):
-                print("\n\n\n\n\n",emp)
                 continue
 
             shift_type = get_employee_shift(emp, att_date)
@@ -867,9 +865,6 @@ def create_or_update_attendance(
                         "time"
                     )
 
-        # --------------------------------------------------
-        # STATUS BY HOURS
-        # --------------------------------------------------
         half_day_hours = float(
             shift.working_hours_threshold_for_half_day or 8
         )
@@ -884,15 +879,11 @@ def create_or_update_attendance(
         else:
             status = "Present"
 
-        # --------------------------------------------------
-        # FORCE HALF DAY IF APPROVED
-        # --------------------------------------------------
+
         if is_half_day_leave:
             status = "Half Day"
 
-        # --------------------------------------------------
-        # LATE ENTRY RULE
-        # --------------------------------------------------
+
         if status != "Absent":
             if in_time and out_time and not skip_shift_time_rules:
 
@@ -911,9 +902,7 @@ def create_or_update_attendance(
                         late_entry = 1
                         status = "Half Day"
 
-        # --------------------------------------------------
-        # CREATE / UPDATE ATTENDANCE
-        # --------------------------------------------------
+
         attendance_name = frappe.db.exists(
             "Attendance",
             {
@@ -922,46 +911,52 @@ def create_or_update_attendance(
                 "docstatus": ["!=", 2]
             }
         )
+        employee_details = frappe.db.get_value(
+            "Employee",
+            employee,
+            ["employee_name", "department", "company", "branch"],
+            as_dict=True
+        )
 
         if attendance_name:
 
             att_name = attendance_name
 
             frappe.db.set_value(
-                "Attendance",
-                att_name,
-                {
-                    "in_time": in_time,
-                    "out_time": out_time,
-                    "working_hours": working_hours,
-                    "status": status,
-                    "late_entry": late_entry,
-                    "custom_branch": frappe.db.get_value(
-                        "Employee",
-                        employee,
-                        "branch"
-                    )
-                },
-                update_modified=False
-            )
-
-        else:
-            att = frappe.get_doc({
-                "doctype": "Attendance",
-                "employee": employee,
-                "attendance_date": date,
-                "shift": shift_type,
+            "Attendance",
+            att_name,
+            {
                 "in_time": in_time,
                 "out_time": out_time,
                 "working_hours": working_hours,
                 "status": status,
                 "late_entry": late_entry,
-                "custom_branch": frappe.db.get_value(
-                    "Employee",
-                    employee,
-                    "branch"
-                )
-            })
+                "employee_name": employee_details.employee_name,
+                "department": employee_details.department,
+                "company": employee_details.company,
+                "custom_branch": employee_details.branch,
+            },
+            update_modified=False
+        )
+
+
+        else:
+            att = frappe.get_doc({
+            "doctype": "Attendance",
+            "employee": employee,
+            "employee_name": employee_details.employee_name,
+            "department": employee_details.department,
+            "company": employee_details.company,
+            "attendance_date": date,
+            "shift": shift_type,
+            "in_time": in_time,
+            "out_time": out_time,
+            "working_hours": working_hours,
+            "status": status,
+            "late_entry": late_entry,
+            "custom_branch": employee_details.branch,
+        })
+
 
             att.flags.ignore_permissions = True
             att.flags.ignore_mandatory = True
