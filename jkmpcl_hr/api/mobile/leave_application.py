@@ -297,7 +297,8 @@ def create(**args):
         args["to_date"] = getdate(args.get("to_date"))
         args["posting_date"] = getdate(args.get("posting_date"))
         
-
+        args["custom_off_day_work_request"]= args.get("custom_off_day_work_request")
+        args["custom_off_day_date"]=getdate(args.get("custom_off_day_date"))
         if args.get("half_day") in ("1", "true", "True"):
             if not args.get("half_day_date"):
                 frappe.throw("Half Day Date is required")
@@ -465,6 +466,7 @@ def get_valid_comp_off(employeeId, from_date, to_date, leave_type_name):
             return {
                 "valid": True,
                 "date": record.date,
+                "name":record.name,
                 "message": "Valid Compensatory Off available."
             }
 
