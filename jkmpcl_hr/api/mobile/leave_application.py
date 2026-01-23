@@ -4,6 +4,7 @@ import frappe
 from frappe.utils import getdate
 from frappe.utils.file_manager import save_file
 import shutil
+import re
 
 from jkmpcl_hr.py.utils import get_other_department_emp
 
@@ -35,38 +36,134 @@ from jkmpcl_hr.py.utils import get_other_department_emp
 
 @frappe.whitelist()
 def get_leave_types(employeeId, as_on_date=None):
+
     try:
-        from frappe.utils import today, getdate
+        from frappe.utils import today
+        from hrms.hr.doctype.leave_application.leave_application import get_leave_details
+
+        if not employeeId:
+            frappe.throw("Employee is required")
 
         if not as_on_date:
             as_on_date = today()
 
-        leave_types = frappe.get_all(
-            "Leave Allocation",
-            filters={
-                "employee": employeeId,
-                "from_date": ["<=", getdate(as_on_date)],
-                "to_date": [">=", getdate(as_on_date)],
-                "docstatus": 1
-            },
-            pluck="leave_type"
+        # -----------------------------
+        # ERPNext Leave Details
+        # -----------------------------
+        leave_details = get_leave_details(
+            employee=employeeId,
+            date=as_on_date
+        ) or {}
+        # print(leave_details)
+        allocated = leave_details.get("leave_allocation")
+        lwps = leave_details.get("lwps")
+
+        if not allocated:
+            allocated = {}
+
+        if not lwps:
+            lwps = []
+
+        allowed_leave_types = []
+
+        for k in allocated.keys():
+            allowed_leave_types.append(k)
+
+        for l in lwps:
+            allowed_leave_types.append(l)
+
+        # -----------------------------
+        # OPEN LEAVES
+        # -----------------------------
+        open_leave_types = get_open_leave_types(employeeId)
+        if not open_leave_types:
+            open_leave_types = []
+
+        # -----------------------------
+        # Merge unique manually
+        # -----------------------------
+        final_leave_types = []
+
+        for lt in allowed_leave_types:
+            if lt not in final_leave_types:
+                final_leave_types.append(lt)
+        for lt in open_leave_types:
+            if lt not in final_leave_types:
+                final_leave_types.append(lt)
+        print(final_leave_types)
+
+    except Exception:
+
+        frappe.log_error(
+            "Mobile Leave API Crash",
+            frappe.get_traceback()
         )
 
-    except Exception as e:
-        frappe.log_error("Error While Getting Employee Leave Types", str(e))
-        frappe.clear_messages()
         frappe.local.response["message"] = {
             "success": False,
-            "message": f"Error while fetching leave types: {str(e)}",
+            "message": "Internal Server Error",
             "data": None
         }
 
     else:
+
         frappe.local.response["message"] = {
             "success": True,
-            "message": "Employee leave types fetched successfully",
-            "data": leave_types
+            "message": "Leave types fetched successfully",
+            "data": final_leave_types
         }
+
+
+
+@frappe.whitelist()
+def get_open_leave_types(employee=None):
+
+    from frappe.utils import getdate, add_years
+
+    only_for_female_leave_types = [
+        "Maternity Leave",
+        "Child Adoption Leave",
+        "Special Maternity Leave"
+    ]
+
+    if not employee:
+        return []
+
+    gender = frappe.db.get_value("Employee", employee, "gender")
+    joining_date = frappe.db.get_value("Employee", employee, "date_of_joining")
+
+    is_female = gender == "Female"
+
+    if is_female:
+
+        if joining_date and getdate() >= add_years(joining_date, 2):
+            return frappe.get_all(
+                "Leave Type",
+                filters={"custom_is_open_leave": 1},
+                pluck="name",
+                ignore_permissions=True
+            ) or []
+
+        return frappe.get_all(
+            "Leave Type",
+            filters={
+                "custom_is_open_leave": 1,
+                "name": ["not in", ["Special Maternity Leave"]]
+            },
+            pluck="name",
+            ignore_permissions=True
+        ) or []
+
+    return frappe.get_all(
+        "Leave Type",
+        filters={
+            "custom_is_open_leave": 1,
+            "name": ["not in", only_for_female_leave_types]
+        },
+        pluck="name",
+        ignore_permissions=True
+    ) or []
+
 
 @frappe.whitelist()
 def get_user_for_cc(emp_id):
@@ -252,13 +349,19 @@ def create(**args):
         }
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Leave Create API Error")
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Leave Create API Error"
+        )
+
+        clean_msg = re.sub(r"<[^>]*>", "", str(e))
+
         return {
             "success": False,
-            "message": str(e),
+            "message": clean_msg,
             "data": None
         }
-
 
 
 def upload_leave_files(leave_application, temp_files):
