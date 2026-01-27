@@ -91,10 +91,10 @@ frappe.ui.form.on("Shift Request", {
         if (frm.doc.from_date) {
             const today = frappe.datetime.get_today();
 
-            if (frm.doc.from_date < today) {
-                frappe.throw(__("You cannot select a previous date."));
-                frm.set_value("from_date", null);
-            }    
+            // if (frm.doc.from_date < today) {
+            //     frappe.throw(__("You cannot select a previous date."));
+            //     frm.set_value("from_date", null);
+            // }    
 
 
 
