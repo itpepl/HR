@@ -57,7 +57,8 @@ def get_attendance(
             "attendance_date",
             "in_time",
             "out_time",
-            "working_hours"
+            "working_hours",
+            "shift"
         ]
 
         # ✅ Total records (without limit)
@@ -75,7 +76,8 @@ def get_attendance(
             limit=limit,
             limit_start=limit_start
         )
-
+        for row in month_attendance_records:
+            row["working_hours_display"] = decimal_hours_to_hhmm(row.get("working_hours"))
     except Exception as e:
         frappe.log_error("Error While Fetching Attendance", str(e))
         frappe.clear_messages()
@@ -97,6 +99,17 @@ def get_attendance(
                 "records": month_attendance_records or []
             },
         }
+
+def decimal_hours_to_hhmm(hours):
+    if not hours:
+        return "00:00"
+
+    total_minutes = int(round(float(hours) * 60))
+
+    h = total_minutes // 60
+    m = total_minutes % 60
+
+    return f"{h:02d}:{m:02d}"
 
 @frappe.whitelist()
 def get_attendance_calendar(employeeId, date):
@@ -134,7 +147,8 @@ def get_attendance_calendar(employeeId, date):
                 "out_time",
                 "working_hours",
                 "leave_type",
-                "half_day_status"
+                "half_day_status",
+                "shift"
             ]
         )
 
@@ -147,7 +161,6 @@ def get_attendance_calendar(employeeId, date):
         # HARD-CODED LEAVE TYPE SHORT CODES
         # -----------------------------
         leave_map = {
-            "Casual Leave For Probation": "CLP",
             "Medical Emergency Leave": "MEL",
             "Special Maternity Leave": "SML",
             "Maternity Leave": "ML",
@@ -189,7 +202,8 @@ def get_attendance_calendar(employeeId, date):
                 "in_time": None,
                 "out_time": None,
                 "working_hours": 0,
-                "other_half_status": None
+                "other_half_status": None,
+                "shift":None
             }
 
             # -----------------------------
@@ -233,10 +247,13 @@ def get_attendance_calendar(employeeId, date):
                 # ✅ ABSENT
                 elif record.status == "Absent":
                     day_data["status"] = "A"
-
+                elif record.status == "Partially":
+                    day_data["status"] = "PR"
+                raw_hours = record.working_hours or 0
                 day_data["in_time"] = record.in_time
                 day_data["out_time"] = record.out_time
-                day_data["working_hours"] = record.working_hours or 0
+                day_data["working_hours"] = decimal_hours_to_hhmm(raw_hours) or 0
+                day_data["shift"]=record.shift
 
             # -----------------------------
             # PAST DATE WITHOUT ATTENDANCE
@@ -532,7 +549,6 @@ def attendance_status_list():
 
     # Hardcoded leave types from your Leave Type DocType
     leave_types = [
-        {"status": "Casual Leave For Probation", "color": "#007bff", "code": "CLP"},   # Blue
         {"status": "Medical Emergency Leave", "color": "#17a2b8", "code": "MEL"},      # Teal
         {"status": "Special Maternity Leave", "color": "#6610f2", "code": "SML"},      # Purple
         {"status": "Maternity Leave", "color": "#6f42c1", "code": "ML"},               # Dark Purple

@@ -18,6 +18,24 @@ frappe.ui.form.on("Attendance Request", {
 
         add_reason_option_based_on_role(frm);
     },
+    validate: function (frm) {
+    if (frm.doc.custom_shift_in_time && frm.doc.custom_shift_in_out) {
+
+        let in_time = frappe.datetime.str_to_obj(frm.doc.custom_shift_in_time);
+        let out_time = frappe.datetime.str_to_obj(frm.doc.custom_shift_in_out);
+        console.log(in_time,in_time)
+        if (out_time < in_time) {
+
+            frappe.msgprint({
+                title: __("Invalid Shift Time"),
+                message: __("Shift Out Time cannot be earlier than Shift In Time."),
+                indicator: "red"
+            });
+
+            frappe.validated = false;
+        }
+    }
+    },
     refresh: function(frm) {
         add_reason_option_based_on_role(frm);
     },
