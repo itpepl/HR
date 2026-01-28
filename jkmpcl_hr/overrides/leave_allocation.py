@@ -44,11 +44,13 @@ def custom_validate_allocation_overlap(self):
 class CustomLeaveAllocation(LeaveAllocation):
 	@frappe.whitelist()
 	def set_total_leaves_allocated(self):
+    
 		self.unused_leaves = flt(
 			get_carry_forwarded_leaves(self.employee, self.leave_type, self.from_date, self.carry_forward),
 			self.precision("unused_leaves"),
 		)
 
+		# if self.employee == "0100":
 		self.total_leaves_allocated = flt(
 			flt(self.unused_leaves) + flt(self.new_leaves_allocated) + flt(self.custom_opening_balance),
 			self.precision("total_leaves_allocated"),
@@ -66,6 +68,29 @@ class CustomLeaveAllocation(LeaveAllocation):
 		):
 			frappe.throw(_("Total leaves allocated is mandatory for Leave Type {0}").format(self.leave_type))
 		
+	def on_update_after_submit(self):
+		if self.has_value_changed("new_leaves_allocated"):
+			self.validate_earned_leave_update()
+			self.validate_against_leave_applications()
+
+			# recalculate total leaves  
+			self.total_leaves_allocated = flt(self.unused_leaves) + flt(self.new_leaves_allocated) + flt(self.custom_opening_balance)
+			# run required validations again since total leaves are being updated
+			self.validate_leave_days_and_dates()
+
+			leaves_to_be_added = flt(
+				((self.new_leaves_allocated + self.custom_opening_balance) - self.get_existing_leave_count()),
+				self.precision("new_leaves_allocated"),
+			)
+
+			args = {
+				"leaves": leaves_to_be_added,
+				"from_date": self.from_date,
+				"to_date": self.to_date,
+				"is_carry_forward": 0,
+			}
+			create_leave_ledger_entry(self, args, True)
+			self.db_update()
 
 	def create_leave_ledger_entry(self, submit=True):
 		if self.unused_leaves:

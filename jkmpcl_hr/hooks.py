@@ -49,7 +49,8 @@ doctype_js = {
                 "Attendance Request": "public/js/attendance_request.js",
                 "Shift Request": "public/js/shift_request.js",
                 "HR Settings":"public/js/hr_settings.js",
-                "Leave Application":"public/js/leave_application.js"
+                "Leave Application":"public/js/leave_application.js",
+                "Leave Allocation": "public/js/leave_allocation.js"
             }
 # doctype_list_js = {"doctype" : "public/js/attendance_request_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
