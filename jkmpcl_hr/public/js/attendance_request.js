@@ -1,6 +1,5 @@
 frappe.ui.form.on("Attendance Request", {
     onload: function(frm) {
-        add_reason_option_based_on_role(frm);
 
         if (!frm.doc.employee) {
             frappe.call({
@@ -16,11 +15,14 @@ frappe.ui.form.on("Attendance Request", {
         if (!frm.doc.from_date) {
             frm.set_value("from_date", frappe.datetime.get_today());
         }
+
+        add_reason_option_based_on_role(frm);
     },
     refresh: function(frm) {
         add_reason_option_based_on_role(frm);
     },
     employee: function(frm) {
+        add_reason_option_based_on_role(frm);
         update_manual_punch_note(frm);
         set_custom_shift_type(frm);
     },
@@ -116,6 +118,7 @@ frappe.ui.form.on("Attendance Request", {
 
 
 async function add_reason_option_based_on_role(frm) {
+
     let res = await frappe.call({
         method: "jkmpcl_hr.overrides.attendance_request.get_system_error_window"
     });
@@ -132,7 +135,7 @@ async function add_reason_option_based_on_role(frm) {
 
     let now = new Date();
 
-    let options = ["", "Manual Punch", "Field Visit"];
+    // let options = ["", "Miss Punch", "Field Visit"];
     let show_system_error = false;
 
     // Condition 1 → Everyone during window
@@ -144,8 +147,30 @@ async function add_reason_option_based_on_role(frm) {
         show_system_error = true;
     }
 
+    let options = [""];
+
     if (show_system_error) {
         options.push("System Error");
+    }
+
+    let attendance_source = null;
+
+    if (frm.doc.employee) {
+        let emp = await frappe.db.get_value(
+            "Employee",
+            frm.doc.employee,
+            "custom_attendance_source"
+        );
+        attendance_source = emp.message.custom_attendance_source;
+    }
+    console.log("attendance_source:", attendance_source);
+    console.log(options);
+
+    if (attendance_source === "Biometric") {
+        options.push("Miss Punch", "Field Visit");
+    } 
+    else if (attendance_source === "Field" || attendance_source === "Punch") {
+        options.push("Miss Punch");
     }
 
     frm.set_df_property("reason", "options", options);
@@ -153,7 +178,7 @@ async function add_reason_option_based_on_role(frm) {
 
 
 function update_manual_punch_note(frm) {
-    if (!frm.doc.employee || !frm.doc.from_date || frm.doc.reason !== "Manual Punch" ||  !frm.doc.custom_punch_type ) {
+    if (!frm.doc.employee || !frm.doc.from_date || frm.doc.reason !== "Miss Punch" ||  !frm.doc.custom_punch_type ) {
         frm.set_value("custom_note", "");
         frm.refresh_field("custom_note");
         return;

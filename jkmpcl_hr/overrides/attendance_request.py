@@ -962,7 +962,7 @@ def get_attendance_status(working_hours, shift_details):
 
 @frappe.whitelist()
 def get_manual_punch_note_html(employee, from_date, current_punch_type=None, current_name=None):
-    """Get HTML note for manual punch limit status, exclude current doc from existing and include current punch once."""
+    """Get HTML note for miss punch limit status, exclude current doc from existing and include current punch once."""
     if not employee or not from_date:
         return {"count": 0, "html": ""}
 
@@ -979,7 +979,7 @@ def get_manual_punch_note_html(employee, from_date, current_punch_type=None, cur
         pt = str(pt).strip().lower()
         return 2 if pt == "both" else (1 if pt in ("in", "out") else 0)
 
-    filters = {"employee": employee, "reason": "Manual Punch", "docstatus": ["<", 2]}
+    filters = {"employee": employee, "reason": "Miss Punch", "docstatus": ["<", 2]}
     # exclude current doc if provided
     if current_name:
         filters["name"] = ["!=", current_name]
@@ -1006,7 +1006,7 @@ def get_manual_punch_note_html(employee, from_date, current_punch_type=None, cur
     html = ""
 
     if manual_punch_limit and count > manual_punch_limit:
-        note = _("Manual Punch limit exceeded for {0}-{1}. Count: {2}/{3}").format(year, str(month).zfill(2), count, manual_punch_limit)
+        note = _("Miss Punch limit exceeded for {0}-{1}. Count: {2}/{3}").format(year, str(month).zfill(2), count, manual_punch_limit)
         html = '<div style="color:#fff;background-color:#d32f2f;padding:12px;border-radius:4px;font-weight:700;">⚠️ {0}</div>'.format(frappe.utils.escape_html(note))
 
     return {"count": count, "html": html}
