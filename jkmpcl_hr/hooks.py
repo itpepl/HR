@@ -54,7 +54,9 @@ doctype_js = {
 # doctype_list_js = {"doctype" : "public/js/attendance_request_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
-
+doctype_list_js = {
+    "Attendance": "public/js/attendance_list.js"
+}
 # Svg Icons
 # ------------------
 # include app icons in desk
@@ -139,7 +141,8 @@ doctype_js = {
 override_doctype_class = {
     "Attendance Request": "jkmpcl_hr.overrides.attendance_request.AttendanceRequest",
     "Shift Request":"jkmpcl_hr.overrides.shift_request_override.CustomShiftRequest",
-    "Leave Allocation": "jkmpcl_hr.overrides.leave_allocation.CustomLeaveAllocation"
+    "Leave Allocation": "jkmpcl_hr.overrides.leave_allocation.CustomLeaveAllocation",
+    "Attendance": "jkmpcl_hr.overrides.attendance.Attendance"
 }
 
 # Document Events

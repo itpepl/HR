@@ -240,17 +240,17 @@ def get_employee_leave_type(employee):
 # MAIN SCHEDULER METHOD
 # =========================================================
 @frappe.whitelist(allow_guest=True)
-def run_attendance_from_to(from_date,to_date):
-# def run_attendance_from_to():
-    if not from_date or not to_date:
-        frappe.throw("From Date and To Date are required")
+# def run_attendance_from_to(from_date,to_date):
+def run_attendance_from_to():
+    # if not from_date or not to_date:
+    #     frappe.throw("From Date and To Date are required")
 
 
     
-    # from_date="2026-01-27"
-    # to_date="2026-01-27"
-    from_date = getdate(from_date)
-    to_date = getdate(to_date)
+    from_date="2026-01-19"
+    to_date="2026-01-19"
+    # from_date = getdate(from_date)
+    # to_date = getdate(to_date)
 
     current_date = from_date
 
@@ -288,7 +288,6 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
             filters={"status": "Active"},
             pluck="name"
         )
-    print("em",employees)
 
     for emp in employees:
         try:
@@ -375,6 +374,7 @@ def run_daily_attendance(att_date=None,only_for_jammu=False):
                     last_checkin_id,
                     skip_shift_time_rules=True
                 )
+                continue
                 
             
             if shift_custom_type == "Night":
@@ -570,6 +570,7 @@ def get_24_hour_working_hours(employee, date, shift_type):
     if not shift:
         return None, None, None, None, 0, 0
 
+        
     is_24_hour = shift.custom_shift_type == "24 hours"
     shift_start, shift_end = get_24_hour_shift_window(
         date,
@@ -586,6 +587,7 @@ def get_24_hour_working_hours(employee, date, shift_type):
           AND time < %s
         ORDER BY time ASC
     """, (employee, shift_start, shift_end), as_dict=True)
+
     if not logs:
         return None, None, None, None, 0, 0 
 
@@ -595,7 +597,8 @@ def get_24_hour_working_hours(employee, date, shift_type):
     last_out = logs[-1]["time"]
 
     working_hours = (last_out - first_in).total_seconds() / 3600
-    print(working_hours,first_in,last_out,"working_hoursworking_hoursworking_hours")
+    if employee=="10006":
+        print("oo",logs,working_hours)
     return (
         first_in,
         last_out,
@@ -816,10 +819,6 @@ def create_or_update_attendance(
             ],
             as_dict=True
         )
-
-        # --------------------------------------------------
-        # HALF DAY LEAVE CHECK
-        # --------------------------------------------------
         leave = frappe.db.get_value(
             "Leave Application",
             {
@@ -838,12 +837,13 @@ def create_or_update_attendance(
         )
 
         late_entry = 0
-
+        single_checkin = False
         # --------------------------------------------------
         # RESOLVE CHECKINS
         # --------------------------------------------------
         if first_checkin_id and last_checkin_id:
             if first_checkin_id == last_checkin_id:
+                single_checkin = True
                 single_time = frappe.db.get_value(
                     "Employee Checkin",
                     first_checkin_id,
@@ -882,8 +882,8 @@ def create_or_update_attendance(
 
         if is_half_day_leave:
             status = "Half Day"
-
-
+        if single_checkin:
+            status = "Partially"
         if status != "Absent":
             if in_time and out_time and not skip_shift_time_rules:
 
@@ -902,7 +902,8 @@ def create_or_update_attendance(
                         late_entry = 1
                         status = "Half Day"
 
-
+        if employee=="10006":
+            print(employee,in_time,out_time,status,working_hours)
         attendance_name = frappe.db.exists(
             "Attendance",
             {
@@ -938,42 +939,41 @@ def create_or_update_attendance(
             },
             update_modified=False
         )
-
-
+        
         else:
-            att = frappe.get_doc({
-            "doctype": "Attendance",
-            "employee": employee,
-            "employee_name": employee_details.employee_name,
-            "department": employee_details.department,
-            "company": employee_details.company,
-            "attendance_date": date,
-            "shift": shift_type,
-            "in_time": in_time,
-            "out_time": out_time,
-            "working_hours": working_hours,
-            "status": status,
-            "late_entry": late_entry,
-            "custom_branch": employee_details.branch,
-        })
 
+            att_name = frappe.generate_hash(length=12)
 
-            att.flags.ignore_permissions = True
-            att.flags.ignore_mandatory = True
-            att.flags.ignore_validate = True
-            att.flags.ignore_links = True
-            att.flags.ignore_on_submit_validate = True
-            att.flags.ignore_workflow = True
+            frappe.db.sql("""
+                INSERT INTO `tabAttendance`
+                (name, employee, employee_name, department, company,
+                attendance_date, shift, in_time, out_time,
+                working_hours, status, late_entry, custom_branch,
+                docstatus, creation, modified, owner, modified_by)
 
-            att.insert(
-                ignore_permissions=True,
-                ignore_mandatory=True
-            )
+                VALUES (%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,
+                        %s,%s,%s,%s,
+                        1, NOW(), NOW(), %s, %s)
+            """, (
+                att_name,
+                employee,
+                employee_details.employee_name,
+                employee_details.department,
+                employee_details.company,
+                date,
+                shift_type,
+                in_time,
+                out_time,
+                working_hours,
+                status,
+                late_entry,
+                employee_details.branch,
+                frappe.session.user,
+                frappe.session.user,
+            ))
 
-            att.submit()
-            att_name = att.name
-
-
+            frappe.db.commit()
         if first_checkin_id:
             frappe.db.set_value(
                 "Employee Checkin",
@@ -1121,7 +1121,7 @@ def deduct_leave_by_priority(employee, date, status, attendance):
         att.db_set({
             "custom_penalty_leave_type": leave_type,
             "custom_penalty_leave_count": total_penalty_days,
-            "custom_is_penalize": 1
+            "custom_is_penalize": -1
         })
 
         create_leave_ledger(
@@ -2103,3 +2103,375 @@ def set_approvers_in_employee():
             f"error_set_approvers_in_employee",
             frappe.get_traceback(),
         )
+
+
+
+
+def get_employee_from_user():
+    return frappe.db.get_value(
+        "Employee",
+        {"user_id": frappe.session.user, "status": "Active"},
+        ["name", "branch"],
+        as_dict=True,
+    )
+def get_employees_by_branch(branch):
+    return frappe.get_all(
+        "Employee",
+        filters={
+            "status": "Active",
+            "branch": branch,
+        },
+        pluck="name",
+    )
+@frappe.whitelist()
+def run_attendance_for_my_branch(att_date):
+
+    if not att_date:
+        frappe.throw("Attendance Date required")
+
+    emp = get_employee_from_user()
+
+    if not emp:
+        frappe.throw("No Employee linked with this user")
+
+    branch = emp.branch
+
+    employees = get_employees_by_branch(branch)
+
+    for e in employees:
+        process_employee_attendance(e, getdate(att_date))
+
+    frappe.db.commit()
+
+    return {
+        "success": True,
+        "message": f"Attendance processed for branch: {branch}"
+    }
+
+def process_employee_attendance(employee, att_date):
+    try:
+        shift_type = get_employee_shift(employee, att_date)
+
+        if not shift_type:
+            log_attendance_error(employee, att_date, "Shift not assigned")
+            return
+
+        shift = frappe.db.get_value(
+            "Shift Type",
+            shift_type,
+            [
+                "start_time",
+                "end_time",
+                "late_entry_grace_period",
+                "working_hours_threshold_for_half_day",
+                "working_hours_threshold_for_absent",
+            ],
+            as_dict=True,
+        )
+
+        is_holiday = is_holiday_or_weekoff(employee, att_date)
+
+        logs = frappe.db.sql(
+            """
+            SELECT name, time
+            FROM `tabEmployee Checkin`
+            WHERE employee=%s
+            AND DATE(time)=%s
+            ORDER BY time ASC
+            """,
+            (employee, att_date),
+            as_dict=True,
+        )
+
+        # -----------------------------------
+        # NO LOGS
+        # -----------------------------------
+        if not logs:
+            if is_holiday:
+                return
+
+            save_attendance_record(
+                employee,
+                att_date,
+                shift_type,
+                None,
+                None,
+                0,
+                {"status": "Absent", "late_entry": 0},
+            )
+            return
+
+        # -----------------------------------
+        # SINGLE LOG
+        # -----------------------------------
+        if len(logs) == 1:
+            if is_holiday:
+                return
+
+            save_attendance_record(
+                employee,
+                att_date,
+                shift_type,
+                logs[0]["time"],
+                None,
+                0,
+                {"status": "Partially", "late_entry": 0},
+                logs[0]["name"],
+                logs[0]["name"],
+            )
+            return
+
+        # -----------------------------------
+        # MULTIPLE LOGS
+        # -----------------------------------
+        in_time = normalize_to_minute(logs[0]["time"])
+        out_time = normalize_to_minute(logs[-1]["time"])
+
+        if in_time and out_time and out_time > in_time:
+            working_seconds = (out_time - in_time).total_seconds()
+            working_hours = working_seconds / 3600
+        else:
+            working_hours = 0
+
+        result = calculate_attendance_result(
+            employee,
+            att_date,
+            shift,
+            in_time,
+            out_time,
+            working_hours,
+            logs[0]["name"],
+            logs[-1]["name"],
+            skip_shift_time_rules=False,
+        )
+
+        save_attendance_record(
+            employee,
+            att_date,
+            shift_type,
+            in_time,
+            out_time,
+            working_hours,
+            result,
+            logs[0]["name"],
+            logs[-1]["name"],
+        )
+
+    except Exception as e:
+        log_attendance_error(employee, att_date, "Process Attendance Failed", e)
+
+def revert_penalty_leave(attendance_name):
+    att = frappe.get_doc("Attendance", attendance_name)
+
+    # If attendance was not penalized, nothing to revert
+    if not att.custom_is_penalize:
+        return
+
+    leave_type = att.custom_penalty_leave_type
+    leave_count = att.custom_penalty_leave_count
+    attendance_date = att.attendance_date
+
+    # 🔥 Delete related Leave Ledger Entry
+    frappe.db.delete(
+        "Leave Ledger Entry",
+        {
+            "employee": att.employee,
+            "leave_type": leave_type,
+            "from_date": attendance_date,
+            "custom_is_penalty": 1,              # ✅ recommended if you have this field
+            "transaction_type": "Attendance",
+            "transaction_name": att.name,
+        }
+    )
+
+    # 🔄 Reset Attendance penalty fields
+    att.db_set({
+        "custom_penalty_leave_type": None,
+        "custom_penalty_leave_count": 0,
+        "custom_is_penalize": 0
+    })
+
+    # ✅ Recalculate leave balance (important)
+    frappe.db.commit()
+
+def save_attendance_record(
+    employee,
+    date,
+    shift_type,
+    in_time,
+    out_time,
+    working_hours,
+    result,
+    first_checkin_id=None,
+    last_checkin_id=None,
+):
+    employee_details = frappe.db.get_value(
+        "Employee",
+        employee,
+        ["employee_name", "department", "company", "branch"],
+        as_dict=True,
+    )
+
+    attendance_name = frappe.db.exists(
+        "Attendance",
+        {
+            "employee": employee,
+            "attendance_date": date,
+            "docstatus": ["!=", 2],
+        },
+    )
+
+    old_status = None
+    if attendance_name:
+        old_status = frappe.db.get_value("Attendance", attendance_name, "status")
+
+    values = {
+        "in_time": in_time,
+        "out_time": out_time,
+        "working_hours": working_hours,
+        "status": result["status"],
+        "late_entry": result["late_entry"],
+        "employee_name": employee_details.employee_name,
+        "department": employee_details.department,
+        "company": employee_details.company,
+        "custom_branch": employee_details.branch,
+        "shift": shift_type,
+    }
+
+    # ----------------------------
+    # UPDATE
+    # ----------------------------
+    if attendance_name:
+        frappe.db.set_value(
+            "Attendance",
+            attendance_name,
+            values,
+            update_modified=False,
+        )
+
+        att_name = attendance_name
+
+    # ----------------------------
+    # INSERT
+    # ----------------------------
+    else:
+        att_name = frappe.generate_hash(length=12)
+
+        frappe.db.sql(
+            """
+            INSERT INTO `tabAttendance`
+            (name, employee, employee_name, department, company,
+             attendance_date, shift, in_time, out_time,
+             working_hours, status, late_entry, custom_branch,
+             docstatus, creation, modified, owner, modified_by)
+
+            VALUES (%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,
+                    %s,%s,%s,%s,
+                    1, NOW(), NOW(), %s, %s)
+            """,
+            (
+                att_name,
+                employee,
+                employee_details.employee_name,
+                employee_details.department,
+                employee_details.company,
+                date,
+                shift_type,
+                in_time,
+                out_time,
+                working_hours,
+                result["status"],
+                result["late_entry"],
+                employee_details.branch,
+                frappe.session.user,
+                frappe.session.user,
+            ),
+        )
+
+    # ----------------------------
+    # LINK CHECKINS
+    # ----------------------------
+    if first_checkin_id:
+        frappe.db.set_value(
+            "Employee Checkin",
+            first_checkin_id,
+            "attendance",
+            att_name,
+            update_modified=False,
+        )
+
+    if last_checkin_id and last_checkin_id != first_checkin_id:
+        frappe.db.set_value(
+            "Employee Checkin",
+            last_checkin_id,
+            "attendance",
+            att_name,
+            update_modified=False,
+        )
+
+    # ----------------------------
+    # REVERT LEAVE IF UPGRADED
+    # ----------------------------
+    if old_status in ("Absent", "Half Day") and result["status"] == "Present":
+        revert_penalty_leave(att_name)
+
+    return att_name
+
+
+
+def calculate_attendance_result(
+    employee,
+    date,
+    shift,
+    in_time,
+    out_time,
+    working_hours,
+    first_checkin_id=None,
+    last_checkin_id=None,
+    skip_shift_time_rules=False,
+):
+
+    result = {
+        "status": "Absent",
+        "late_entry": 0,
+    }
+
+    # ---------------------
+    # SINGLE CHECKIN
+    # ---------------------
+    if not out_time:
+        result["status"] = "Partially"
+        return result
+
+    half_day_hours = float(shift.working_hours_threshold_for_half_day or 8)
+    absent_hours = float(shift.working_hours_threshold_for_absent or 3)
+
+    if working_hours <= absent_hours:
+        result["status"] = "Absent"
+    elif working_hours < half_day_hours:
+        result["status"] = "Half Day"
+    else:
+        result["status"] = "Present"
+
+    # ---------------------
+    # Late entry
+    # ---------------------
+    if (
+        result["status"] != "Absent"
+        and not skip_shift_time_rules
+        and in_time
+        and shift.late_entry_grace_period
+    ):
+        shift_start = combine_datetime(date, shift.start_time)
+
+        latest_allowed = add_to_date(
+            shift_start,
+            minutes=int(shift.late_entry_grace_period),
+        )
+
+        if in_time > latest_allowed:
+            result["late_entry"] = 1
+            result["status"] = "Half Day"
+
+    return result

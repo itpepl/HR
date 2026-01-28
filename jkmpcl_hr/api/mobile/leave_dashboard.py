@@ -81,8 +81,7 @@ def get_leave_balance(employeeId, as_on_date=None):
             # "Leave Without Pay",
             "Maternity Leave",
             "Special Maternity Leave",
-            "Child Adoption Leave",
-            "Casual Leave For Probation"
+            "Child Adoption Leave"
         ]
 
         FEMALE_ONLY_LEAVES = {
@@ -96,8 +95,7 @@ def get_leave_balance(employeeId, as_on_date=None):
             # "Leave Without Pay",
             "Maternity Leave",
             "Special Maternity Leave",
-            "Child Adoption Leave",
-            "Casual Leave For Probation"
+            "Child Adoption Leave"
         }
 
         employee_gender = frappe.db.get_value(
