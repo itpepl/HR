@@ -24,7 +24,8 @@ status_map = {
 	"Absent": "A",
 	"Half Day/Other Half Absent": "HD/A",
 	"Half Day/Other Half Present": "HD/P",
-	"Work From Home": "WFH",
+	"Partially": "PR",
+	# "Work From Home": "WFH",
 	# "Half Day": "HD",
 	"On Leave": "L",
 	"Holiday": "H",
@@ -84,7 +85,7 @@ def get_message() -> str:
 		"red",
 		"orange",
 		"#914EE3",
-		"green",
+		"#3187D8",
 		"#3187D8",
 		"#878787",
 		"#878787",
@@ -884,7 +885,7 @@ def merge_shift_attendance_for_day(entries: list[dict]) -> str | None:
 	leave_abbr = get_leave_type_abbr(leave_types[0]) if leave_types else None
 
 	# Present overrides everything
-	if any(s in ("Present", "Work From Home") for s in statuses):
+	if any(s in ("Present") for s in statuses):
 		return "Present"
 
 	# Half Day + Leave Type
@@ -907,6 +908,9 @@ def merge_shift_attendance_for_day(entries: list[dict]) -> str | None:
 
 	if "Half Day" in statuses:
 		return "<span style='color:orange'>HD</span>"
+
+	if "Partially" in statuses:
+			return f"<span style='color:#3187D8'>PR</span>"
 
 	if "On Leave" in statuses:
 		return "On Leave"
