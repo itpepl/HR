@@ -90,7 +90,6 @@ def get_leave_types(employeeId, as_on_date=None):
         for lt in open_leave_types:
             if lt not in final_leave_types:
                 final_leave_types.append(lt)
-        print(final_leave_types)
 
     except Exception:
 
