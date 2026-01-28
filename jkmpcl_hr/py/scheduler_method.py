@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import getdate, today,add_days,now_datetime,add_to_date, date_diff
+from frappe.utils import getdate, today,add_days,now_datetime,add_to_date, date_diff, get_last_day
 from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
 from frappe.utils import get_datetime
@@ -1916,17 +1916,30 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
             today_date = getdate(dt)
         else:
             today_date = getdate()
+            
         # today_date = getdate()
+        monthly_sl = flt(0.58)
         allocate_after_days = 52
         sl_leave_type = "Sick Leave"
 
+        month_end_date = getdate(get_last_day(today_date))
+        
+        
         if today_date.month < 4:
             current_fy_start = getdate(f"{today_date.year - 1}-04-01")
             current_fy_end   = getdate(f"{today_date.year}-03-31")
+            
         else:
             current_fy_start = getdate(f"{today_date.year}-04-01")
             current_fy_end   = getdate(f"{today_date.year + 1}-03-31")
-
+            
+        
+        
+        print(f"\n\n {today_date} {month_end_date} {current_fy_start} {current_fy_end}\n\n")
+        if today_date != month_end_date and today_date != current_fy_start:
+            print(f"\n\n  False \n\n")
+            return
+        print(f"\n\n  True \n\n")
         new_financial_year = today_date == current_fy_start
 
         if frappe.db.get_value("Leave Type", sl_leave_type, "custom_leave_type") != "Sick Leave":
@@ -1974,26 +1987,28 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
                     last_alloc_date = joining_date
 
                 
+                already_allocated_this_month = True if last_alloc_date and last_alloc_date.year == today_date.year and last_alloc_date.month == today_date.month else False
+            
                 if not new_financial_year:
-                    if current_alloc:
-                        if date_diff(today_date, last_alloc_date) >= allocate_after_days:
-                            alloc_doc = frappe.get_doc("Leave Allocation", current_alloc[0].name)
-                            alloc_doc.new_leaves_allocated += 1
-                            alloc_doc.custom_last_allocation_date = today_date
-                            alloc_doc.save(ignore_permissions=True)
-                    else:
-                        if date_diff(today_date, joining_date) >= allocate_after_days:
-                            new_alloc = frappe.get_doc({
-                                "doctype": "Leave Allocation",
-                                "employee": emp.name,
-                                "leave_type": sl_leave_type,
-                                "from_date": today_date,
-                                "to_date": effective_to_date,
-                                "new_leaves_allocated": 1,
-                                "custom_last_allocation_date": today_date,
-                            })
-                            new_alloc.insert(ignore_permissions=True)
-                            new_alloc.submit()
+                    if current_alloc and not already_allocated_this_month:
+                        
+                        alloc_doc = frappe.get_doc("Leave Allocation", current_alloc[0].name)
+                        alloc_doc.new_leaves_allocated = flt(alloc_doc.new_leaves_allocated) + monthly_sl
+                        alloc_doc.custom_last_allocation_date = today_date
+                        alloc_doc.save(ignore_permissions=True)
+                    elif not current_alloc:
+                        
+                        new_alloc = frappe.get_doc({
+                            "doctype": "Leave Allocation",
+                            "employee": emp.name,
+                            "leave_type": sl_leave_type,
+                            "from_date": today_date,
+                            "to_date": effective_to_date,
+                            "new_leaves_allocated": monthly_sl,
+                            "custom_last_allocation_date": today_date,
+                        })
+                        new_alloc.insert(ignore_permissions=True)
+                        new_alloc.submit()
                 else:
                     prev_fy_end = getdate(f"{today_date.year}-03-31")
                     last_year_balance = get_leave_balance_on(
