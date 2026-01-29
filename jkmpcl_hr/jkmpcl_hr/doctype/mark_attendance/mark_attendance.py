@@ -3,7 +3,7 @@
 
 import frappe
 from frappe.model.document import Document
-from jkmpcl_hr.py.scheduler_method import run_attendance_for_my_branch
+from jkmpcl_hr.py.scheduler_method import run_attendance_for_my_branch,run_daily_attendance
 
 # class MarkAttendance(Document):
 # 	pass
@@ -16,7 +16,7 @@ class MarkAttendance(Document):
             frappe.throw("Please select Attendance Date first")
 
         # Call scheduler logic manually
-        run_attendance_for_my_branch(att_date=self.attendance_date)
+        run_daily_attendance(att_date=self.attendance_date)
 
         return {
             "success": True,
