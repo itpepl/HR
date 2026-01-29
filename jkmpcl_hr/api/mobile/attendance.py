@@ -58,7 +58,8 @@ def get_attendance(
             "in_time",
             "out_time",
             "working_hours",
-            "shift"
+            "shift",
+            "half_day_status"
         ]
 
         # ✅ Total records (without limit)
@@ -237,7 +238,11 @@ def get_attendance_calendar(employeeId, date):
                 elif record.status == "Half Day":
                     short_code = leave_map.get(record.leave_type) or "HD"
                     day_data["status"] = short_code
-                    day_data["other_half_status"] = "HD"
+                    existing = day_data.get("other_half_status")
+                    if existing in ["Present", "Absent"]:
+                        day_data["other_half_status"] = existing
+                    else:
+                        day_data["other_half_status"] = "P"
 
                 # ✅ ON LEAVE
                 elif record.status == "On Leave":

@@ -592,8 +592,7 @@ def revert_penalty_leave(attendance_name):
             "leave_type": leave_type,
             "from_date": attendance_date,
             "custom_is_penalty": 1,              # ✅ recommended if you have this field
-            "transaction_type": "Attendance",
-            "transaction_name": att.name,
+            "custom_attendance": att.name,
         }
     )
 
