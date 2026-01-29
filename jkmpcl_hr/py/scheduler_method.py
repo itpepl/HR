@@ -240,17 +240,17 @@ def get_employee_leave_type(employee):
 # MAIN SCHEDULER METHOD
 # =========================================================
 @frappe.whitelist(allow_guest=True)
-# def run_attendance_from_to(from_date,to_date):
-def run_attendance_from_to():
-    # if not from_date or not to_date:
-    #     frappe.throw("From Date and To Date are required")
+def run_attendance_from_to(from_date,to_date):
+# def run_attendance_from_to():
+    if not from_date or not to_date:
+        frappe.throw("From Date and To Date are required")
 
 
     
-    from_date="2026-01-19"
-    to_date="2026-01-19"
-    # from_date = getdate(from_date)
-    # to_date = getdate(to_date)
+    # from_date="2026-01-19"
+    # to_date="2026-01-19"
+    from_date = getdate(from_date)
+    to_date = getdate(to_date)
 
     current_date = from_date
 
@@ -2198,9 +2198,6 @@ def process_employee_attendance(employee, att_date):
             as_dict=True,
         )
 
-        # -----------------------------------
-        # NO LOGS
-        # -----------------------------------
         if not logs:
             if is_holiday:
                 return
@@ -2216,9 +2213,6 @@ def process_employee_attendance(employee, att_date):
             )
             return
 
-        # -----------------------------------
-        # SINGLE LOG
-        # -----------------------------------
         if len(logs) == 1:
             if is_holiday:
                 return
@@ -2236,9 +2230,6 @@ def process_employee_attendance(employee, att_date):
             )
             return
 
-        # -----------------------------------
-        # MULTIPLE LOGS
-        # -----------------------------------
         in_time = normalize_to_minute(logs[0]["time"])
         out_time = normalize_to_minute(logs[-1]["time"])
 
@@ -2278,7 +2269,6 @@ def process_employee_attendance(employee, att_date):
 def revert_penalty_leave(attendance_name):
     att = frappe.get_doc("Attendance", attendance_name)
 
-    # If attendance was not penalized, nothing to revert
     if not att.custom_is_penalize:
         return
 
@@ -2286,7 +2276,6 @@ def revert_penalty_leave(attendance_name):
     leave_count = att.custom_penalty_leave_count
     attendance_date = att.attendance_date
 
-    # 🔥 Delete related Leave Ledger Entry
     frappe.db.delete(
         "Leave Ledger Entry",
         {
@@ -2299,14 +2288,12 @@ def revert_penalty_leave(attendance_name):
         }
     )
 
-    # 🔄 Reset Attendance penalty fields
     att.db_set({
         "custom_penalty_leave_type": None,
         "custom_penalty_leave_count": 0,
         "custom_is_penalize": 0
     })
 
-    # ✅ Recalculate leave balance (important)
     frappe.db.commit()
 
 def save_attendance_record(
@@ -2353,9 +2340,7 @@ def save_attendance_record(
         "shift": shift_type,
     }
 
-    # ----------------------------
-    # UPDATE
-    # ----------------------------
+
     if attendance_name:
         frappe.db.set_value(
             "Attendance",
@@ -2366,9 +2351,7 @@ def save_attendance_record(
 
         att_name = attendance_name
 
-    # ----------------------------
-    # INSERT
-    # ----------------------------
+
     else:
         att_name = frappe.generate_hash(length=12)
 
@@ -2404,9 +2387,7 @@ def save_attendance_record(
             ),
         )
 
-    # ----------------------------
-    # LINK CHECKINS
-    # ----------------------------
+
     if first_checkin_id:
         frappe.db.set_value(
             "Employee Checkin",
@@ -2425,9 +2406,7 @@ def save_attendance_record(
             update_modified=False,
         )
 
-    # ----------------------------
-    # REVERT LEAVE IF UPGRADED
-    # ----------------------------
+
     if old_status in ("Absent", "Half Day") and result["status"] == "Present":
         revert_penalty_leave(att_name)
 
@@ -2452,9 +2431,7 @@ def calculate_attendance_result(
         "late_entry": 0,
     }
 
-    # ---------------------
-    # SINGLE CHECKIN
-    # ---------------------
+
     if not out_time:
         result["status"] = "Partially"
         return result
@@ -2469,9 +2446,6 @@ def calculate_attendance_result(
     else:
         result["status"] = "Present"
 
-    # ---------------------
-    # Late entry
-    # ---------------------
     if (
         result["status"] != "Absent"
         and not skip_shift_time_rules
