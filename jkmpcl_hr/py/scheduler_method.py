@@ -1482,18 +1482,25 @@ Step     : {step}
 # ENTRY POINT (Scheduler – Daily) for Auto Comp-Off Creation
 # =========================================================
 
-def process_comp_off_scheduler():
+@frappe.whitelist()
+def process_comp_off_scheduler(comp_off_date=None):
     """
     Runs daily.
-    Checks only YESTERDAY.
+    Checks only comp_off_date.
     """
-    yesterday = add_days(getdate(), -1)
+
+    if not comp_off_date:
+        comp_off_date = add_days(getdate(), -1)
+    else:
+        comp_off_date = getdate(comp_off_date)
+
+    frappe.log_error("start_process_comp_off_scheduler", f"Scheduler Started FOR Date: {comp_off_date}")
 
     requests = frappe.get_all(
         "Off-Day Work Request",
         filters={
             "workflow_state": "Approved",
-            "date": yesterday,
+            "date": comp_off_date,
             "docstatus": 1,
             "comp_off_created": 0
         },
@@ -1523,10 +1530,12 @@ def process_working_day(req):
 
     attendance = get_attendance(req["employee"], req["date"])
     if not attendance:
+        frappe.log_error("start_process_comp_off_scheduler", f"Full day Attendance not found for employee: {req['date']} - {req['employee']}")
         return
 
     holiday = get_holiday_details(req["employee"], req["date"])
     if not holiday:
+        frappe.log_error("start_process_comp_off_scheduler", f"Holiday details not found for employee: {req['date']} - {req['employee']}")
         return
 
     # WO OR Normal Holiday OR RH+WO
