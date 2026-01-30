@@ -543,22 +543,21 @@ def update_attendance_direct_db(employee, date, in_time, out_time, working_hours
         }
     )
 
-    if status == "Half Day":
+    if status in ("Half Day", "Absent"):
+
         leave_type = get_employee_leave_type(employee)
+
         if leave_type:
-            lle = frappe.get_doc({
-                "doctype": "Leave Ledger Entry",
-                "employee": employee,
-                "leave_type": leave_type,
-                "from_date": date,
-                "to_date": date,
-                "leaves": -0.5,
-                "transaction_type": "Attendance",
-                "transaction_name": attendance_name,
-                "custom_is_penalize": 1
-            })
-            lle.insert(ignore_permissions=True)
-            lle.submit()
+            leave_days = 0.5 if status == "Half Day" else 1
+
+            create_leave_ledger(
+                employee=employee,
+                leave_type=leave_type,
+                date=date,
+                status=status,
+                attendance=attendance_name,
+                leave_days=leave_days,
+            )
 
     frappe.db.commit()
 
