@@ -305,7 +305,7 @@ def run_attendance_for_my_branch(att_date):
     }
 
 
-def run_daily_attendance(branch = None,att_date=None,only_for_jammu=False):
+def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
     
     frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")    
     if not att_date:
