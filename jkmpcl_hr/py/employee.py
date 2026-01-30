@@ -430,3 +430,83 @@ def update_cl_and_sl_after_confirmation(doc):
     except Exception as e:
         frappe.log_error("error_update_cl_and_sl_after_confirmation", frappe.get_traceback())
         frappe.throw(e)
+
+
+# ? ENQUEUE FUNCTION
+# ! jkmpcl_hr.py.employee.rename_selected_employees
+@frappe.whitelist()
+def rename_selected_employees(max_minutes=30):
+    """
+    Enqueue the rename job in the background.
+
+    Args:
+        employee_list (list | str): List of Employee IDs to process (can be JSON string)
+        max_minutes (int): Max minutes the background job can run
+    """
+    import json
+    from frappe.utils.background_jobs import enqueue
+
+
+    employee_list = frappe.db.get_list("Employee", "name", pluck='name')
+    # ? PARSE IF STRING
+    if isinstance(employee_list, str):
+        try:
+            employee_list = json.loads(employee_list)
+        except Exception:
+            frappe.throw("Invalid employee list format. Must be a valid JSON array.")
+
+    # ? ENQUEUE BACKGROUND JOB
+    enqueue(
+        "jkmpcl_hr.py.employee.rename_selected_employees_background",
+        employee_list=employee_list,
+        queue="long",
+        timeout=max_minutes * 60,
+    )
+    
+    # rename_selected_employees(employee_list)
+
+    return f"Rename job enqueued for {len(employee_list)} employees."
+
+
+def rename_selected_employees_background(employee_list):
+    """
+    Background job to rename employees, commit per employee, and log errors with traceback.
+    """
+    renamed_employees = []
+    frappe.log_error("rename_started", "Started")
+    for emp_id in employee_list:
+        try:
+            emp = frappe.get_doc("Employee", emp_id)
+            old_id = emp.name
+            new_id = f"{old_id}: {emp.employee_name}"
+
+            # Skip if new ID already exists
+            if frappe.db.exists("Employee", new_id):
+                continue
+
+            # Rename and commit immediately
+            frappe.rename_doc("Employee", old_id, new_id, force=True)
+            frappe.db.commit()
+
+            # Log success
+            frappe.log_error(
+                message=f"Renamed employee: {old_id}", title="Employee Renamed"
+            )
+            renamed_employees.append(old_id)
+
+        except Exception as e:
+            frappe.db.rollback()
+            frappe.log_error(
+                message=f"Failed to rename {emp_id}: {str(e)}\nTraceback:\n{frappe.get_traceback()}",
+                title="Employee Rename Failed",
+            )
+            continue
+    
+    # frappe.log_error("rename_ended")
+    
+    frappe.log_error(
+        message=f"Background rename job completed. Total renamed: {len(renamed_employees)}",
+        title="Employee Rename Job Completed",
+    )
+
+    return renamed_employees

@@ -5,13 +5,17 @@ from hrms.hr.doctype.leave_application.leave_application import get_leave_balanc
 
 
 
-def process_pl_after_payroll():
+@frappe.whitelist()
+def process_pl_after_payroll(dt=None):
 # def process_pl_after_payroll(payroll_entry, method=None):
     # start_date = payroll_entry.start_date
     # end_date = payroll_entry.end_date
     # fiscal_year = payroll_entry.fiscal_year
 
-    today = getdate(nowdate())
+    if dt:
+        today = getdate(dt)
+    else:
+        today = getdate(nowdate())
 
     if today.month == 1:
         prev_month_year = today.year - 1
