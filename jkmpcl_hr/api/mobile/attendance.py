@@ -169,7 +169,7 @@ def get_attendance_calendar(employeeId, date):
             "Privilege Leave": "PL",
             "Sick Leave": "SL",
             "Compensatory Off": "CO",
-            "Casual Leave": "CL"
+            "Casual Leave": "CL",
         }
 
         # -----------------------------

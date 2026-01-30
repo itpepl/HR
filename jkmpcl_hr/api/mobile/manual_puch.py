@@ -145,7 +145,7 @@ def request_type_list():
     return {
             "success": True,
             "message": "Request types fetched successfully",
-            "data": ["Manual Punch","Field Visit"]
+            "data": ["Miss Punch","Field Visit"]
         }
 
 
