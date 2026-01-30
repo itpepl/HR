@@ -349,8 +349,6 @@ def run_daily_attendance(branch = None,att_date=None,only_for_jammu=False):
             is_holiday = is_holiday_or_weekoff(emp, att_date)
             off_day_approved = has_approved_off_day_work(emp, att_date)
             is_holiday_work = is_holiday and off_day_approved
-            if employees=="PE011":
-                print("ooooooooooooooooooooooooooooooooooooooPE011",off_day_approved)
             if shift_custom_type == "24 hours":
                 
                 first_in, last_out,first_checkin_id, last_checkin_id, working_hours, log_count = (
@@ -862,8 +860,6 @@ def create_or_update_attendance(
 
         late_entry = 0
         single_checkin = False
-        if employee == "20015":
-            print("\n\n\n\n\n\n",first_checkin_id,last_checkin_id)
         if first_checkin_id and last_checkin_id:
             if first_checkin_id == last_checkin_id:
                 single_checkin = True
@@ -1048,8 +1044,11 @@ def create_or_update_attendance(
             )
 
 
-        if status in ["Absent", "Half Day","Partially"]:
+        # 🔥 Clear old penalty first if status changed
+        if old_status and old_status != status:
+            revert_penalty_leave(att_name)
 
+        if status in ["Absent", "Half Day", "Partially"]:
             if not is_half_day_leave:
                 deduct_leave_by_priority(
                     employee,
@@ -1058,9 +1057,10 @@ def create_or_update_attendance(
                     att_name
                 )
 
+
         
-        if old_status in ("Absent", "Half Day","Partially") and status == "Present":
-            revert_penalty_leave(att_name)
+        # if old_status in ("Absent", "Half Day","Partially") and status == "Present":
+        #     revert_penalty_leave(att_name)
         return att_name
         
     except Exception as e:
@@ -1140,7 +1140,11 @@ def deduct_leave_by_priority(employee, date, status, attendance):
         "Leave Without Pay"
     ]
 
-    total_penalty_days = 0.5 if status == "Half Day" else 1.0
+    if status == "Half Day":
+        total_penalty_days = 0.5
+    else:
+        total_penalty_days = 1.0   # Absent OR Partially
+
     remaining_days = total_penalty_days
 
     att = frappe.get_doc("Attendance", attendance)
