@@ -38,8 +38,8 @@ def set_approvers(doc):
     
     
 def after_insert(doc, event):
-    pass    
-    # allocate_cl_on_employee_creation(doc)
+    
+    allocate_cl_on_employee_creation(doc)
     
     if not doc.default_shift:
         return

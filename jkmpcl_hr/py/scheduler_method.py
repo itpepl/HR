@@ -1984,11 +1984,8 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
             
         
         
-        print(f"\n\n {today_date} {month_end_date} {current_fy_start} {current_fy_end}\n\n")
         if today_date != month_end_date and today_date != current_fy_start:
-            print(f"\n\n  False \n\n")
             return
-        print(f"\n\n  True \n\n")
         new_financial_year = today_date == current_fy_start
 
         if frappe.db.get_value("Leave Type", sl_leave_type, "custom_leave_type") != "Sick Leave":
@@ -2007,6 +2004,7 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
             try:
                 joining_date = getdate(emp.date_of_joining)
 
+                is_new_emp = True if joining_date.month == month_end_date.month else False
                 if emp.employment_type == "Contractual" and emp.contract_end_date:
                     if today_date > getdate(emp.contract_end_date):
                         continue
@@ -2046,6 +2044,13 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
                         alloc_doc.custom_last_allocation_date = today_date
                         alloc_doc.save(ignore_permissions=True)
                     elif not current_alloc:
+                        if is_new_emp:
+                            total_days = month_end_date.day
+                            remaining_days = total_days - joining_date.day + 1
+                            
+                            monthly_sl = flt((remaining_days / total_days) * monthly_sl, 2)
+                            # monthly_sl = 
+                        
                         
                         new_alloc = frappe.get_doc({
                             "doctype": "Leave Allocation",
