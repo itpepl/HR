@@ -1,0 +1,30 @@
+{
+ "attach_files": "",
+ "attach_print": 0,
+ "channel": "Email",
+ "condition": "",
+ "condition_type": "Python",
+ "creation": "2025-12-12 22:41:44.412221",
+ "days_in_advance": 0,
+ "docstatus": 0,
+ "doctype": "Notification",
+ "document_type": "Shift Request",
+ "enabled": 1,
+ "event": "Custom",
+ "idx": 0,
+ "is_standard": 1,
+ "message": "<p>Hello {{ doc.employee_name}}</p>\n\n<p> Your Shift Request is {{doc.status}} </p>\n",
+ "message_type": "Markdown",
+ "minutes_offset": 0,
+ "modified": "2025-12-12 23:40:23.939178",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Shift Request Submitted",
+ "owner": "Administrator",
+ "recipients": [
+  {}
+ ],
+ "send_system_notification": 1,
+ "send_to_all_assignees": 0,
+ "subject": "Shift Request {{ doc.status }}"
+}

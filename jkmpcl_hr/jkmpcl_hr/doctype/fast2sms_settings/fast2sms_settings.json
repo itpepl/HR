@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-12-03 12:23:35.406372",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "url",
+  "sender_id",
+  "language",
+  "valid_till",
+  "column_break_qntn",
+  "authorization",
+  "route",
+  "flash"
+ ],
+ "fields": [
+  {
+   "fieldname": "url",
+   "fieldtype": "Small Text",
+   "label": "URL"
+  },
+  {
+   "fieldname": "sender_id",
+   "fieldtype": "Data",
+   "label": "Sender Id"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language"
+  },
+  {
+   "fieldname": "valid_till",
+   "fieldtype": "Data",
+   "label": "Valid Till"
+  },
+  {
+   "fieldname": "column_break_qntn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "authorization",
+   "fieldtype": "Small Text",
+   "label": "Authorization"
+  },
+  {
+   "fieldname": "route",
+   "fieldtype": "Data",
+   "label": "Route"
+  },
+  {
+   "fieldname": "flash",
+   "fieldtype": "Data",
+   "label": "Flash"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2025-12-03 12:23:35.406372",
+ "modified_by": "Administrator",
+ "module": "JKMPCL HR",
+ "name": "Fast2sms Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

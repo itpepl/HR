@@ -1,0 +1,22 @@
+<p>Dear Sir/Madam,</p>
+
+<p>
+    A Leave Application has been submitted by <b>{{ doc.employee }}</b>.  
+    Please review the details below and take the necessary action.
+</p>
+
+<p><b>Application Summary:</b></p>
+
+<ul>
+    <li><b>Employee:</b> {{ doc.employee }}</li>
+    <li><b>Leave Type:</b> {{ doc.leave_type }}</li>
+    <li><b>From Date:</b> {{ frappe.utils.format_date(doc.from_date, "dd-MM-yyyy") }}</li>
+    <li><b>To Date:</b> {{ frappe.utils.format_date(doc.to_date, "dd-MM-yyyy") }}</li>
+    <li><b>Total Leave Days:</b> {{ doc.total_leave_days }}</li>
+    <li><b>Workflow State:</b> {{ doc.workflow_state }}</li>
+    <li>
+        <b>View Request:</b>
+        {% set leave_app_link = frappe.utils.get_url() ~ '/app/leave-application/' ~ doc.name %}
+        <a href="{{ leave_app_link }}">Click here</a>
+    </li>
+</ul>
