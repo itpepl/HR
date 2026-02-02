@@ -1556,16 +1556,18 @@ def process_comp_off_scheduler(comp_off_date=None):
         fields=["name", "employee", "date"]
     )
 
+    frappe.log_error("comp_off_request_list", f"{requests}")
     for req in requests:
         
         try:
             process_working_day(req)
+        
         except Exception:
             frappe.log_error(
                 frappe.get_traceback(),
                 f"Comp-Off Scheduler Error - {req.name}"
             )
-
+    frappe.db.commit()
 
 # =========================================================
 # PROCESS SINGLE REQUEST
@@ -1582,16 +1584,27 @@ def process_working_day(req):
         frappe.log_error("start_process_comp_off_scheduler", f"Full day Attendance not found for employee: {req['date']} - {req['employee']}")
         return
 
+    if(req["employee"] == "20082: Harshiya Gupta"):
+        frappe.log_error("comp_off_day_Working", f"{attendance}")
+    
+    
     holiday = get_holiday_details(req["employee"], req["date"])
+    if(req["employee"] == "20082: Harshiya Gupta"):
+        frappe.log_error("compoff_holiday", f"{holiday}")
+    
     if not holiday:
         frappe.log_error("start_process_comp_off_scheduler", f"Holiday details not found for employee: {req['date']} - {req['employee']}")
         return
 
     # WO OR Normal Holiday OR RH+WO
     if holiday["is_wo"] or not holiday["is_rh"]:
+        if(req["employee"] == "20082: Harshiya Gupta"):
+            frappe.log_error("comp_off", "is wo")
         allocation = create_comp_off(req["employee"], req["date"])
 
         # Update Request
+        if(req["employee"] == "20082: Harshiya Gupta"):
+            frappe.log_error("comp_off_allocation", f"{allocation}")
         frappe.db.set_value(
             "Off-Day Work Request",
             req["name"],
@@ -1601,7 +1614,10 @@ def process_working_day(req):
                 "comp_off_created": 1
             }
         )
-        handle_workflow_notification(req["name"])
+        try:
+            handle_workflow_notification(req["name"])
+        except Exception as e:
+            frappe.log_error("handle notification errror", f"{frappe.get_traceback()}")    
         return
 
     # RH only
@@ -1730,6 +1746,8 @@ def create_comp_off(employee, date):
     date = getdate(date)
 
     if already_created(employee, date):
+        if(employee == "20082: Harshiya Gupta"):
+            frappe.log_error("compoff_already_created", "already created")
         return
 
     leave_type = frappe.db.get_value(
@@ -1738,20 +1756,28 @@ def create_comp_off(employee, date):
             "is_compensatory": 1
         },
         "custom_validity_days"
-    )   
+    )
+    if(employee == "20082: Harshiya Gupta"):
+        frappe.log_error("comp_off leave type", f"{leave_type}")
+    
     validity_days = leave_type if leave_type else 45
 
-    allocation = frappe.get_doc({
-        "doctype": "Leave Allocation",
-        "employee": employee,
-        "leave_type": "Compensatory Off",
-        "from_date": date,
-        "to_date": add_days(date, validity_days),
-        "new_leaves_allocated": 1
-    })
+    if(employee == "20082: Harshiya Gupta"):
+        frappe.log_error("comp_off_validate_days", f"{validity_days}")
+    try:
+        allocation = frappe.get_doc({
+            "doctype": "Leave Allocation",
+            "employee": employee,
+            "leave_type": "Compensatory Off",
+            "from_date": date,
+            "to_date": add_days(date, validity_days),
+            "new_leaves_allocated": 1
+        })
 
-    allocation.insert(ignore_permissions=True)
-    allocation.submit()
+        allocation.insert(ignore_permissions=True)
+        allocation.submit()
+    except Exception as e:
+        frappe.log_error("compff_error", f"{frappe.get_traceback()}")
 
     return allocation
 
@@ -1774,30 +1800,34 @@ def already_created(employee, date):
 
 
 def handle_workflow_notification(req_name):
-    req = frappe.get_doc("Off-Day Work Request", req_name)
-    
-    recipients = []
-    user = frappe.db.get_value("Employee", req.employee, "user_id")
-    recipients.append(user)
+    try:
+        req = frappe.get_doc("Off-Day Work Request", req_name)
+        
+        frappe.log_error("off_dar_rec", f"{req}")
+        recipients = []
+        user = frappe.db.get_value("Employee", req.employee, "user_id")
+        recipients.append(user)
 
-    notification_name = "Compensatory Off Created"
+        notification_name = "Compensatory Off Created"
 
-    notification_doc = frappe.get_doc("Notification", notification_name)
-    if notification_doc:
+        notification_doc = frappe.get_doc("Notification", notification_name)
+        if notification_doc:
 
-        # Call your custom notification function
-        send_notification_email(
-            recipients=recipients,
-            doctype=req.doctype,
-            docname=req.name,
-            notification_name=notification_name,
-            send_link=False,
-            fallback_subject=f"Off-Day Work Request for {req.date}",
-            fallback_message=f"Off-Day Work Request for { req.date } is now in '{ req.workflow_state }' state.",
-            enabled=notification_doc.enabled,
-            send_system_notification=notification_doc.send_system_notification,
-            channel=notification_doc.channel
-        )
+            # Call your custom notification function
+            send_notification_email(
+                recipients=recipients,
+                doctype=req.doctype,
+                docname=req.name,
+                notification_name=notification_name,
+                send_link=False,
+                fallback_subject=f"Off-Day Work Request for {req.date}",
+                fallback_message=f"Off-Day Work Request for { req.date } is now in '{ req.workflow_state }' state.",
+                enabled=notification_doc.enabled,
+                send_system_notification=notification_doc.send_system_notification,
+                channel=notification_doc.channel
+            )
+    except Exception as e:
+        frappe.log_error("error_handle_workflow_notification", frappe.get_traceback())
 
 
 # * METHOD TO ALLOCATE CASUAL LEAVE AND SICK LEAVE TO CONFIRMED EMPLOYEES
