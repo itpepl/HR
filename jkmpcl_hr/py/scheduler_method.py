@@ -356,6 +356,9 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
                 )
                 if log_count == 0:
                     if log_count == 0 and is_holiday:
+                        if emp =="10104":
+                            print("\n\n\n\n\n\n",is_holiday,off_day_approved,log_count)
+                       
                         continue
                     create_or_update_attendance(
                         emp,
@@ -446,6 +449,8 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
                     skip_shift_time_rules=True,
                     is_holiday_work=is_holiday_work
                 )
+                continue
+            if is_holiday and not off_day_approved:
                 continue
             logs = frappe.db.sql("""
                 SELECT

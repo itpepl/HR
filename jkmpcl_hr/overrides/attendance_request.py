@@ -786,11 +786,21 @@ def _process_attendance_request(doc_name):
         skip_shift_time_rules=True
     )
 
+    # if attendance_name:
+    #     att = frappe.get_doc("Attendance", attendance_name)
+    #     att.attendance_request = doc.name
+    #     att.flags.ignore_validate_update_after_submit = True
+    #     att.save(ignore_permissions=True)
+
+    # return attendance_name
     if attendance_name:
-        att = frappe.get_doc("Attendance", attendance_name)
-        att.attendance_request = doc.name
-        att.flags.ignore_validate_update_after_submit = True
-        att.save(ignore_permissions=True)
+        frappe.db.set_value(
+            "Attendance",
+            attendance_name,
+            "attendance_request",
+            doc.name,
+            update_modified=False   
+        )
 
     return attendance_name
 
