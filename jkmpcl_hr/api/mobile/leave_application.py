@@ -227,7 +227,6 @@ def get_leave_types(employeeId, as_on_date=None):
             employee=employeeId,
             date=as_on_date
         ) or {}
-        # print(leave_details)
         allocated = leave_details.get("leave_allocation")
         lwps = leave_details.get("lwps")
 

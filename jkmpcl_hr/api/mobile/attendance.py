@@ -549,7 +549,9 @@ def attendance_status_list():
         {"status": "Holiday", "color": "#6f7dff", "code": "H"},       # Purple/Blue
         {"status": "Leave Not Approved", "color": "#ffc0cb", "code": "LNA"},  # Light Pink
         {"status": "Leave Approved", "color": "#9e9e9e", "code": "LA"},       # Grey
-        {"status": "Half Day", "color": "#ffa500", "code": "HD"}      # Orange
+        {"status": "Half Day", "color": "#ffa500", "code": "HD"}  ,    # Orange
+        {"status": "Partially", "color": "#1100ffff", "code": "PR"}      # Brown
+        
     ]
 
     # Hardcoded leave types from your Leave Type DocType

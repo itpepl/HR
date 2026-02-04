@@ -375,12 +375,10 @@ def get_days_for_ml(employee, leave_type, maternity_leave_type=None, from_date=g
                 pluck="name",
             )
         )
-        
         pro_rata_days = (full_entitlement * working_days) / total_days_in_year
 
         integer_part = floor(pro_rata_days)
         decimal_part = pro_rata_days - integer_part
-
         final_days = integer_part + 1 if decimal_part >= 0.5 else integer_part
         return flt(final_days)
 
