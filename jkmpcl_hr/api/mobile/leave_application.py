@@ -220,9 +220,6 @@ def get_leave_types(employeeId, as_on_date=None):
         if not as_on_date:
             as_on_date = today()
 
-        # -----------------------------
-        # ERPNext Leave Details
-        # -----------------------------
         leave_details = get_leave_details(
             employee=employeeId,
             date=as_on_date
@@ -244,16 +241,10 @@ def get_leave_types(employeeId, as_on_date=None):
         for l in lwps:
             allowed_leave_types.append(l)
 
-        # -----------------------------
-        # OPEN LEAVES
-        # -----------------------------
         open_leave_types = get_open_leave_types(employeeId)
         if not open_leave_types:
             open_leave_types = []
 
-        # -----------------------------
-        # Merge unique manually
-        # -----------------------------
         final_leave_types = []
 
         for lt in allowed_leave_types:
