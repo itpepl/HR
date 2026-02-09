@@ -2,6 +2,7 @@ import frappe
 from frappe.utils import getdate, cint
 from frappe import _
 from frappe.utils import strip_html
+from frappe.utils import get_datetime
 
 @frappe.whitelist()
 def get_manual_punches(
@@ -47,7 +48,6 @@ def get_manual_punches(
         limit_page_length=int(limit) if limit else None
     )
 
-    # 🔥 CLEAN HTML → TEXT
     for row in records:
         if row.get("custom_note"):
             row["custom_note"] = strip_html(row["custom_note"]).strip()
@@ -147,7 +147,59 @@ def request_type_list():
             "message": "Request types fetched successfully",
             "data": ["Miss Punch","Field Visit"]
         }
+@frappe.whitelist()
+def request_type_list(employee=None):
 
+    user = frappe.session.user
+
+    settings = frappe.get_single("HR Settings")
+
+    from_time = get_datetime(settings.custom_system_error_window_from) \
+        if settings.custom_system_error_window_from else None
+
+    to_time = get_datetime(settings.custom_system_error_window_to) \
+        if settings.custom_system_error_window_to else None
+
+    allowed_role = settings.custom_allowed_role
+
+    now = get_datetime()
+
+    show_system_error = False
+
+    if from_time and to_time:
+        if from_time <= now <= to_time:
+            show_system_error = True
+
+    user_roles = frappe.get_roles(user)
+
+    if allowed_role and allowed_role in user_roles:
+        show_system_error = True
+
+    attendance_source = None
+
+    if employee:
+        attendance_source = frappe.db.get_value(
+            "Employee",
+            employee,
+            "custom_attendance_source"
+        )
+
+    options = []
+
+    if show_system_error:
+        options.append("System Error")
+
+    if attendance_source == "Biometric":
+        options.extend(["Miss Punch", "Field Visit"])
+
+    elif attendance_source in ("Field", "Punch"):
+        options.append("Miss Punch")
+
+    return {
+        "success": True,
+        "message": "Request types fetched successfully",
+        "data": list(set(options))
+    }
 
 @frappe.whitelist()
 def punch_type_list():
