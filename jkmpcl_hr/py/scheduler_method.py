@@ -304,41 +304,39 @@ def run_attendance_for_my_branch(att_date):
         "message": f"Attendance processed for branch: {branch}"
     }
 
+def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
 
-def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
-    
-    frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")    
+    frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")
+
     if not att_date:
         att_date = add_days(getdate(), -1)
     else:
         att_date = getdate(att_date)
-
     if only_for_jammu:
-            employees = frappe.get_all(
-                "Employee",
-                filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu" },
-                pluck="name"
-            )
+        employees = frappe.get_all(
+            "Employee",
+            filters={
+                "status": "Active",
+                "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",
+            },
+            pluck="name",
+        )
     else:
         filters = {"status": "Active"}
 
         if branch:
             filters["branch"] = branch
 
-        employees = frappe.get_all(
-            "Employee",
-            filters=filters,
-            pluck="name"
-        )
-    
+        employees = frappe.get_all("Employee", filters=filters, pluck="name")
 
     for emp in employees:
         try:
+
             if has_approved_leave(emp, att_date):
                 continue
 
             shift_type = get_employee_shift(emp, att_date)
-            
+
             if not shift_type:
                 log_attendance_error(emp, att_date, "Shift not assigned")
                 continue
@@ -346,17 +344,22 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
             shift_custom_type = frappe.db.get_value(
                 "Shift Type", shift_type, "custom_shift_type"
             )
+
             is_holiday = is_holiday_or_weekoff(emp, att_date)
             off_day_approved = has_approved_off_day_work(emp, att_date)
-            is_holiday_work = is_holiday and off_day_approved
+
+            is_holiday_work = False
+
             if shift_custom_type == "24 hours":
-                
-                first_in, last_out,first_checkin_id, last_checkin_id, working_hours, log_count = (
-                    get_24_hour_working_hours(emp, att_date,shift_type)
+
+                first_in, last_out, first_checkin_id, last_checkin_id, working_hours, log_count = (
+                    get_24_hour_working_hours(emp, att_date, shift_type)
                 )
+
                 if log_count == 0:
-                    if log_count == 0 and is_holiday:
+                    if is_holiday:
                         continue
+
                     create_or_update_attendance(
                         emp,
                         att_date,
@@ -364,14 +367,16 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
                         None,
                         0,
                         None,
+                        None,
                         skip_shift_time_rules=True,
-                        is_holiday_work=is_holiday_work
+                        is_holiday_work=False,
                     )
                     continue
 
+                if is_holiday:
+                    is_holiday_work = True
+
                 if log_count == 1:
-                    if is_holiday and not off_day_approved:
-                        continue   
                     create_or_update_attendance(
                         emp,
                         att_date,
@@ -381,7 +386,7 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
                         first_checkin_id,
                         last_checkin_id,
                         skip_shift_time_rules=True,
-                        is_holiday_work=is_holiday_work
+                        is_holiday_work=is_holiday_work,
                     )
                     continue
 
@@ -391,23 +396,23 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
                     first_in,
                     last_out,
                     working_hours,
-                   first_checkin_id,
+                    first_checkin_id,
                     last_checkin_id,
                     skip_shift_time_rules=True,
-                    is_holiday_work=is_holiday_work
+                    is_holiday_work=is_holiday_work,
                 )
                 continue
-                
-            
-            if shift_custom_type == "Night":
-        
-                in_time, out_time, first_id, last_id, working_hours, log_count = \
-                    get_night_shift_logs(emp, att_date)
 
-        
+            if shift_custom_type == "Night":
+
+                in_time, out_time, first_id, last_id, working_hours, log_count = (
+                    get_night_shift_logs(emp, att_date)
+                )
+
                 if log_count == 0:
-                    if log_count == 0 and is_holiday:
+                    if is_holiday:
                         continue
+
                     create_or_update_attendance(
                         emp,
                         att_date,
@@ -417,12 +422,14 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
                         None,
                         None,
                         skip_shift_time_rules=True,
-                        is_holiday_work=is_holiday_work
+                        is_holiday_work=False,
                     )
                     continue
+
+                if is_holiday:
+                    is_holiday_work = True
+
                 if log_count == 1:
-                    if is_holiday and not off_day_approved:
-                        continue  
                     create_or_update_attendance(
                         emp,
                         att_date,
@@ -432,9 +439,10 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
                         first_id,
                         last_id,
                         skip_shift_time_rules=True,
-                        is_holiday_work=is_holiday_work
+                        is_holiday_work=is_holiday_work,
                     )
                     continue
+
                 create_or_update_attendance(
                     emp,
                     att_date,
@@ -444,41 +452,60 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
                     first_id,
                     last_id,
                     skip_shift_time_rules=True,
-                    is_holiday_work=is_holiday_work
+                    is_holiday_work=is_holiday_work,
                 )
                 continue
-            if is_holiday and not off_day_approved:
-                continue
-            logs = frappe.db.sql("""
-                SELECT
-                    name,
-                    time
+
+            logs = frappe.db.sql(
+                """
+                SELECT name, time
                 FROM `tabEmployee Checkin`
                 WHERE employee=%s
                 AND DATE(time)=%s
                 ORDER BY time ASC
-            """, (emp, att_date), as_dict=True)
-            logs = filter_close_checkins(logs, threshold_minutes=2)
-            if not logs:
-                if log_count == 0 and is_holiday:
-                        continue
-                create_or_update_attendance(
-                    emp, att_date, None, None, 0, None,None,skip_shift_time_rules=False,is_holiday_work=is_holiday_work
-                ),
-                continue
+            """,
+                (emp, att_date),
+                as_dict=True,
+            )
 
-            if len(logs) < 2:
-                if is_holiday and not off_day_approved:
-                        continue
+            logs = filter_close_checkins(logs, threshold_minutes=2)
+
+            if not logs:
+                if is_holiday:
+                    continue
+
                 create_or_update_attendance(
-                    emp, att_date, None, None, 0, logs[0]["name"],logs[-1]["name"],skip_shift_time_rules=False,is_holiday_work=is_holiday_work
+                    emp,
+                    att_date,
+                    None,
+                    None,
+                    0,
+                    None,
+                    None,
+                    skip_shift_time_rules=False,
+                    is_holiday_work=False,
                 )
                 continue
-            
-            in_time = logs[0]["time"]
-            out_time = logs[-1]["time"]
-            in_time = normalize_to_minute(in_time)
-            out_time = normalize_to_minute(out_time)
+
+            if is_holiday:
+                is_holiday_work = True
+
+            if len(logs) < 2:
+                create_or_update_attendance(
+                    emp,
+                    att_date,
+                    None,
+                    None,
+                    0,
+                    logs[0]["name"],
+                    logs[-1]["name"],
+                    skip_shift_time_rules=False,
+                    is_holiday_work=is_holiday_work,
+                )
+                continue
+
+            in_time = normalize_to_minute(logs[0]["time"])
+            out_time = normalize_to_minute(logs[-1]["time"])
 
             if in_time and out_time and out_time > in_time:
                 working_seconds = (out_time - in_time).total_seconds()
@@ -488,7 +515,15 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
 
             if working_hours <= 0:
                 create_or_update_attendance(
-                    emp, att_date, None, None, 0,logs[0]["name"], logs[-1]["name"],skip_shift_time_rules=False,is_holiday_work=is_holiday_work
+                    emp,
+                    att_date,
+                    None,
+                    None,
+                    0,
+                    logs[0]["name"],
+                    logs[-1]["name"],
+                    skip_shift_time_rules=False,
+                    is_holiday_work=is_holiday_work,
                 )
                 continue
 
@@ -499,16 +534,220 @@ def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
                 out_time,
                 working_hours,
                 logs[0]["name"],
-                logs[-1]["name"] ,skip_shift_time_rules=False,  # ✅ MAX CHECKIN ID,
-                is_holiday_work=is_holiday_work
+                logs[-1]["name"],
+                skip_shift_time_rules=False,
+                is_holiday_work=is_holiday_work,
             )
 
         except Exception as e:
-            log_attendance_error(
-                emp, att_date, "Main Scheduler Failed", e
-            )
+            log_attendance_error(emp, att_date, "Main Scheduler Failed", e)
 
     frappe.db.commit()
+
+# def run_daily_attendance(att_date=None,only_for_jammu=False,branch=None):
+    
+#     frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")    
+#     if not att_date:
+#         att_date = add_days(getdate(), -1)
+#     else:
+#         att_date = getdate(att_date)
+
+#     if only_for_jammu:
+#             employees = frappe.get_all(
+#                 "Employee",
+#                 filters={"status": "Active", "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu" },
+#                 pluck="name"
+#             )
+#     else:
+#         filters = {"status": "Active"}
+
+#         if branch:
+#             filters["branch"] = branch
+
+#         employees = frappe.get_all(
+#             "Employee",
+#             filters=filters,
+#             pluck="name"
+#         )
+    
+
+#     for emp in employees:
+#         try:
+#             if has_approved_leave(emp, att_date):
+#                 continue
+
+#             shift_type = get_employee_shift(emp, att_date)
+            
+#             if not shift_type:
+#                 log_attendance_error(emp, att_date, "Shift not assigned")
+#                 continue
+
+#             shift_custom_type = frappe.db.get_value(
+#                 "Shift Type", shift_type, "custom_shift_type"
+#             )
+#             is_holiday = is_holiday_or_weekoff(emp, att_date)
+#             off_day_approved = has_approved_off_day_work(emp, att_date)
+#             is_holiday_work = is_holiday and off_day_approved
+#             if shift_custom_type == "24 hours":
+                
+#                 first_in, last_out,first_checkin_id, last_checkin_id, working_hours, log_count = (
+#                     get_24_hour_working_hours(emp, att_date,shift_type)
+#                 )
+#                 if log_count == 0:
+#                     if log_count == 0 and is_holiday:
+#                         continue
+#                     create_or_update_attendance(
+#                         emp,
+#                         att_date,
+#                         None,
+#                         None,
+#                         0,
+#                         None,
+#                         skip_shift_time_rules=True,
+#                         is_holiday_work=is_holiday_work
+#                     )
+#                     continue
+
+#                 if log_count == 1:
+#                     if is_holiday and not off_day_approved:
+#                         continue   
+#                     create_or_update_attendance(
+#                         emp,
+#                         att_date,
+#                         None,
+#                         None,
+#                         0,
+#                         first_checkin_id,
+#                         last_checkin_id,
+#                         skip_shift_time_rules=True,
+#                         is_holiday_work=is_holiday_work
+#                     )
+#                     continue
+
+#                 create_or_update_attendance(
+#                     emp,
+#                     att_date,
+#                     first_in,
+#                     last_out,
+#                     working_hours,
+#                    first_checkin_id,
+#                     last_checkin_id,
+#                     skip_shift_time_rules=True,
+#                     is_holiday_work=is_holiday_work
+#                 )
+#                 continue
+                
+            
+#             if shift_custom_type == "Night":
+        
+#                 in_time, out_time, first_id, last_id, working_hours, log_count = \
+#                     get_night_shift_logs(emp, att_date)
+
+        
+#                 if log_count == 0:
+#                     if log_count == 0 and is_holiday:
+#                         continue
+#                     create_or_update_attendance(
+#                         emp,
+#                         att_date,
+#                         None,
+#                         None,
+#                         0,
+#                         None,
+#                         None,
+#                         skip_shift_time_rules=True,
+#                         is_holiday_work=is_holiday_work
+#                     )
+#                     continue
+#                 if log_count == 1:
+#                     if is_holiday and not off_day_approved:
+#                         continue  
+#                     create_or_update_attendance(
+#                         emp,
+#                         att_date,
+#                         None,
+#                         None,
+#                         0,
+#                         first_id,
+#                         last_id,
+#                         skip_shift_time_rules=True,
+#                         is_holiday_work=is_holiday_work
+#                     )
+#                     continue
+#                 create_or_update_attendance(
+#                     emp,
+#                     att_date,
+#                     in_time,
+#                     out_time,
+#                     working_hours,
+#                     first_id,
+#                     last_id,
+#                     skip_shift_time_rules=True,
+#                     is_holiday_work=is_holiday_work
+#                 )
+#                 continue
+#             if is_holiday and not off_day_approved:
+#                 continue
+#             logs = frappe.db.sql("""
+#                 SELECT
+#                     name,
+#                     time
+#                 FROM `tabEmployee Checkin`
+#                 WHERE employee=%s
+#                 AND DATE(time)=%s
+#                 ORDER BY time ASC
+#             """, (emp, att_date), as_dict=True)
+#             logs = filter_close_checkins(logs, threshold_minutes=2)
+#             if not logs:
+#                 if log_count == 0 and is_holiday:
+#                         continue
+#                 create_or_update_attendance(
+#                     emp, att_date, None, None, 0, None,None,skip_shift_time_rules=False,is_holiday_work=is_holiday_work
+#                 ),
+#                 continue
+
+#             if len(logs) < 2:
+#                 if is_holiday and not off_day_approved:
+#                         continue
+#                 create_or_update_attendance(
+#                     emp, att_date, None, None, 0, logs[0]["name"],logs[-1]["name"],skip_shift_time_rules=False,is_holiday_work=is_holiday_work
+#                 )
+#                 continue
+            
+#             in_time = logs[0]["time"]
+#             out_time = logs[-1]["time"]
+#             in_time = normalize_to_minute(in_time)
+#             out_time = normalize_to_minute(out_time)
+
+#             if in_time and out_time and out_time > in_time:
+#                 working_seconds = (out_time - in_time).total_seconds()
+#                 working_hours = working_seconds / 3600
+#             else:
+#                 working_hours = 0
+
+#             if working_hours <= 0:
+#                 create_or_update_attendance(
+#                     emp, att_date, None, None, 0,logs[0]["name"], logs[-1]["name"],skip_shift_time_rules=False,is_holiday_work=is_holiday_work
+#                 )
+#                 continue
+
+#             create_or_update_attendance(
+#                 emp,
+#                 att_date,
+#                 in_time,
+#                 out_time,
+#                 working_hours,
+#                 logs[0]["name"],
+#                 logs[-1]["name"] ,skip_shift_time_rules=False,  # ✅ MAX CHECKIN ID,
+#                 is_holiday_work=is_holiday_work
+#             )
+
+#         except Exception as e:
+#             log_attendance_error(
+#                 emp, att_date, "Main Scheduler Failed", e
+#             )
+
+#     frappe.db.commit()
 def has_approved_off_day_work(employee, date):
 
     return frappe.db.exists(
