@@ -208,3 +208,22 @@ def get_other_department_emp(emp_id):
             message=f"Error fetching department employee for {emp_id}: {str(e)}",
         )
         return None
+    
+
+@frappe.whitelist()
+def get_current_holiday_list(emp, from_date):
+    try:
+        from_date = getdate(from_date)
+        holiday_list_assignment = frappe.db.get_all("Holiday List Assignment", {"assigned_to": emp, "from_date": ["<=", from_date], "docstatus": 1}, ["name", "holiday_list"], order_by="from_date desc", limit=1)
+        
+        if not holiday_list_assignment:
+            return None
+        
+        holiday_list = holiday_list_assignment[0].holiday_list or None
+        
+        return holiday_list
+            
+                                
+        
+    except Exception as e:
+        frappe.log_error("error_get_current_holiday_list", frappe.get_traceback())
