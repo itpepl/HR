@@ -7,6 +7,8 @@ from datetime import datetime, time,timedelta
 from frappe.utils import flt
 import calendar
 
+from jkmpcl_hr.py.utils import get_current_holiday_list
+
 
 # from jkmpcl_hr.py.utils import send_notification_email
 from jkmpcl_hr.py.utils import create_shift_assignment_rec, send_notification_email, get_emp_reporting_manager
@@ -1012,7 +1014,23 @@ def is_holiday_or_weekoff(employee, date):
         "Employee", employee, "holiday_list"
     )
 
-    if not holiday_list:
+    # *For Safety
+    correct_holiday_list = None
+    
+    
+    assign_holiday_list = get_current_holiday_list(employee, date)
+    
+    if assign_holiday_list:
+        # if not holiday_list:
+        #     correct_holiday_list = assign_holiday_list
+        # elif holiday_list != assign_holiday_list:
+        #     correct_holiday_list = assign_holiday_list
+        correct_holiday_list =  assign_holiday_list
+    else:
+        correct_holiday_list = holiday_list if holiday_list else None
+    
+    
+    if not correct_holiday_list:
         log_attendance_error(
             employee, date, "Holiday list not set"
         )
@@ -1021,7 +1039,7 @@ def is_holiday_or_weekoff(employee, date):
     return frappe.db.exists(
         "Holiday",
         {
-            "parent": holiday_list,
+            "parent": correct_holiday_list,
             "holiday_date": date
         }
     )
@@ -2943,17 +2961,37 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
     
 
 
+
+# * SCHEDULER METHOD TO SET CURRENT REPORTING MANAGER AND HOLIDAY LIST IN THE EMPLOYEE
+#* THIS WILL RUN EVERY DAY
 @frappe.whitelist()
-def set_approvers_in_employee():
+def set_approvers_in_employee(dt=None):
     try:
+        if dt:
+            from_date = getdate(dt)
+        else:
+            from_date = getdate()
+        
         frappe.log_error("Set Approvers in Employee Job Started", "Set Approvers in Employee Job Started")
-        employees = frappe.get_all("Employee", {"status": "Active"}, "name")
+        employees = frappe.db.get_all("Employee", {"status": "Active"}, ["name", "holiday_list"])
         if employees:
             for emp in employees:
                 try:
                     current_emp_shift_approver = frappe.db.get_value("Employee", emp.name, "shift_request_approver") or None
                     current_emp_leave_approver = frappe.db.get_value("Employee", emp.name, "leave_approver") or None
                     current_emp_reports_to = frappe.db.get_value("Employee", emp.name, "reports_to") or None
+                    
+                    
+                    current_holiday_list = get_current_holiday_list(emp.name, from_date)
+                    frappe.log_error("Holiday List", f"{current_holiday_list} {emp.holiday_list}")
+                    if current_holiday_list:
+                        if not emp.holiday_list:
+                            frappe.db.set_value("Employee", emp.name, "holiday_list", current_holiday_list)
+                        
+                        elif emp.holiday_list != current_holiday_list:
+                            frappe.db.set_value("Employee", emp.name, "holiday_list", current_holiday_list)
+                            
+
                     
                     
                     emp_rm = get_emp_reporting_manager(emp.name)
@@ -2972,7 +3010,8 @@ def set_approvers_in_employee():
                 except Exception as e:
                     frappe.log_error(f"error_set_approvers_in_employee_{emp.name}", frappe.get_traceback())
                     continue
-        
+            
+            frappe.db.commit()
         frappe.log_error("Set Approvers in Employee Job Completed", "Set Approvers in Employee Job Completed")
         
         

@@ -4,7 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document, getdate
-from jkmpcl_hr.py.utils import send_notification_email
+from jkmpcl_hr.py.utils import send_notification_email, get_current_holiday_list
 
 
 class OffDayWorkRequest(Document):
@@ -109,7 +109,16 @@ def check_working_day_valid(employee, date):
 
 def is_holiday(employee, date):
     holiday_list = frappe.db.get_value("Employee", employee, "holiday_list")
+    #* FOR SAFETY
+    correct_holiday_list = None
+    current_holiday_list = get_current_holiday_list(employee, date)
 
+    
+    if current_holiday_list:
+        correct_holiday_list = current_holiday_list
+    else:
+        correct_holiday_list = holiday_list if holiday_list else None
+        
     # if not holiday_list:
     #     holiday_list = frappe.db.get_value(
     #         "Company",
@@ -117,11 +126,11 @@ def is_holiday(employee, date):
     #         "default_holiday_list"
     #     )
 
-    if not holiday_list:
+    if not correct_holiday_list:
         return False
 
     return frappe.db.exists("Holiday", {
-        "parent": holiday_list,
+        "parent": correct_holiday_list,
         "holiday_date": date
     })
 
