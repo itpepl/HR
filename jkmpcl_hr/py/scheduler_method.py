@@ -2091,12 +2091,15 @@ def create_leave_ledger(
     else:
         to_date = getdate(f"{t_date.year}-03-31")
     
+    
+    correct_holiday_list = get_current_holiday_list(employee, date) or None
+    
     doc = frappe.get_doc({
         "doctype": "Leave Ledger Entry",
         "employee": employee,
         "employee_name": employee_doc.employee_name,
         "company": employee_doc.company,
-        "holiday_list": employee_doc.holiday_list,
+        "holiday_list": correct_holiday_list if correct_holiday_list else employee_doc.holiday_list,
         "leave_type": leave_type,
         "posting_date": date,
         "from_date": date,
@@ -2440,13 +2443,24 @@ def get_holiday_details(employee, date):
         employee,
         "holiday_list"
     )
-    if not holiday_list:
+    
+    #* FOR SAFETY
+    correct_holiday_list = None
+    
+    current_holiday_list = get_current_holiday_list(employee, date)
+    
+    if current_holiday_list:
+        correct_holiday_list = current_holiday_list
+    else:
+        correct_holiday_list = holiday_list
+    
+    if not correct_holiday_list:
         return None
 
     holiday = frappe.db.get_value(
         "Holiday",
         {
-            "parent": holiday_list,
+            "parent": correct_holiday_list,
             "holiday_date": date
         },
         [
