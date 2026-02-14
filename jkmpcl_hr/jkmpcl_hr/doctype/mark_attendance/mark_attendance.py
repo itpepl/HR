@@ -15,8 +15,12 @@ class MarkAttendance(Document):
         if not self.attendance_date:
             frappe.throw("Please select Attendance Date first")
 
+        if frappe.session.user != "Administrator":
+            
+            run_attendance_for_my_branch(att_date=self.attendance_date)
+        else:
         # Call scheduler logic manually
-        run_daily_attendance(att_date=self.attendance_date)
+            run_daily_attendance(att_date=self.attendance_date)
 
         return {
             "success": True,

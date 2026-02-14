@@ -7,6 +7,7 @@ from datetime import datetime, time,timedelta
 from frappe.utils import flt
 import calendar
 
+
 from jkmpcl_hr.py.utils import get_current_holiday_list
 
 
@@ -297,7 +298,8 @@ def run_attendance_for_my_branch(att_date):
     # employees = get_employees_by_branch(branch)
 
     # for e in employees:
-    run_daily_attendance(getdate(att_date),branch)
+    frappe.log_error("run_attendance_for_my_branch", f"Running attendance for branch: {branch} and date:{att_date}")
+    run_daily_attendance(getdate(att_date), branch=branch)
 
     frappe.db.commit()
 
@@ -315,6 +317,7 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
     else:
         att_date = getdate(att_date)
     if only_for_jammu:
+        frappe.log_error("run_daily_attendance_only_for_jammu", f"Running attendance only for Jammu branch for date: {att_date}")
         employees = frappe.get_all(
             "Employee",
             filters={
@@ -328,8 +331,9 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
 
         if branch:
             filters["branch"] = branch
-
+        frappe.log_error("run_daily_attendance_filters", f"Filters applied: {filters}")
         employees = frappe.get_all("Employee", filters=filters, pluck="name")
+        frappe.log_error("run_daily_attendance_emplist", f"Employees fetched: {len(employees)}")
 
     for emp in employees:
         try:
@@ -347,6 +351,29 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
                 "Shift Type", shift_type, "custom_shift_type"
             )
 
+            shift_start_time =  frappe.db.get_value(
+                "Shift Type", shift_type, "start_time"
+            )
+            
+            shift_end_time =  frappe.db.get_value(
+                "Shift Type", shift_type, "end_time"
+            )
+            
+            begin_checkin_in_minutes = frappe.db.get_value(
+                "Shift Type", shift_type, "begin_check_in_before_shift_start_time"
+            )
+            
+            allow_checkout_in_minutes = frappe.db.get_value(
+                "Shift Type", shift_type, "allow_check_out_after_shift_end_time"
+            )
+            
+            
+            new_shift_start_time = add_to_date(get_datetime(f"{att_date} {shift_start_time}"), minutes=-begin_checkin_in_minutes)
+            new_shift_end_time = add_to_date(get_datetime(f"{att_date} {shift_end_time}"), minutes=allow_checkout_in_minutes)
+            
+            frappe.log_error(f"shift_value_type{emp}", f" shift start time {shift_start_time} shift end time {shift_end_time}  new_start {new_shift_start_time} new_end {new_shift_end_time}")
+            
+            
             is_holiday = is_holiday_or_weekoff(emp, att_date)
             off_day_approved = has_approved_off_day_work(emp, att_date)
 
@@ -406,9 +433,10 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
                 continue
 
             if shift_custom_type == "Night":
-
+                new_shift_end_time = add_to_date(get_datetime(f"{att_date} {shift_end_time}"), days=1, minutes=allow_checkout_in_minutes)
+                
                 in_time, out_time, first_id, last_id, working_hours, log_count = (
-                    get_night_shift_logs(emp, att_date)
+                    get_night_shift_logs(emp, att_date, new_shift_start_time, new_shift_end_time)
                 )
 
                 if log_count == 0:
@@ -458,15 +486,27 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
                 )
                 continue
 
+            # logs = frappe.db.sql(
+            #     """
+            #     SELECT name, time
+            #     FROM `tabEmployee Checkin`
+            #     WHERE employee=%s
+            #     AND DATE(time)=%s
+            #     ORDER BY time ASC
+            # """,
+            #     (emp, att_date),
+            #     as_dict=True,
+            # )
             logs = frappe.db.sql(
                 """
                 SELECT name, time
                 FROM `tabEmployee Checkin`
-                WHERE employee=%s
-                AND DATE(time)=%s
+                WHERE employee = %s
+                AND time >= %s
+                AND time <= %s
                 ORDER BY time ASC
-            """,
-                (emp, att_date),
+                """,
+                (emp, new_shift_start_time, new_shift_end_time),
                 as_dict=True,
             )
 
@@ -935,15 +975,15 @@ def get_24_hour_shift_window(date, start_time, end_time, force_next_day=False):
 
     return shift_start, shift_end
 
-def get_night_shift_logs(employee, att_date):
+def get_night_shift_logs(employee, att_date, start_dt, end_dt):
     """
     Night shift logic:
     IN  -> first log after 9 pM of attendance date
     OUT -> last log before 9 PM of next date
     """
 
-    start_dt = get_datetime(att_date).replace(hour=9, minute=0)
-    end_dt = get_datetime(add_days(att_date, 1)).replace(hour=8, minute=59, second=0)
+    # start_dt = get_datetime(att_date).replace(hour=9, minute=0)
+    # end_dt = get_datetime(add_days(att_date, 1)).replace(hour=8, minute=59, second=0)
 
     logs = frappe.get_all(
         "Employee Checkin",
@@ -2321,8 +2361,24 @@ Step     : {step}
 # ENTRY POINT (Scheduler – Daily) for Auto Comp-Off Creation
 # =========================================================
 
+def process_comp_off_by_branch(comp_off_date):
+    if not comp_off_date:
+        frappe.throw("Attendance Date required")
+    
+    emp = get_employee_from_user()
+    if not emp:
+        frappe.throw("No Employee linked with this user")
+    branch = emp.branch
+    
+    process_comp_off_scheduler(comp_off_date=comp_off_date, branch=branch)    
+    
+    return {
+        "success": True,
+        "message": f"CompOff Generated processed for branch: {branch}"
+    }
+
 @frappe.whitelist()
-def process_comp_off_scheduler(comp_off_date=None):
+def process_comp_off_scheduler(comp_off_date=None, branch=None):
     """
     Runs daily.
     Checks only comp_off_date.
@@ -2334,17 +2390,29 @@ def process_comp_off_scheduler(comp_off_date=None):
         comp_off_date = getdate(comp_off_date)
 
     frappe.log_error("start_process_comp_off_scheduler", f"Scheduler Started FOR Date: {comp_off_date}")
-
-    requests = frappe.get_all(
-        "Off-Day Work Request",
-        filters={
-            "workflow_state": "Approved",
-            "date": comp_off_date,
-            "docstatus": 1,
-            "comp_off_created": 0
-        },
-        fields=["name", "employee", "date"]
-    )
+    if branch:
+        requests = frappe.get_all(
+            "Off-Day Work Request",
+            filters={
+                "workflow_state": "Approved",
+                "date": comp_off_date,
+                "docstatus": 1,
+                "branch":branch,
+                "comp_off_created": 0
+            },
+            fields=["name", "employee", "date"]
+        )
+    else:
+        requests = frappe.get_all(
+            "Off-Day Work Request",
+            filters={
+                "workflow_state": "Approved",
+                "date": comp_off_date,
+                "docstatus": 1,
+                "comp_off_created": 0
+            },
+            fields=["name", "employee", "date"]
+        )
 
     frappe.log_error("comp_off_request_list", f"{requests}")
     for req in requests:
@@ -2400,7 +2468,7 @@ def process_working_day(req):
             req["name"],
             {
                 "attendance": attendance,
-                "leave_allocation": allocation.name,
+                "leave_allocation": allocation.get("name"),
                 "comp_off_created": 1
             }
         )
@@ -2504,7 +2572,7 @@ def handle_rh_only(req, attendance, holiday):
             req["name"],
             {
                 "attendance": attendance,
-                "leave_allocation": allocation.name,
+                "leave_allocation": allocation.get("name"),
                 "comp_off_created": 1
             }
         )
@@ -2526,7 +2594,7 @@ def handle_rh_only(req, attendance, holiday):
             req["name"],
             {
                 "attendance": attendance,
-                "leave_allocation": allocation.name,
+                "leave_allocation": allocation.get("name"),
                 "comp_off_created": 1
             }
         )
@@ -2545,11 +2613,13 @@ def create_comp_off(employee, date):
     """
 
     date = getdate(date)
-
-    if already_created(employee, date):
-        if(employee == "20082: Harshiya Gupta"):
-            frappe.log_error("compoff_already_created", "already created")
-        return
+    frappe.log_error("create_comp_off", f"Creating Comp-Off for employee: {employee} on date: {date}")
+    
+    al_created = already_created(employee, date)
+    
+    if al_created:        
+        frappe.log_error("compoff_already_created", "already created")
+        return {"name":al_created}
 
     leave_type = frappe.db.get_value(
         "Leave Type",
@@ -2596,7 +2666,8 @@ def already_created(employee, date):
             "leave_type": "Compensatory Off",
             "from_date": date,
             "docstatus": 1
-        }
+        },
+        "name",        
     )
 
 
