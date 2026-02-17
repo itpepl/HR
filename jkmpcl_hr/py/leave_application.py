@@ -2,10 +2,12 @@ import frappe
 import  calendar
 from frappe import _
 from math import floor
-from frappe.utils import getdate, add_years, date_diff, add_days, flt
+from frappe.utils import getdate, add_years, date_diff, add_days, flt, cint
 from jkmpcl_hr.overrides.attendance_request import revert_penalty_leave
 from jkmpcl_hr.py.utils import send_notification_email
-
+from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on, get_leave_allocation_records, get_leaves_for_period, get_leave_approver, get_leaves_pending_approval_for_period
+from frappe.query_builder.functions import Sum
+from jkmpcl_hr.overrides.leave_application_override import custom_get_leave_balance_on
 
 def validate(doc, method):
     leave_details = get_leave_type(doc.leave_type)
@@ -16,13 +18,16 @@ def validate(doc, method):
 
         
         # 2️⃣ Ensure linkage exists
-        # if not doc.custom_off_day_work_request:
-        #     frappe.throw(_("Comp-Off must be linked to an Off-Day Work Request"))
+        if not doc.custom_off_day_work_request:
+            frappe.throw(_("Comp-Off must be linked to an Off-Day Work Request"))
 
         # 3️⃣ Set total leave days to 1.0
         if leave_details.custom_applied_once:
             doc.total_leave_days = 1.0
             
+        if doc.custom_off_day_date:
+            validate_compoff(doc.employee, doc.from_date, doc.leave_type, doc.custom_off_day_date)
+        
     if leave_details.custom_leave_type in ["Maternity Leave", "Child Adoption Leave", "Special Maternity Leave"]:
         if doc.custom_no_of_surviving_children >= 2:
             frappe.throw(_(f"You are not eligible for {leave_details.custom_leave_type}. Please Choose another Leave Type."))
@@ -224,6 +229,14 @@ def get_valid_comp_off(employee, leave_date, leave_type_name):
     return record   
 
 
+
+def validate_compoff(employee, leave_date, leave_type_name, off_day_date):
+        emp_applied_leaves = frappe.db.get_all("Leave Application", {"employee": employee, "docstatus":["!=", 2], "leave_type": leave_type_name, "custom_off_day_date": off_day_date}, ["name", "from_date", "to_date"], order_by="from_date desc") or []
+        
+        if emp_applied_leaves:
+            frappe.throw(_("You have already applied for a leave on {0} using Comp-Off for the date {1}. Please choose another date or contact HR.").format(emp_applied_leaves[0].from_date, off_day_date))    
+    
+
 @frappe.whitelist()
 def get_open_leave_types(employee=None):
     """
@@ -385,3 +398,131 @@ def get_days_for_ml(employee, leave_type, maternity_leave_type=None, from_date=g
     except Exception:
         frappe.log_error("error_get_days_for_ml", frappe.get_traceback())
         frappe.throw("Error while calculating maternity leave days")
+
+
+@frappe.whitelist()
+def custom_get_leave_details(employee, date, for_salary_slip=False):
+    date = getdate(date)
+    allocation_records = get_leave_allocation_records(employee, date)
+    
+    print(f"\n\n CUSTOM METHOD CALLED  leave details allocation records {allocation_records}\n\n")
+    
+    
+    leave_allocation = {}
+    precision = cint(frappe.db.get_single_value("System Settings", "float_precision")) or 2
+    
+    fy_start_date = getdate(f"{date.year - 1}-04-01") if date.month < 4 else getdate(f"{date.year}-04-01")
+    fy_end_date   = getdate(f"{date.year}-03-31") if date.month < 4 else getdate(f"{date.year + 1}-03-31")
+    for d in allocation_records:
+        allocation = allocation_records.get(d, frappe._dict())
+        to_date = date if for_salary_slip else allocation.to_date
+        remaining_leaves = custom_get_leave_balance_on(
+            employee,
+            d,
+            date,
+            to_date=to_date,
+            consider_all_leaves_in_the_allocation_period=False if for_salary_slip else True,
+        )
+        
+        penalized_leaves = get_total_penalized_leaves_for_period(employee, d, allocation.from_date, date)
+        
+        leaves_taken = (get_leaves_for_period(employee, d, allocation.from_date, to_date) * -1)
+        leaves_pending = get_leaves_pending_approval_for_period(employee, d, allocation.from_date, to_date)
+        total_allocated_leaves = get_total_allocated_leaves(employee, d, fy_start_date, fy_end_date)
+    
+        print(f"\n\n Remaining Leaves for {d} : {remaining_leaves}  leaves taken {leaves_taken}  total allocation {total_allocated_leaves} \n\n")    
+        expired_leaves = total_allocated_leaves - (remaining_leaves + leaves_taken) - penalized_leaves
+        
+        leave_allocation[d] = {
+            # "total_leaves": flt(allocation.total_leaves_allocated, precision),
+            "total_leaves": flt(total_allocated_leaves, precision),            
+            "expired_leaves": flt(expired_leaves, precision) if expired_leaves > 0 else 0,
+            "leaves_taken": flt(leaves_taken, precision),
+            "leaves_pending_approval": flt(leaves_pending, precision),
+            "penalized_leaves": flt(penalized_leaves, precision),
+            "remaining_leaves": flt(remaining_leaves, precision),
+        }
+
+    # is used in set query
+    lwp = frappe.get_list("Leave Type", filters={"is_lwp": 1}, pluck="name")
+
+    return {
+        "leave_allocation": leave_allocation,
+        "leave_approver": get_leave_approver(employee),
+        "lwps": lwp,
+    }
+
+
+
+def get_total_penalized_leaves_for_period(employee, leave_type, from_date, to_date):
+    if not leave_type or not employee or not from_date or not to_date:
+        return 0
+
+    #! FETCH ALL NEGATIVE LEAVE ALLOCATIONS (PENALIZED) FROM LEDGER
+    penalized_leave_ledger_entry = frappe.get_all(
+        "Leave Ledger Entry",
+        filters=[
+            ["custom_is_penalty", "=", 1],
+            ["employee", "=", employee],
+            ["leave_type", "=", leave_type],
+            ["docstatus", "=", 1],
+            ["from_date", ">=", from_date],
+            ["from_date", "<=", to_date],
+            ["transaction_type", "=", "Leave Allocation"],
+            # ["leaves", "<", 0],
+            # ["is_expired", "=", 0]
+        ],
+        fields=["name", "leaves", "from_date", "to_date"],
+        order_by="from_date asc"
+    )
+
+    #! SUM OF ALL PENALIZED LEAVES (ABSOLUTE VALUE)
+    penalized_leaves = abs(sum([flt(d.leaves) for d in penalized_leave_ledger_entry]))
+
+    return penalized_leaves
+
+
+
+
+def get_total_allocated_leaves(employee, leave_type, fy_start, fy_end):
+
+    Ledger = frappe.qb.DocType("Leave Ledger Entry")
+
+    # Check if leave type is Compensatory Off
+    is_comp_off = leave_type == "Compensatory Off"
+
+    # Date condition
+    if is_comp_off:
+        # Overlap logic
+        date_condition = (
+            (Ledger.from_date <= fy_end)
+            & (Ledger.to_date >= fy_start)
+        )
+        
+    else:
+        # Fully within FY logic
+        date_condition = (
+            (Ledger.from_date >= fy_start)
+            & (Ledger.to_date <= fy_end)
+        )
+
+    print(f"\n\n Date Condition \n {date_condition} \n\n")
+    query = (
+        frappe.qb.from_(Ledger)
+        .select(Sum(Ledger.leaves).as_("total_leaves"))
+        .where(
+            (Ledger.employee == employee)
+            & (Ledger.leave_type == leave_type)
+            & (Ledger.docstatus == 1)
+            & (Ledger.is_lwp == 0)
+            & (Ledger.custom_is_penalty == 0)
+            & (Ledger.transaction_type == "Leave Allocation")
+            &(Ledger.leaves > 0)
+            & date_condition
+        )
+    )
+
+    result = query.run(as_dict=True)
+
+    print(f"\n\n Total Allocated Leaves \n {result[0].total_leaves} \n\n")
+    return result[0].total_leaves or 0
