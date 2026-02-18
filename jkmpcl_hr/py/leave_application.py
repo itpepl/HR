@@ -26,7 +26,7 @@ def validate(doc, method):
             doc.total_leave_days = 1.0
             
         if doc.custom_off_day_date:
-            validate_compoff(doc.employee, doc.from_date, doc.leave_type, doc.custom_off_day_date)
+            validate_compoff(doc.name, doc.employee, doc.leave_type, doc.custom_off_day_date)
         
     if leave_details.custom_leave_type in ["Maternity Leave", "Child Adoption Leave", "Special Maternity Leave"]:
         if doc.custom_no_of_surviving_children >= 2:
@@ -230,8 +230,8 @@ def get_valid_comp_off(employee, leave_date, leave_type_name):
 
 
 
-def validate_compoff(employee, leave_date, leave_type_name, off_day_date):
-        emp_applied_leaves = frappe.db.get_all("Leave Application", {"employee": employee, "docstatus":["!=", 2], "leave_type": leave_type_name, "custom_off_day_date": off_day_date}, ["name", "from_date", "to_date"], order_by="from_date desc") or []
+def validate_compoff(leave_app_id, employee, leave_type_name, off_day_date):
+        emp_applied_leaves = frappe.db.get_all("Leave Application", {"name": ["!=", leave_app_id],"employee": employee, "docstatus":["!=", 2], "leave_type": leave_type_name, "custom_off_day_date": off_day_date}, ["name", "from_date", "to_date"], order_by="from_date desc") or []
         
         if emp_applied_leaves:
             frappe.throw(_("You have already applied for a leave on {0} using Comp-Off for the date {1}. Please choose another date or contact HR.").format(emp_applied_leaves[0].from_date, off_day_date))    
