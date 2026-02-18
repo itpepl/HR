@@ -63,7 +63,7 @@ def process_pl_after_payroll(dt=None):
         if emp.final_confirmation_date and getdate(emp.final_confirmation_date) > getdate(end_date):
             frappe.log_error(
                 title=f"Privilege Leave type",
-                message="Employee {emp.name}: confirmation date is not set or after the payroll end date. Skipping PL accrual."
+                message=f"Employee {emp.name}: confirmation date is not set or after the payroll end date. Skipping PL accrual."
             )
             continue
         
@@ -78,6 +78,7 @@ def process_pl_after_payroll(dt=None):
         if pl > 0:
             allocate_pl(emp.name, leave_type.name, pl, year_start_date, year_end_date, leave_type.is_carry_forward, effective_start, end_date, eligible_days)
 
+    frappe.db.commit()
 
 def get_confirmed_employees():
     return frappe.get_all(
@@ -152,7 +153,7 @@ def get_eligible_days(employee, start_date, end_date):
                 eligible_days += 1
             elif att.half_half_day_status == "Present":
                 eligible_days += 0.5
-            elif att.att.leave_type != "Leave Without Pay":
+            elif att.leave_type != "Leave Without Pay":
                 eligible_days += 0.5
 
     eligible_days += len(holiday_dates)
