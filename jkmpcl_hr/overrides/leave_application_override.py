@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, nowdate, getdate, datetime
-from hrms.hr.doctype.leave_application.leave_application import LeaveApplication, get_leave_balance_on, get_number_of_leave_days, is_lwp, get_leave_allocation_records, get_leaves_for_period, get_manually_expired_leaves, get_remaining_leaves, get_allocation_expiry_for_cf_leaves
+from hrms.hr.doctype.leave_application.leave_application import LeaveApplication, get_leave_balance_on, get_leaves_pending_approval_for_period, get_number_of_leave_days, is_lwp, get_leave_allocation_records, get_leaves_for_period, get_manually_expired_leaves, get_remaining_leaves, get_allocation_expiry_for_cf_leaves
 
 
 def custom_validate_balance_leaves(self):
@@ -120,6 +120,8 @@ def custom_get_leave_balance_on(
     end_date = (
         allocation.to_date if (allocation and cint(consider_all_leaves_in_the_allocation_period)) else date
     )
+    
+    print(f"\n\n  Allocation {end_date} \n\n")
     cf_expiry = get_allocation_expiry_for_cf_leaves(employee, leave_type, to_date, allocation.from_date)
 
     leaves_taken = get_leaves_for_period(employee, leave_type, allocation.from_date, end_date)
@@ -130,7 +132,12 @@ def custom_get_leave_balance_on(
         allocation, leaves_taken, date, cf_expiry, manually_expired_leaves
     )
 
+    leaves_pending = get_leaves_pending_approval_for_period(employee, leave_type, allocation.from_date, to_date)
+            
     if for_consumption:
+        
+        remaining_leaves["leave_balance_for_consumption"] = remaining_leaves.get("leave_balance") - leaves_pending
+        remaining_leaves["leave_balance"] = remaining_leaves.get("leave_balance") - leaves_pending
         return remaining_leaves
     else:
-        return remaining_leaves.get("leave_balance")
+        return remaining_leaves.get("leave_balance") - leaves_pending

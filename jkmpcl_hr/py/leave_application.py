@@ -404,10 +404,8 @@ def get_days_for_ml(employee, leave_type, maternity_leave_type=None, from_date=g
 def custom_get_leave_details(employee, date, for_salary_slip=False):
     date = getdate(date)
     allocation_records = get_leave_allocation_records(employee, date)
-    
-    print(f"\n\n CUSTOM METHOD CALLED  leave details allocation records {allocation_records}\n\n")
-    
-    
+
+
     leave_allocation = {}
     precision = cint(frappe.db.get_single_value("System Settings", "float_precision")) or 2
     
@@ -426,12 +424,20 @@ def custom_get_leave_details(employee, date, for_salary_slip=False):
         
         penalized_leaves = get_total_penalized_leaves_for_period(employee, d, allocation.from_date, date)
         
-        leaves_taken = (get_leaves_for_period(employee, d, allocation.from_date, to_date) * -1)
+        # leaves_taken = (get_leaves_for_period(employee, d, allocation.from_date, to_date) * -1)
+        if d == "Compensatory Off":
+            leaves_taken = get_used_leaves(employee, d, fy_start_date, date)
+        else:
+            leaves_taken = get_used_leaves(employee, d, allocation.from_date, to_date)
+            
         leaves_pending = get_leaves_pending_approval_for_period(employee, d, allocation.from_date, to_date)
         total_allocated_leaves = get_total_allocated_leaves(employee, d, fy_start_date, fy_end_date)
-    
-        print(f"\n\n Remaining Leaves for {d} : {remaining_leaves}  leaves taken {leaves_taken}  total allocation {total_allocated_leaves} \n\n")    
-        expired_leaves = total_allocated_leaves - (remaining_leaves + leaves_taken) - penalized_leaves
+
+        # expired_leaves = total_allocated_leaves - (remaining_leaves + leaves_taken) - penalized_leaves
+        expired_leaves = get_expired_leaves(employee, d,date)
+        
+        print(f"\n\n FOR total_allocated {total_allocated_leaves} remaining {remaining_leaves} taken {leaves_taken} penalized {penalized_leaves}  Expired Leaves {expired_leaves} {d} \n\n")
+        
         
         leave_allocation[d] = {
             # "total_leaves": flt(allocation.total_leaves_allocated, precision),
@@ -440,7 +446,7 @@ def custom_get_leave_details(employee, date, for_salary_slip=False):
             "leaves_taken": flt(leaves_taken, precision),
             "leaves_pending_approval": flt(leaves_pending, precision),
             "penalized_leaves": flt(penalized_leaves, precision),
-            "remaining_leaves": flt(remaining_leaves, precision),
+            "remaining_leaves": flt((remaining_leaves), precision),
         }
 
     # is used in set query
@@ -526,3 +532,139 @@ def get_total_allocated_leaves(employee, leave_type, fy_start, fy_end):
 
     print(f"\n\n Total Allocated Leaves \n {result[0].total_leaves} \n\n")
     return result[0].total_leaves or 0
+
+def get_used_leaves(employee, leave_type, from_date, to_date):
+    Ledger = frappe.qb.DocType("Leave Ledger Entry")
+
+    # ---------------------------------------------------------
+    # NORMAL LEAVE TYPES (CL / SL / PL etc.)
+    # ---------------------------------------------------------
+    if leave_type != "Compensatory Off":
+
+        query = (
+            frappe.qb.from_(Ledger)
+            .select(Sum(Ledger.leaves).as_("used_leaves"))
+            .where(
+                (Ledger.employee == employee)
+                & (Ledger.leave_type == leave_type)
+                & (Ledger.docstatus == 1)
+                & (Ledger.transaction_type == "Leave Application")
+                & (Ledger.from_date >= from_date)
+                & (Ledger.to_date <= to_date)
+            )
+        )
+
+        result = query.run(as_dict=True)
+        return abs(result[0].used_leaves or 0)
+
+    # ---------------------------------------------------------
+    # COMPENSATORY OFF (Used Leaves Logic)
+    # ---------------------------------------------------------
+    else:
+        query = (
+            frappe.qb.from_(Ledger)
+            .select(Sum(Ledger.leaves).as_("used_leaves"))
+            .where(
+                (Ledger.employee == employee)
+                & (Ledger.leave_type == "Compensatory Off")
+                & (Ledger.docstatus == 1)
+                & (Ledger.transaction_type == "Leave Application")
+                & (Ledger.from_date >= from_date)
+                & (Ledger.to_date <= to_date)
+            )
+        )
+
+        result = query.run(as_dict=True)
+        return abs(result[0].used_leaves or 0)
+
+# def get_expired_compoff(employee):
+#     today_date = getdate()
+
+#     expired_count = 0
+
+#     off_day_records = frappe.get_all(
+#         "Off-Day Work Request",
+#         filters={
+#             "employee": employee,
+#             "docstatus": 1,
+#             "comp_off_created": 1,
+#             "leave_application": ["is", "not set"],
+#         },
+#         fields=["name", "leave_allocation"],
+#     )
+
+#     for rec in off_day_records:
+
+#         if not rec.leave_allocation:
+#             continue
+
+#         allocation_to_date = frappe.db.get_value(
+#             "Leave Allocation",
+#             rec.leave_allocation,
+#             "to_date",
+#         )
+
+#         # Expiry Condition
+#         if allocation_to_date and getdate(allocation_to_date) < today_date:
+#             expired_count += 1
+
+#     return expired_count
+
+def get_expired_leaves(employee, leave_type, date):
+
+    calculation_date = getdate(date)
+
+    # =========================================================
+    # COMP-OFF (UNCHANGED)
+    # =========================================================
+    if leave_type == "Compensatory Off":
+
+        expired_count = 0
+
+        off_day_records = frappe.get_all(
+            "Off-Day Work Request",
+            filters={
+                "employee": employee,
+                "docstatus": 1,
+                "comp_off_created": 1,
+                "leave_application": ["is", "not set"],
+            },
+            fields=["leave_allocation"],
+        )
+
+        for rec in off_day_records:
+
+            if not rec.leave_allocation:
+                continue
+
+            allocation_to_date = frappe.db.get_value(
+                "Leave Allocation",
+                rec.leave_allocation,
+                "to_date",
+            )
+
+            if allocation_to_date and getdate(allocation_to_date) < calculation_date:
+                expired_count += 1
+
+        return expired_count
+
+    # =========================================================
+    # OTHER LEAVE TYPES → LEDGER DRIVEN EXPIRY
+    # =========================================================
+
+    Ledger = frappe.qb.DocType("Leave Ledger Entry")
+
+    expired = (
+        frappe.qb.from_(Ledger)
+        .select(Sum(Ledger.leaves).as_("expired_leaves"))
+        .where(
+            (Ledger.employee == employee)
+            & (Ledger.leave_type == leave_type)
+            & (Ledger.docstatus == 1)
+            & (Ledger.transaction_type == "Leave Allocation")
+            & (Ledger.is_expired == 1)
+            & (Ledger.from_date <= calculation_date)
+        )
+    ).run(as_dict=True)
+
+    return expired[0].expired_leaves or 0
