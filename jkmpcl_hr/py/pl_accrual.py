@@ -2,6 +2,7 @@ import frappe
 from frappe.utils import getdate, nowdate
 import calendar
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
+from jkmpcl_hr.py.utils import get_current_holiday_list
 
 
 
@@ -70,13 +71,13 @@ def process_pl_after_payroll(dt=None):
         effective_start = max(getdate(start_date), getdate(emp.final_confirmation_date))
 
         eligible_days, total_days = get_eligible_days(
-            emp.name, effective_start, end_date
+            emp.name, effective_start, end_date, today
         )
 
         pl = round((eligible_days / total_days) * leave_type.custom_monthly_allocation_rate, 2)
 
         if pl > 0:
-            allocate_pl(emp.name, leave_type.name, pl, year_start_date, year_end_date, leave_type.is_carry_forward, effective_start, end_date, eligible_days)
+            allocate_pl(emp.name, leave_type.name, pl, year_start_date, year_end_date, leave_type.is_carry_forward, effective_start, end_date, eligible_days, today)
 
     frappe.db.commit()
 
@@ -92,7 +93,7 @@ def get_confirmed_employees():
     )
 
 
-def get_eligible_days(employee, start_date, end_date):
+def get_eligible_days(employee, start_date, end_date, date):
     """
     Eligible:
     - Present
@@ -120,7 +121,14 @@ def get_eligible_days(employee, start_date, end_date):
         "holiday_list"
     )
 
-    if not holiday_list:
+    assign_holiday_list = get_current_holiday_list(employee, date)
+    
+    if assign_holiday_list:
+        correct_holiday_list =  assign_holiday_list
+    else:
+        correct_holiday_list = holiday_list if holiday_list else None
+
+    if not correct_holiday_list:
         frappe.log_error(
             title=f"Privilege Leave type",
             message=f"Holiday List not assigned for Employee {employee}"
@@ -130,7 +138,7 @@ def get_eligible_days(employee, start_date, end_date):
     holidays = frappe.get_all(
         "Holiday",
         {
-            "parent": holiday_list,
+            "parent": correct_holiday_list,
             "holiday_date": ["between", [start_date, end_date]]
         },
         ("holiday_date"),
@@ -161,7 +169,7 @@ def get_eligible_days(employee, start_date, end_date):
     return max(eligible_days, 0), total_days
 
 
-def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, is_carry_forward, effective_start, end_date, eligible_days):
+def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, is_carry_forward, effective_start, end_date, eligible_days, today_date):
     allocation = frappe.get_all(
         "Leave Allocation",
         filters={
@@ -177,6 +185,7 @@ def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, i
     if allocation:
         doc = frappe.get_doc("Leave Allocation", allocation[0].name)
         doc.new_leaves_allocated += pl_days
+        doc.custom_last_allocation_date = today_date
         doc.append("custom_leave_accrual", {
             "from_date": effective_start,
             "to_date": end_date,
@@ -192,6 +201,7 @@ def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, i
         doc.to_date = year_end_date
         doc.new_leaves_allocated = pl_days
         doc.carry_forward = 1 if is_carry_forward else 0
+        doc.custom_last_allocation_date = today_date
         doc.append("custom_leave_accrual", {
             "from_date": effective_start,
             "to_date": end_date,
