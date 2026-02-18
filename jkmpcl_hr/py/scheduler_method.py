@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import getdate, today,add_days,now_datetime,add_to_date, date_diff, get_last_day
+from frappe.utils import getdate, today,add_days,now_datetime,add_to_date, date_diff, get_last_day, get_first_day
 
 from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
@@ -3140,11 +3140,12 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
             
         # today_date = getdate()
         monthly_sl = flt(0.58)
-        allocate_after_days = 52
+        frappe.log_error(f"monthly {monthly_sl}", f"{monthly_sl}")
+        
         sl_leave_type = "Sick Leave"
 
         month_end_date = getdate(get_last_day(today_date))
-        
+        month_start_date = getdate(get_first_day(today_date))
         
         if today_date.month < 4:
             current_fy_start = getdate(f"{today_date.year - 1}-04-01")
@@ -3176,7 +3177,8 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
             try:
                 joining_date = getdate(emp.date_of_joining)
 
-                is_new_emp = True if joining_date.month == month_end_date.month else False
+                is_new_emp = True if month_start_date <= joining_date <= month_end_date else False
+                
                 if emp.employment_type == "Contractual" and emp.contract_end_date:
                     if today_date > getdate(emp.contract_end_date):
                         continue
@@ -3200,37 +3202,50 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
                 )
 
                 last_alloc_date = None
-                if current_alloc and current_alloc[0].custom_last_allocation_date:
-                    last_alloc_date = getdate(current_alloc[0].custom_last_allocation_date)
+                if current_alloc and current_alloc[0]:
+                    if not current_alloc[0].custom_last_allocation_date:
+                        last_alloc_date = getdate(add_to_date(month_start_date, days=-1))
+                    else:
+                        last_alloc_date = getdate(current_alloc[0].custom_last_allocation_date)
                 else:
-                    last_alloc_date = joining_date
-
+                    last_alloc_date = joining_date if month_start_date <= joining_date <= month_end_date else month_start_date
                 
+                if emp.name == "20135: KARAN KUMAR":
+                        frappe.log_error(f"last_alloc{emp.name}", f"{last_alloc_date} - {joining_date} - {month_start_date} - {month_end_date}")
+                            
                 already_allocated_this_month = True if last_alloc_date and last_alloc_date.year == today_date.year and last_alloc_date.month == today_date.month else False
-            
+
                 if not new_financial_year:
                     if current_alloc and not already_allocated_this_month:
-                        
+                        if emp.name == "20135: KARAN KUMAR":
+                            frappe.log_error(f"alloc_found{emp.name}", f"{current_alloc}")
                         alloc_doc = frappe.get_doc("Leave Allocation", current_alloc[0].name)
                         alloc_doc.new_leaves_allocated = flt(alloc_doc.new_leaves_allocated) + monthly_sl
                         alloc_doc.custom_last_allocation_date = today_date
                         alloc_doc.save(ignore_permissions=True)
                     elif not current_alloc:
+                        
                         if is_new_emp:
+                            frappe.log_error("is_new_emp", f"{emp.name} is new employee")
                             total_days = month_end_date.day
+                                                        
                             remaining_days = total_days - joining_date.day + 1
                             
-                            monthly_sl = flt((remaining_days / total_days) * monthly_sl, 2)
-                            # monthly_sl = 
+                            c_monthly_sl = flt((remaining_days / total_days) * monthly_sl, 2)
+                                                    
+                        else:
+                            c_monthly_sl = monthly_sl
                         
-                        
-                        new_alloc = frappe.get_doc({
+                        if emp.name == "20135: KARAN KUMAR":
+                            frappe.log_error("monthly_sl", f"{monthly_sl} - {joining_date} - {month_end_date}  is new emp {is_new_emp}")
+                            
+                        new_alloc = frappe.get_doc({ 
                             "doctype": "Leave Allocation",
                             "employee": emp.name,
                             "leave_type": sl_leave_type,
                             "from_date": today_date,
                             "to_date": effective_to_date,
-                            "new_leaves_allocated": monthly_sl,
+                            "new_leaves_allocated": c_monthly_sl,
                             "custom_last_allocation_date": today_date,
                         })
                         new_alloc.insert(ignore_permissions=True)
@@ -3243,34 +3258,28 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
                         prev_fy_end,
                     ) or 0
                     
+                    # prev_fy_alloc = frappe.db.get_all(
+                    #     "Leave Allocation",
+                    #     {
+                    #         "employee": emp.name,
+                    #         "leave_type": sl_leave_type,
+                    #         "docstatus": 1,
+                    #         "from_date": ["<=", prev_fy_end],
+                    #         "to_date": [">=", prev_fy_end],
+                    #     },
+                    #     ["custom_last_allocation_date"],
+                    #     order_by="from_date desc",
+                    #     limit_page_length=1,
+                    # )
 
-                    prev_fy_alloc = frappe.db.get_all(
-                        "Leave Allocation",
-                        {
-                            "employee": emp.name,
-                            "leave_type": sl_leave_type,
-                            "docstatus": 1,
-                            "from_date": ["<=", prev_fy_end],
-                            "to_date": [">=", prev_fy_end],
-                        },
-                        ["custom_last_allocation_date"],
-                        order_by="from_date desc",
-                        limit_page_length=1,
-                    )
-
-                    if prev_fy_alloc and prev_fy_alloc[0].custom_last_allocation_date:
-                        last_alloc_date = getdate(prev_fy_alloc[0].custom_last_allocation_date)
-                    else:
-                        last_alloc_date = joining_date
-
-                    if(emp.name == "00400"):
-                        frappe.log_error(f"current_alloc: {last_alloc_date}", f"Employee: {emp.name} 123")
-                    
-                    
-                    if date_diff(today_date, last_alloc_date) >= allocate_after_days:
-                        new_leaves = 1
-                    else:
-                        new_leaves = 0
+                    # if prev_fy_alloc and prev_fy_alloc[0].custom_last_allocation_date:
+                    #     last_alloc_date = getdate(prev_fy_alloc[0].custom_last_allocation_date)
+                    # else:
+                    #     last_alloc_date = joining_date
+                
+                    # if date_diff(today_date, last_alloc_date) >= allocate_after_days:
+                    #     new_leaves = 1
+                    # else:
 
                     fy_alloc = frappe.get_doc({
                         "doctype": "Leave Allocation",
@@ -3279,8 +3288,8 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
                         "from_date": current_fy_start,
                         "to_date": effective_to_date,
                         "custom_opening_balance": last_year_balance,
-                        "new_leaves_allocated": new_leaves,
-                        "custom_last_allocation_date": today_date if new_leaves else last_alloc_date,
+                        "new_leaves_allocated": 0,
+                        "custom_last_allocation_date": prev_fy_end,
                     })
                     fy_alloc.insert(ignore_permissions=True)
                     fy_alloc.submit()
