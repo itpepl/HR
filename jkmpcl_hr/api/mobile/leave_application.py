@@ -1,12 +1,13 @@
 import os
 import uuid
 import frappe
-from frappe.utils import getdate
+from frappe.utils import getdate,strip_html
 from frappe.utils.file_manager import save_file
 import shutil
 import re
 from jkmpcl_hr.py.utils import get_other_department_emp
 from frappe import _
+import traceback
 
 @frappe.whitelist()
 def validate_leave_for_mobile(
@@ -241,6 +242,7 @@ def get_leave_types(employeeId, as_on_date=None):
         for l in lwps:
             allowed_leave_types.append(l)
 
+        
         open_leave_types = get_open_leave_types(employeeId)
         if not open_leave_types:
             open_leave_types = []
@@ -347,7 +349,7 @@ def get_user_for_cc(emp_id):
             "data": user_list
         }
 
-
+from frappe.model.workflow import get_transitions
 @frappe.whitelist()
 def list(
     filters=None,
@@ -408,6 +410,79 @@ def list(
             "message": "Leave Application List Loaded Successfully!",
             "data": leave_application_list_raw,
             "count": total_count
+        }
+
+
+@frappe.whitelist()
+def list(
+    view_type="self",   # self / team
+    filters=None,
+    fields=None,
+    order_by="creation desc",
+    limit_page_length=None,
+    limit_start=0,
+):
+    try:
+        user = frappe.session.user
+
+        # Parse filters safely
+        filters = frappe.parse_json(filters) if filters else []
+
+        if isinstance(filters, dict):
+            filters = [[k, "=", v] for k, v in filters.items()]
+
+        # Get logged-in employee
+        employee = frappe.db.get_value(
+            "Employee",
+            {"user_id": user},
+            "name"
+        )
+
+        if not employee:
+            frappe.throw("Employee not linked with current user")
+
+        if view_type == "self":
+            filters.append(["employee", "=", employee])
+
+
+        elif view_type == "team":
+            filters.append(["employee", "!=", employee])
+
+        else:
+            frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+        leave_list = frappe.get_list(
+            "Leave Application",
+            filters=filters,
+            fields=fields or [
+                "name","employee","employee_name",
+                "leave_type","from_date","to_date",
+                "status","workflow_state","total_leave_days",
+                "leave_approver_name","description",
+                "custom_half_day_time","half_day_date",
+                "half_day","custom_proof_document"
+            ],
+            order_by=order_by,
+            limit_page_length=limit_page_length,
+            limit_start=limit_start
+        )
+        total_records = frappe.get_list(
+            "Leave Application",
+            filters=filters
+        )
+        return {
+            "success": True,
+            "data": leave_list,
+            "count": len(leave_list),
+            "total_count": len(total_records),
+            "message": "Leave Application List Loaded Successfully!",
+        }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Leave List API Error")
+        return {
+            "success": False,
+            "message": str(e)
         }
 
 
@@ -725,23 +800,38 @@ def create(**args):
             },
         }
 
-    except frappe.ValidationError:
-        # Pull clean message from frappe system messages
-        messages = frappe.local.message_log or []
+    except Exception as e:
+        import traceback
 
-        if messages:
-            msg = messages[0]
-        else:
-            msg = "Leave Application validation failed."
+        error_message = None
 
-        # Remove HTML tags (links etc)
-        msg = re.sub(r"<[^>]*>", "", str(msg))
+        # If frappe.throw was used
+        if frappe.local.message_log:
+            log = frappe.local.message_log[0]
+
+            if isinstance(log, dict):
+                error_message = log.get("message")
+            else:
+                error_message = str(log)
+
+        # Fallback to exception message
+        if not error_message:
+            error_message = str(e)
+
+        # Ensure it's string before strip_html
+        error_message = strip_html(str(error_message))
+
+        frappe.log_error(
+            title="Leave Application API Error",
+            message=traceback.format_exc()
+        )
 
         return {
             "success": False,
-            "message": msg,
+            "message": error_message,
             "data": None,
         }
+
 
 
 def upload_leave_files(leave_application, temp_files):

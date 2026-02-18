@@ -8,14 +8,12 @@ def role_permission(email):
 
         roles = frappe.get_roles(user.name)
 
-        # Filter only mobile roles
         mobile_roles = []
         for role in roles:
             mobile_flag = frappe.db.get_value("Role", role, "mobile_user")
             if mobile_flag:
                 mobile_roles.append(role)
 
-        # 🚨 If no mobile roles found
         if not mobile_roles:
             frappe.response["message"] = {
                 "success_key": 1,
@@ -52,7 +50,6 @@ def role_permission(email):
             WHERE role IN %(roles)s
         """, {"roles": tuple(mobile_roles)}, as_dict=True)
 
-        print(permissions_data)
         doc_list = []
         permission_keys = []
 
@@ -88,4 +85,140 @@ def role_permission(email):
         frappe.response["message"] = {
             "success_key": 0,
             "error": str(e),
+        }
+
+
+@frappe.whitelist(allow_guest=True)
+def employee_list(search=None, limit_page_length=20, limit_start=0):
+    try:
+        filters = []
+        or_filters = None  # ✅ always define first
+
+        # Search filter
+        if search:
+            or_filters = [
+                ["employee_name", "like", f"%{search}%"],
+                ["name", "like", f"%{search}%"]
+            ]
+
+        employees = frappe.get_list(
+            "Employee",
+            fields=["name", "employee_name"],
+            filters=filters,
+            or_filters=or_filters,
+            limit_page_length=int(limit_page_length),
+            limit_start=int(limit_start),
+            order_by="employee_name asc"
+        )
+
+        # Permission-safe count
+        total_count = len(
+            frappe.get_list(
+                "Employee",
+                filters=filters,
+                or_filters=or_filters,
+                fields=["name"]
+            )
+        )
+
+        return {
+            "success": True,
+            "total_count": total_count,
+            "limit": int(limit_page_length),
+            "offset": int(limit_start),
+            "data": employees
+        }
+
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Employee List API Error"
+        )
+        return {
+            "success": False,
+            "message": "Unable to fetch employee list"
+        }
+
+    
+@frappe.whitelist(allow_guest=True)
+def employee_department(search=None, limit_page_length=20, limit_start=0):
+    try:
+        filters = []
+
+        if search:
+            filters = [
+                ["Employee", "department", "like", f"%{search}%"]
+            ]
+
+        employees = frappe.get_list(
+            "Employee",
+            fields=[ "department"],
+            filters=filters,
+            limit_page_length=int(limit_page_length),
+            limit_start=int(limit_start),
+            order_by="department asc"
+        )
+
+        total_count = frappe.get_list("Employee")
+
+        return {
+            "success": True,
+            "total_count": len(total_count),
+            "limit": limit_page_length,
+            "offset": limit_start,
+            "data": employees
+        }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Employee Department API Error")
+        return {
+            "success": False,
+            "message": str(e)
+        }
+@frappe.whitelist(allow_guest=True)
+def employee_department(search=None, limit_page_length=20, limit_start=0):
+    try:
+        filters = []
+        or_filters = None
+
+        if search:
+            or_filters = [
+                ["name", "like", f"%{search}%"]
+            ]
+
+        departments = frappe.get_list(
+            "Department",
+            fields=["name"],
+            filters=filters,
+            or_filters=or_filters,
+            limit_page_length=int(limit_page_length),
+            limit_start=int(limit_start),
+            order_by="name asc"
+        )
+
+        total_count = len(
+            frappe.get_list(
+                "Department",
+                filters=filters,
+                or_filters=or_filters,
+                fields=["name"]
+            )
+        )
+
+        return {
+            "success": True,
+            "total_count": total_count,
+            "limit": int(limit_page_length),
+            "offset": int(limit_start),
+            "data": departments
+        }
+
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Employee Department API Error"
+        )
+        return {
+            "success": False,
+            "message": "Unable to fetch department list"
         }

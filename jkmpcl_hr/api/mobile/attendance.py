@@ -149,7 +149,8 @@ def get_attendance_calendar(employeeId, date):
                 "working_hours",
                 "leave_type",
                 "half_day_status",
-                "shift"
+                "shift",
+                "leave_application"
             ]
         )
 
@@ -157,10 +158,6 @@ def get_attendance_calendar(employeeId, date):
             str(row.attendance_date): row
             for row in attendance_data
         }
-
-        # -----------------------------
-        # HARD-CODED LEAVE TYPE SHORT CODES
-        # -----------------------------
         leave_map = {
             "Medical Emergency Leave": "MEL",
             "Special Maternity Leave": "SML",
@@ -171,10 +168,6 @@ def get_attendance_calendar(employeeId, date):
             "Compensatory Off": "CO",
             "Casual Leave": "CL",
         }
-
-        # -----------------------------
-        # HOLIDAY LIST
-        # -----------------------------
         holiday_map = {}
         employee = frappe.get_doc("Employee", employeeId)
 
@@ -184,15 +177,12 @@ def get_attendance_calendar(employeeId, date):
                 holiday_map[str(h.holiday_date)] = {
                     "weekly_off": h.weekly_off,
                     "description": h.description,
-                    "is_half_day": h.is_half_day
+                    "is_half_day": h.is_half_day,
                 }
 
         today = sys_date.today()
         month_data = []
 
-        # -----------------------------
-        # LOOP THROUGH DAYS OF THE MONTH
-        # -----------------------------
         for d in range(1, total_days + 1):
             date_obj = sys_date(current_year, current_month, d)
             date_str = str(date_obj)
@@ -248,6 +238,8 @@ def get_attendance_calendar(employeeId, date):
                 elif record.status == "On Leave":
                     short_code = leave_map.get(record.leave_type) or "L"
                     day_data["status"] = short_code
+                    if short_code =="CO":
+                        day_data["working_date_co"]=frappe.get_value("Leave Application", record.leave_application, "custom_off_day_date")
 
                 # ✅ ABSENT
                 elif record.status == "Absent":
@@ -263,7 +255,7 @@ def get_attendance_calendar(employeeId, date):
             # -----------------------------
             # PAST DATE WITHOUT ATTENDANCE
             # -----------------------------
-            elif date_obj < today and not day_data["status"]:
+            elif date_obj >today and not day_data["status"]:
                 day_data["status"] = "A"
 
             month_data.append(day_data)

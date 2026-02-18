@@ -1,6 +1,8 @@
 import frappe
 from frappe.utils import getdate, strip_html
 from frappe.utils import formatdate
+from frappe.utils import cint
+
 
 @frappe.whitelist(allow_guest=False)
 def create_off_day_work(data):
@@ -68,9 +70,6 @@ def create_off_day_work(data):
             "message": "Unable to create Off Day Work Request. Please contact administrator."
         }
 
-
-
-
 @frappe.whitelist()
 def off_day_status_list():
     return {
@@ -78,7 +77,7 @@ def off_day_status_list():
         "message": "Off Day Work Statuses fetched successfully",
         "data": ["Pending", "Rejected", "Approved"]
     }
-    
+   
 
 
 @frappe.whitelist(allow_guest=False)
@@ -183,7 +182,84 @@ def get_off_day_work_list(
             "message": "Unable to fetch Off Day Work Requests"
         }
 
+@frappe.whitelist()
+def get_off_day_work_list(
+    view_type="self",
+    filters=None,
+    order_by="creation desc",
+    limit_page_length=None,
+    limit_start=0,
+):
+    try:
+        user = frappe.session.user
 
+        filters = frappe.parse_json(filters) if filters else []
+
+        if isinstance(filters, dict):
+            filters = [[k, "=", v] for k, v in filters.items()]
+
+        employee = frappe.db.get_value(
+            "Employee",
+            {"user_id": user},
+            "name"
+        )
+
+        if not employee:
+            frappe.throw("Employee not linked with current user")
+
+        if view_type == "self":
+            filters.append(["employee", "=", employee])
+
+        elif view_type == "team":
+            filters.append(["employee", "!=", employee])
+
+        else:
+            frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+        # Total Count (without pagination)
+        total_records = frappe.get_list(
+            "Off-Day Work Request",
+            filters=filters
+        )
+        records = frappe.get_list(
+            "Off-Day Work Request",
+            filters=filters,
+            fields=[
+                "name",
+                "date",
+                "workflow_state",
+                "docstatus",
+                "comp_off_created",
+                "department",
+                "company",
+                "branch",
+                "shift",
+                "employee_name"            ],
+            order_by=order_by,
+            limit_page_length=cint(limit_page_length) if limit_page_length else None,
+            limit_start=cint(limit_start)
+        )
+
+        # for row in records:
+        #     if row.get("custom_note"):
+        #         row["custom_note"] = strip_html(row["custom_note"]).strip()
+
+        return {
+            "success": True,
+            "data": records,
+            "total_records": len(total_records),   # total matching records
+            "count": len(records),            # current page count
+            "message": "Manual Punch List Loaded Successfully!"
+        }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Manual Punch List API Error")
+        return {
+            "success": False,
+            "message": str(e)
+        }
+        
+        
 @frappe.whitelist(allow_guest=False)
 def get_off_day_work_detail(name):
 

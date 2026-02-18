@@ -85,6 +85,8 @@ def get_leave_balance(employeeId, as_on_date=None):
         ]
 
         FEMALE_ONLY_LEAVES = {
+            
+            
             "Maternity Leave",
             "Special Maternity Leave",
             "Child Adoption Leave"
@@ -148,7 +150,7 @@ def get_leave_balance(employeeId, as_on_date=None):
                 AND from_date <= %s
                 AND to_date >= %s
             """, (employeeId, lt, as_on_date, as_on_date))[0][0] or 0
-
+            print(f"Earned for {lt}: {earned}")
             used = frappe.db.sql("""
                 SELECT ABS(SUM(leaves))
                 FROM `tabLeave Ledger Entry`
@@ -158,7 +160,7 @@ def get_leave_balance(employeeId, as_on_date=None):
                 AND from_date <= %s
                 AND to_date >= %s
             """, (employeeId, lt, as_on_date, as_on_date))[0][0] or 0
-
+            print(f"Used for {lt}: {used}")
             remaining = earned - used
 
             row = {
