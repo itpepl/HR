@@ -85,7 +85,7 @@ class CustomLeaveAllocation(LeaveAllocation):
 
 			args = {
 				"leaves": leaves_to_be_added,
-				"from_date": self.from_date,
+				"from_date": self.custom_last_allocation_date  or self.from_date,
 				"to_date": self.to_date,
 				"is_carry_forward": 0,
 			}
@@ -100,7 +100,7 @@ class CustomLeaveAllocation(LeaveAllocation):
 			end_date = add_days(self.from_date, expiry_days - 1) if expiry_days else self.to_date
 			args = dict(
 				leaves=self.unused_leaves,
-				from_date=self.from_date,
+				from_date= self.custom_last_allocation_date or self.from_date,
 				to_date=min(getdate(end_date), getdate(self.to_date)),
 				is_carry_forward=1,
 			)
@@ -110,7 +110,7 @@ class CustomLeaveAllocation(LeaveAllocation):
 
 		args = dict(
 			leaves=self.new_leaves_allocated + (self.custom_opening_balance or 0),
-			from_date=self.from_date,
+			from_date= self.custom_last_allocation_date or self.from_date,
 			to_date=self.to_date,
 			is_carry_forward=0,
 		)
