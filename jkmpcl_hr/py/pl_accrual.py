@@ -61,24 +61,44 @@ def process_pl_after_payroll(dt=None):
         return
 
     for emp in employees:
-        if emp.final_confirmation_date and getdate(emp.final_confirmation_date) > getdate(end_date):
-            frappe.log_error(
-                title=f"Privilege Leave type",
-                message=f"Employee {emp.name}: confirmation date is not set or after the payroll end date. Skipping PL accrual."
+        try:
+            if emp.final_confirmation_date and getdate(emp.final_confirmation_date) > getdate(end_date):
+                frappe.log_error(
+                    title=f"Privilege Leave type",
+                    message=f"Employee {emp.name}: confirmation date is not set or after the payroll end date. Skipping PL accrual."
+                )
+                continue
+            
+            effective_start = max(getdate(start_date), getdate(emp.final_confirmation_date))
+
+            eligible_days, total_days = get_eligible_days(
+                emp.name, effective_start, end_date
             )
+
+            if emp.name == "20111: AJAY  KUMAR":
+                print(f"\n\n {eligible_days}  {total_days} {pl} \n\n")
+            
+            pl = round((eligible_days / total_days) * leave_type.custom_monthly_allocation_rate, 2)
+            # if emp.name == "20111: AJAY  KUMAR":
+            #     return eligible_days, total_days , pl
+
+            attendance_exists = frappe.db.exists(
+                "Attendance",
+                {
+                    "employee": emp.name,
+                    "status":["in", ["Present", "On Leave", "Half Day"]],
+                    "attendance_date": ["between", [effective_start, end_date]]
+                }
+            )        
+            if not attendance_exists:
+                frappe.log_error(f"Skipping PL accrual for Employee {emp.name}", f"No attendance or leave records found between {effective_start} and {end_date}")
+                continue
+            else:
+                if pl > 0:
+                    allocate_pl(emp.name, leave_type.name, pl, year_start_date, year_end_date, leave_type.is_carry_forward, effective_start, end_date, eligible_days, today)
+        except Exception as e:
+            frappe.log_error(title=f"Error processing PL accrual for Employee {emp.name}", message=str(e))
             continue
-        
-        effective_start = max(getdate(start_date), getdate(emp.final_confirmation_date))
-
-        eligible_days, total_days = get_eligible_days(
-            emp.name, effective_start, end_date, today
-        )
-
-        pl = round((eligible_days / total_days) * leave_type.custom_monthly_allocation_rate, 2)
-
-        if pl > 0:
-            allocate_pl(emp.name, leave_type.name, pl, year_start_date, year_end_date, leave_type.is_carry_forward, effective_start, end_date, eligible_days, today)
-
     frappe.db.commit()
 
 def get_confirmed_employees():
@@ -92,84 +112,160 @@ def get_confirmed_employees():
         order_by="name"
     )
 
+from frappe.utils import getdate, get_last_day, add_days, flt
+import frappe
 
-def get_eligible_days(employee, start_date, end_date, date):
+
+def get_eligible_days(employee, start_date, end_date):
     """
-    Eligible:
-    - Present
-    - CL, PL, SL, Comp Off
-    - Holidays & Week-offs
-    Exclude:
-    - Absent
-    - LOP / LWP
+    Deduction Based Logic
+
+    Eligible Days =
+        Total Days
+        - LWP (from Leave Ledger Entry)
+        - Absent (from Attendance)
+        - Partial (based on business rule)
+
+    No Holiday Logic Used
     """
 
-    total_days = (getdate(end_date) - getdate(start_date)).days + 1
+    start_date = getdate(start_date)
+    end_date = getdate(end_date)
+
+    total_days = (end_date - start_date).days + 1
+
+    lle = frappe.qb.DocType("Leave Ledger Entry")
+
+    lwp_query = (
+        frappe.qb.from_(lle)
+        .select(lle.leaves)
+        .where(
+            (lle.employee == employee)
+            & (lle.leave_type == "Leave Without Pay")
+            & (lle.docstatus == 1)
+            & (lle.is_lwp == 1)
+            # & (lle.custom_is_penalty == 0)
+            & (lle.from_date <= end_date)
+            & (lle.to_date >= start_date)
+        )
+    ).run(as_dict=True)
+
+    
+    lwp_days = sum(
+        abs(flt(row.leaves))
+        for row in lwp_query
+    )
 
     attendance = frappe.get_all(
         "Attendance",
-        {
+        filters={
             "employee": employee,
             "attendance_date": ["between", [start_date, end_date]],
-            "status": ["in", ["Present", "On Leave", "Half Day"]]
+            "status": ["in", ["Absent", "Partially"]],
         },
-        ("name", "status", "leave_type", "half_day_status")
+        fields=["status"],
     )
 
-    holiday_list = frappe.db.get_value(
-        "Employee", employee,
-        "holiday_list"
-    )
+    absent_days = 0
+    partial_days = 0
 
-    assign_holiday_list = get_current_holiday_list(employee, date)
+    for att in attendance:
+        if att.status in ["Absent", "Partially"]:
+            absent_days += 1
+        # elif att.status == :
+        #     partial_days += 0.5
+
+    total_deduction = lwp_days + absent_days + partial_days
     
-    if assign_holiday_list:
-        correct_holiday_list =  assign_holiday_list
-    else:
-        correct_holiday_list = holiday_list if holiday_list else None
 
-    if not correct_holiday_list:
-        frappe.log_error(
-            title=f"Privilege Leave type",
-            message=f"Holiday List not assigned for Employee {employee}"
-        )
-        return 0, total_days
+    eligible_days = total_days - total_deduction
+    if employee == "20111: AJAY  KUMAR":
+        print(f"\n\n {eligible_days}  {total_deduction} {total_days} {start_date} {end_date} \n {lwp_query}  {lwp_days}\n  {attendance}  {total_deduction} {lwp_days} + {absent_days} + {partial_days}\n\n")
+    return max(flt(eligible_days), 0), total_days
 
-    holidays = frappe.get_all(
-        "Holiday",
-        {
-            "parent": correct_holiday_list,
-            "holiday_date": ["between", [start_date, end_date]]
-        },
-        ("holiday_date"),
-        as_list=True
-    )
 
-    holiday_dates = [h[0] for h in holidays]
-    for att in attendance:
-        if att.attendance_date in holiday_dates:
-            holiday_dates.remove(att.attendance_date)
+# def get_eligible_days(employee, start_date, end_date, date):
+#     """
+#     Eligible:
+#     - Present
+#     - CL, PL, SL, Comp Off
+#     - Holidays & Week-offs
+#     Exclude:
+#     - Absent
+#     - LOP / LWP
+#     """
 
-    eligible_days = 0
-    for att in attendance:
-        if att.status == "Present":
-            eligible_days += 1
-        elif att.status == "On Leave" and att.leave_type != "Leave Without Pay":
-            eligible_days += 1
-        elif att.status == "Half Day":
-            if att.half_day_status == "Present" and att.leave_type != "Leave Without Pay":
-                eligible_days += 1
-            elif att.half_half_day_status == "Present":
-                eligible_days += 0.5
-            elif att.leave_type != "Leave Without Pay":
-                eligible_days += 0.5
+#     total_days = (getdate(end_date) - getdate(start_date)).days + 1
 
-    eligible_days += len(holiday_dates)
+#     attendance = frappe.get_all(
+#         "Attendance",
+#         {
+#             "employee": employee,
+#             "attendance_date": ["between", [start_date, end_date]],
+#             "status": ["in", ["Present", "On Leave", "Half Day"]]
+#         },
+#         ("name", "status", "leave_type", "half_day_status")
+#     )
 
-    return max(eligible_days, 0), total_days
+#     holiday_list = frappe.db.get_value(
+#         "Employee", employee,
+#         "holiday_list"
+#     )
+
+#     assign_holiday_list = get_current_holiday_list(employee, date)
+    
+#     if assign_holiday_list:
+#         correct_holiday_list =  assign_holiday_list
+#     else:
+#         correct_holiday_list = holiday_list if holiday_list else None
+
+#     if not correct_holiday_list:
+#         frappe.log_error(
+#             title=f"Privilege Leave type",
+#             message=f"Holiday List not assigned for Employee {employee}"
+#         )
+#         return 0, total_days
+
+#     holidays = frappe.get_all(
+#         "Holiday",
+#         {
+#             "parent": correct_holiday_list,
+#             "holiday_date": ["between", [start_date, end_date]]
+#         },
+#         ("holiday_date"),
+#         as_list=True
+#     )
+
+#     holiday_dates = [h[0] for h in holidays]
+#     for att in attendance:
+#         if att.attendance_date in holiday_dates:
+#             holiday_dates.remove(att.attendance_date)
+
+#     eligible_days = 0
+#     for att in attendance:
+#         if att.status == "Present":
+#             eligible_days += 1
+#         elif att.status == "On Leave" and att.leave_type != "Leave Without Pay":
+#             eligible_days += 1
+            
+#         elif att.status == "Half Day":
+#             if att.half_day_status == "Present" and att.leave_type != "Leave Without Pay":
+#                 eligible_days += 1
+#             elif att.half_day_status == "Present":
+#                 eligible_days += 0.5
+#             elif att.leave_type != "Leave Without Pay":
+#                 eligible_days += 0.5
+    
+#     eligible_days += len(holiday_dates)
+
+#     return max(eligible_days, 0), total_days
 
 
 def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, is_carry_forward, effective_start, end_date, eligible_days, today_date):
+    
+    effective_start = getdate(effective_start)
+    end_date = getdate(end_date)
+    
     allocation = frappe.get_all(
         "Leave Allocation",
         filters={
@@ -183,7 +279,17 @@ def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, i
     )
 
     if allocation:
+        
         doc = frappe.get_doc("Leave Allocation", allocation[0].name)
+        already_allocated = any(
+            getdate(row.from_date) == effective_start
+            and getdate(row.to_date) == end_date
+            for row in doc.custom_leave_accrual
+        )
+        
+        if already_allocated:
+        # Accrual already processed for this period
+            return
         doc.new_leaves_allocated += pl_days
         doc.custom_last_allocation_date = today_date
         doc.append("custom_leave_accrual", {
