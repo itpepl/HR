@@ -32,6 +32,7 @@ def custom_validate_balance_leaves(self):
                 self.to_date,
                 consider_all_leaves_in_the_allocation_period=True,
                 for_consumption=True,
+                leave_app_id=self.name,
             )
             
             
@@ -58,6 +59,7 @@ def custom_get_leave_balance_on(
     to_date: datetime.date | None = None,
     consider_all_leaves_in_the_allocation_period: bool = False,
     for_consumption: bool = False,
+    leave_app_id: str | None = None,
 ):
     """
     Returns leave balance till date
@@ -133,7 +135,16 @@ def custom_get_leave_balance_on(
     )
 
     leaves_pending = get_leaves_pending_approval_for_period(employee, leave_type, allocation.from_date, to_date)
+    
+    
+    if leaves_pending:
+        leave_app_list = get_pending_leaves_app_id(employee, leave_type, allocation.from_date, to_date)
+        print(f"\n\n Leave App List: {leave_app_list}  {leave_app_id}\n\n")
+        if leave_app_list and leave_app_id and leave_app_id in leave_app_list:
+            leaves_pending -= 1
             
+        print(f"\n\n Leaves Pending Approval: {leaves_pending} \n\n")
+    
     if for_consumption:
         
         remaining_leaves["leave_balance_for_consumption"] = remaining_leaves.get("leave_balance") - leaves_pending
@@ -141,3 +152,23 @@ def custom_get_leave_balance_on(
         return remaining_leaves
     else:
         return remaining_leaves.get("leave_balance") - leaves_pending
+
+
+
+
+def get_pending_leaves_app_id(employee, leave_type, from_date, to_date):
+    leave_app_ids = frappe.db.get_all(
+        "Leave Application",
+        filters={
+            "employee": employee,
+            "leave_type": leave_type,
+            "status": "Open",
+        },
+        or_filters={
+            "from_date": ["between", (from_date, to_date)],
+            "to_date": ["between", (from_date, to_date)],
+        },
+        pluck="name",
+    )
+
+    return leave_app_ids
