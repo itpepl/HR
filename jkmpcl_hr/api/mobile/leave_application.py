@@ -953,7 +953,6 @@ def get_valid_comp_off(employeeId, from_date, to_date, leave_type_name):
         fields=["name"],
         order_by="from_date asc"
     )
-
     if not leave_allocation:
         return {
             "valid": False,
