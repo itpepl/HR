@@ -200,9 +200,9 @@ def get_attendance_calendar(employeeId, date):
             # -----------------------------
             # FUTURE DATE → BLANK
             # -----------------------------
-            # if date_obj > today:
-            #     month_data.append(day_data)
-            #     continue
+            if date_obj > today:
+                month_data.append(day_data)
+                continue
 
             # -----------------------------
             # HOLIDAY / WEEKLY OFF
@@ -214,17 +214,12 @@ def get_attendance_calendar(employeeId, date):
                 else:
                     day_data["status"] = "H"
 
-            # -----------------------------
-            # ATTENDANCE OVERRIDES ALL
-            # -----------------------------
             if date_str in attendance_map:
                 record = attendance_map[date_str]
 
-                # ✅ PRESENT
                 if record.status == "Present":
                     day_data["status"] = "P"
 
-                # ✅ HALF DAY
                 elif record.status == "Half Day":
                     short_code = leave_map.get(record.leave_type) or "HD"
                     day_data["status"] = short_code
@@ -234,14 +229,12 @@ def get_attendance_calendar(employeeId, date):
                     else:
                         day_data["other_half_status"] = "P"
 
-                # ✅ ON LEAVE
                 elif record.status == "On Leave":
                     short_code = leave_map.get(record.leave_type) or "L"
                     day_data["status"] = short_code
                     if short_code =="CO":
                         day_data["working_date_co"]=frappe.get_value("Leave Application", record.leave_application, "custom_off_day_date")
 
-                # ✅ ABSENT
                 elif record.status == "Absent":
                     day_data["status"] = "A"
                 elif record.status == "Partially":
@@ -252,17 +245,11 @@ def get_attendance_calendar(employeeId, date):
                 day_data["working_hours"] = decimal_hours_to_hhmm(raw_hours) or 0
                 day_data["shift"]=record.shift
 
-            # -----------------------------
-            # PAST DATE WITHOUT ATTENDANCE
-            # -----------------------------
             elif date_obj >today and not day_data["status"]:
                 day_data["status"] = "A"
 
             month_data.append(day_data)
 
-        # -----------------------------
-        # RESPONSE
-        # -----------------------------
         return {
             "success": True,
             "month": f"{current_year}-{current_month:02d}",

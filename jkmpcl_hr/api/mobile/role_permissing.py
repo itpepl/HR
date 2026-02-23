@@ -103,7 +103,7 @@ def employee_list(search=None, limit_page_length=20, limit_start=0):
 
         employees = frappe.get_list(
             "Employee",
-            fields=["name", "employee_name"],
+            fields=["name", "employee_name","department", "designation","branch","reports_to"],
             filters=filters,
             or_filters=or_filters,
             limit_page_length=int(limit_page_length),
