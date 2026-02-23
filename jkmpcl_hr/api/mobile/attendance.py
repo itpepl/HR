@@ -245,7 +245,7 @@ def get_attendance_calendar(employeeId, date):
                 day_data["working_hours"] = decimal_hours_to_hhmm(raw_hours) or 0
                 day_data["shift"]=record.shift
 
-            elif date_obj >today and not day_data["status"]:
+            elif date_obj <today and not day_data["status"]:
                 day_data["status"] = "A"
 
             month_data.append(day_data)
