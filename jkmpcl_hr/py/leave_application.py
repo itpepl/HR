@@ -4,7 +4,7 @@ from frappe import _
 from math import floor
 from frappe.utils import getdate, add_years, date_diff, add_days, flt, cint
 from jkmpcl_hr.overrides.attendance_request import revert_penalty_leave
-from jkmpcl_hr.py.utils import send_notification_email
+from jkmpcl_hr.py.utils import send_notification_email, get_emp_hr_manager, get_ceo_user, get_emp_review_manager
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on, get_leave_allocation_records, get_leaves_for_period, get_leave_approver, get_leaves_pending_approval_for_period
 from frappe.query_builder.functions import Sum
 from jkmpcl_hr.overrides.leave_application_override import custom_get_leave_balance_on
@@ -38,6 +38,7 @@ def validate(doc, method):
 
 def on_update(doc, method):
     handle_workflow_notification(doc)
+    share_doc(doc)
 
 def handle_workflow_notification(doc):
 
@@ -143,6 +144,33 @@ def get_notification_recipients(doc):
             recipients.append(approver_user)
 
         return recipients, notification_name
+
+
+
+def share_doc(doc):
+    old_doc = doc.get_doc_before_save()
+    
+    if old_doc and old_doc.workflow_state:
+        
+        if old_doc.workflow_state != doc.workflow_state: 
+        
+            if doc.workflow_state == "Approved by Reporting Manager":
+                review_manager = get_emp_review_manager(doc.employee)
+                
+                if review_manager:
+                    frappe.share.add_docshare(doc.doctype, doc.name, review_manager, read=1, select=1, write=1, share=1)
+            
+            elif doc.workflow_state == "Approved by Review Manager":
+                    hr_manager = get_emp_hr_manager(doc.employee)
+
+                    if hr_manager:
+                        frappe.share.add_docshare(doc.doctype, doc.name, hr_manager, read=1, select=1, write=1, share=1)
+            
+            elif doc.workflow_state == "Approved by HR":
+                ceo = get_ceo_user()
+                
+                if ceo:
+                    frappe.share.add_docshare(doc.doctype, doc.name, ceo, read=1, select=1, write =1, share=1, submit=1)
 
 
 def on_submit(doc, method):
@@ -435,10 +463,7 @@ def custom_get_leave_details(employee, date, for_salary_slip=False):
 
         # expired_leaves = total_allocated_leaves - (remaining_leaves + leaves_taken) - penalized_leaves
         expired_leaves = get_expired_leaves(employee, d,date)
-        
-        print(f"\n\n FOR total_allocated {total_allocated_leaves} remaining {remaining_leaves} taken {leaves_taken} penalized {penalized_leaves}  Expired Leaves {expired_leaves} {d} \n\n")
-        
-        
+                            
         leave_allocation[d] = {
             # "total_leaves": flt(allocation.total_leaves_allocated, precision),
             "total_leaves": flt(total_allocated_leaves, precision),            
