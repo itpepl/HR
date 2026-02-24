@@ -139,10 +139,12 @@ def custom_get_leave_balance_on(
     
     if leaves_pending:
         leave_app_list = get_pending_leaves_app_id(employee, leave_type, allocation.from_date, to_date)
-        print(f"\n\n Leave App List: {leave_app_list}  {leave_app_id}\n\n")
+        frappe.log_error("custom_leave_balance_on", f"{leave_app_list}")
         if leave_app_list and leave_app_id and leave_app_id in leave_app_list:
-            leaves_pending -= 1
             
+            leaves_pending -= frappe.db.get_value("Leave Application", leave_app_id, "total_leave_days") or 0 
+            
+        frappe.log_error("custom_leaves_pending", f"{leaves_pending}")
         print(f"\n\n Leaves Pending Approval: {leaves_pending} \n\n")
     
     if for_consumption:

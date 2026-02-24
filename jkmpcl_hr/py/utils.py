@@ -7,6 +7,25 @@ def get_emp_reporting_manager(emp_id, as_on_date=today()):
     rh_dict = frappe.db.get_all("Approver", {"parent":emp_id, "effective_from":["<=", getdate(as_on_date)], "parentfield": "custom_reporting_manager"}, "user", order_by="effective_from desc", limit=1)
 
     return rh_dict[0]["user"] if rh_dict else None
+@frappe.whitelist()
+def get_emp_review_manager(emp_id, as_on_date=today()):
+    rh_dict = frappe.db.get_all("Approver", {"parent":emp_id, "effective_from":["<=", getdate(as_on_date)], "parentfield": "custom_review_manager"}, "user", order_by="effective_from desc", limit=1)
+
+    return rh_dict[0]["user"] if rh_dict else None
+
+@frappe.whitelist()
+def get_emp_hr_manager(emp_id, as_on_date=today()):
+    rh_dict = frappe.db.get_all("Approver", {"parent":emp_id, "effective_from":["<=", getdate(as_on_date)], "parentfield": "custom_hr_manager"}, "user", order_by="effective_from desc", limit=1)
+
+    return rh_dict[0]["user"] if rh_dict else None
+
+def get_ceo_user():
+    ceo_users = frappe.get_all(
+        "Has Role",
+        filters={"role": "CEO"},
+        fields=["parent as user"]
+    )
+    return ceo_users[0]["user"] if ceo_users and ceo_users[0] else None
 
 def send_notification_email(
     recipients,

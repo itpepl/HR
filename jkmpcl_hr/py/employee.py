@@ -467,7 +467,6 @@ def rename_selected_employees(max_minutes=30):
 
     return f"Rename job enqueued for {len(employee_list)} employees."
 
-
 def rename_selected_employees_background(employee_list):
     """
     Background job to rename employees, commit per employee, and log errors with traceback.
@@ -478,7 +477,12 @@ def rename_selected_employees_background(employee_list):
         try:
             emp = frappe.get_doc("Employee", emp_id)
             old_id = emp.name
-            new_id = f"{old_id}: {emp.employee_name}"
+            emp_code = emp.employee_number if emp.employee_number else emp.attendance_device_id if emp.attendance_device_id else None
+            
+            if not emp_code:
+                frappe.log_error(f"error_rename_selected_employees_background{emp.name}", "No Employee Code")
+            
+            new_id = f"{emp_code}:{emp.employee_name}"
 
             # Skip if new ID already exists
             if frappe.db.exists("Employee", new_id):
@@ -510,3 +514,4 @@ def rename_selected_employees_background(employee_list):
     )
 
     return renamed_employees
+
