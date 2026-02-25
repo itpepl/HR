@@ -158,19 +158,19 @@ def share_doc(doc):
                 review_manager = get_emp_review_manager(doc.employee)
                 
                 if review_manager:
-                    frappe.share.add_docshare(doc.doctype, doc.name, review_manager, read=1, select=1, write=1, share=1)
+                    frappe.share.add_docshare(doc.doctype, doc.name, review_manager, read=1, select=1, write=1, flags={"ignore_share_permission": True})
             
             elif doc.workflow_state == "Approved by Review Manager":
                     hr_manager = get_emp_hr_manager(doc.employee)
 
                     if hr_manager:
-                        frappe.share.add_docshare(doc.doctype, doc.name, hr_manager, read=1, select=1, write=1, share=1)
+                        frappe.share.add_docshare(doc.doctype, doc.name, hr_manager, read=1, select=1, write=1,submit=1, flags={"ignore_share_permission": True})
             
             elif doc.workflow_state == "Approved by HR":
                 ceo = get_ceo_user()
                 
                 if ceo:
-                    frappe.share.add_docshare(doc.doctype, doc.name, ceo, read=1, select=1, write =1, share=1, submit=1)
+                    frappe.share.add_docshare(doc.doctype, doc.name, ceo, read=1, select=1, write =1, share=1, submit=1, flags={"ignore_share_permission": True})
 
 
 def on_submit(doc, method):
