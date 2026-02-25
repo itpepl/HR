@@ -284,7 +284,7 @@ def get_manual_punch_note(employeeId, from_date,request_type=None, current_punch
 
     filters = {
         "employee": employeeId,
-        "reason": "Manual Punch",
+        "reason": "Miss Punch",
         "docstatus": ["<", 2]
     }
 
@@ -296,12 +296,13 @@ def get_manual_punch_note(employeeId, from_date,request_type=None, current_punch
         filters=filters,
         fields=["custom_punch_type", "from_date"]
     )
-
+    print(f"Existing manual punches for employee {employeeId} in month {month}-{year}: {existing}")
     total = 0
     for row in existing:
         d = getdate(row.from_date)
         if d.month == month and d.year == year:
             total += punch_count(row.custom_punch_type)
+            print(f"Existing Punch: {row.custom_punch_type} on {row.from_date} counts as {punch_count(row.custom_punch_type)} punches")
 
     total += punch_count(current_punch_type)
 

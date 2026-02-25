@@ -250,7 +250,6 @@ def get_leave_balance(employeeId, as_on_date=None):
             "Child Adoption Leave"
         }
 
-
         employee_gender = frappe.db.get_value(
             "Employee", employeeId, "gender"
         )
