@@ -3,6 +3,7 @@ from frappe.utils import getdate, today,add_days,now_datetime,add_to_date, date_
 
 from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
+from hrms.hr.doctype.leave_allocation.leave_allocation import create_additional_leave_ledger_entry
 from frappe.utils import get_datetime
 from datetime import datetime, time,timedelta
 from frappe.utils import flt
@@ -3098,14 +3099,41 @@ def allocate_cl_to_probation_and_contract_employees(dt=None):
                         
                         if allocation_name:
                             allocation = frappe.get_doc("Leave Allocation", allocation_name)
+                        
+                            
                             last_cl_allocation_date = getdate(allocation.custom_last_allocation_date)
                             if last_cl_allocation_date and (last_cl_allocation_date >= today_date or last_cl_allocation_date.month == today_date.month):
                                 frappe.log_error(f"last_allocation_date: {last_cl_allocation_date}", f"Employee: {emp.name} {last_cl_allocation_date.month} {today_date.month} 123")
                                 continue
                             
-                            allocation.new_leaves_allocated += 1
-                            allocation.custom_last_allocation_date = today_date
-                            allocation.save(ignore_permissions=True)
+                            new_allocation = flt(allocation.total_leaves_allocated) + flt(1)
+                            
+                            if new_allocation != allocation.total_leaves_allocated:
+                                allocation.db_set("total_leaves_allocated", new_allocation, update_modified=False)
+
+                                date = today_date or frappe.flags.current_date or getdate()
+                                create_additional_leave_ledger_entry(allocation, 1, date)
+                            
+                                frappe.get_doc({
+                                    "doctype": "Leave Accrual",  # child table doctype name
+                                    "parent": allocation.name,
+                                    "parenttype": "Leave Allocation",
+                                    "parentfield": "custom_leave_accrual",  # fieldname in parent
+                                    "from_date": month_start_date,
+                                    "to_date": to_date,
+                                    # "eligible_days": eligible_days,
+                                    "leave_allocated": 1,
+                                }).insert(ignore_permissions=True)
+
+                                
+                                allocation.db_set(
+                                    "custom_last_allocation_date",
+                                    today_date,
+                                    update_modified=False
+                                )
+                            # allocation.new_leaves_allocated += 1
+                            # allocation.custom_last_allocation_date = today_date
+                            # allocation.save(ignore_permissions=True)
                         
                         else:
                             allocation = frappe.get_doc({
@@ -3217,12 +3245,39 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
 
                 if not new_financial_year:
                     if current_alloc and not already_allocated_this_month:
-                        if emp.name == "20135: KARAN KUMAR":
-                            frappe.log_error(f"alloc_found{emp.name}", f"{current_alloc}")
+                        
                         alloc_doc = frappe.get_doc("Leave Allocation", current_alloc[0].name)
-                        alloc_doc.new_leaves_allocated = flt(alloc_doc.new_leaves_allocated) + monthly_sl
-                        alloc_doc.custom_last_allocation_date = today_date
-                        alloc_doc.save(ignore_permissions=True)
+                        new_allocation = flt(alloc_doc.total_leaves_allocated) + flt(1)
+                            
+                        if new_allocation != alloc_doc.total_leaves_allocated:
+                                alloc_doc.db_set("total_leaves_allocated", new_allocation, update_modified=False)
+
+                                date = today_date or frappe.flags.current_date or getdate()
+                                create_additional_leave_ledger_entry(alloc_doc, monthly_sl, date)
+                            
+                                frappe.get_doc({
+                                    "doctype": "Leave Accrual",
+                                    "parent": alloc_doc.name,
+                                    "parenttype": "Leave Allocation",
+                                    "parentfield": "custom_leave_accrual",
+                                    "from_date": month_start_date,
+                                    "to_date": effective_to_date,
+                                    # "eligible_days": eligible_days,
+                                    "leave_allocated": monthly_sl,
+                                }).insert(ignore_permissions=True)
+
+                                
+                                alloc_doc.db_set(
+                                    "custom_last_allocation_date",
+                                    today_date,
+                                    update_modified=False
+                                )
+                        
+                        
+                        
+                        # alloc_doc.new_leaves_allocated = flt(alloc_doc.new_leaves_allocated) + monthly_sl
+                        # alloc_doc.custom_last_allocation_date = today_date
+                        # alloc_doc.save(ignore_permissions=True)
                     elif not current_alloc:
                         
                         if is_new_emp:
