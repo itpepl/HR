@@ -214,13 +214,13 @@ class AttendanceRequest(HRMSAttendanceRequest):
                 hr_manager = get_emp_hr_manager(self.employee)
                 
                 if hr_manager:
-                    frappe.share.add_docshare(self.doctype, self.name, hr_manager, read=1, select=1, write=1, submit=1)
+                    frappe.share.add_docshare(self.doctype, self.name, hr_manager, read=1, select=1, write=1, submit=1, flags={"ignore_share_permission": True})
             
             elif old_doc.workflow_state != self.workflow_state and self.workflow_state == "Approved by HR":
                 ceo = get_ceo_user()
                 
                 if ceo:
-                    frappe.share.add_docshare(self.doctype, self.name, ceo, read=1, select=1, write=1, submit=1)
+                    frappe.share.add_docshare(self.doctype, self.name, ceo, read=1, select=1, write=1, submit=1, flags={"ignore_share_permission": True})
         
     # def create_auto_checkin_and_attendance(self):
     #     if not self.employee or not self.custom_punch_type:
