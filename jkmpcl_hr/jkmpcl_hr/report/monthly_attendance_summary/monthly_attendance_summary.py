@@ -17,7 +17,77 @@ from frappe.utils.nestedset import get_descendants_of
 
 from hrms.utils import date_diff, get_date_range
 
+from jkmpcl_hr.py.utils import get_current_holiday_list
+
 Filters = frappe._dict
+
+# holiday_cache = {}
+
+
+def get_dynamic_holiday_status(employee: str, dt: date) -> str | None:
+    """
+    Returns:
+        "Holiday"
+        "Weekly Off"
+        None
+    """
+    holiday_list = get_current_holiday_list(employee, dt)
+
+    if not holiday_list:
+        return None
+
+    holiday = frappe.db.get_value(
+        "Holiday",
+        {
+            "parent": holiday_list,
+            "holiday_date": dt
+        },
+        ["weekly_off"],
+        as_dict=True
+    )
+
+    if not holiday:
+        return None
+
+    if holiday.weekly_off:
+        return "Weekly Off"
+
+    return "Holiday"
+
+# def get_dynamic_holiday_status(employee: str, dt: date) -> str | None:
+# 	key = (employee, dt)
+
+# 	if key in holiday_cache:
+# 		return holiday_cache[key]
+
+
+# 	holiday_list = get_current_holiday_list(employee, dt)
+# 	if employee == "20082: Harshiya Gupta":
+# 		frappe.log_error(f"{employee}:{holiday_list}", "Holiday List")
+
+
+# 	if not holiday_list:
+# 		holiday_cache[key] = None
+# 		return None
+
+# 	holiday = frappe.db.get_value(
+# 		"Holiday",
+# 		{
+# 			"parent": holiday_list,
+# 			"holiday_date": dt
+# 		},
+# 		["weekly_off"],
+# 		as_dict=True
+# 	)
+
+# 	if not holiday:
+# 		holiday_cache[key] = None
+# 		return None
+
+# 	status = "Weekly Off" if holiday.weekly_off else "Holiday"
+# 	holiday_cache[key] = status
+# 	return status
+
 
 status_map = {
 	"Present": "P",
@@ -587,10 +657,17 @@ def get_attendance_status_for_summarized_view(
 		if d in attendance_days or (joined_in_current_period and d < joined_date):
 			continue
 
-		status = get_holiday_status(d, holidays)
-		if status in ["Weekly Off", "Holiday"]:
+		# status = get_holiday_status(d, holidays)
+		# if status in ["Weekly Off", "Holiday"]:
+		# 	total_holidays += 1
+		# elif not status:
+		# 	total_unmarked_days += 1
+
+		holiday_status = get_dynamic_holiday_status(employee, d)
+
+		if holiday_status in ["Weekly Off", "Holiday"]:
 			total_holidays += 1
-		elif not status:
+		elif not holiday_status:
 			total_unmarked_days += 1
 
 	return {
@@ -670,8 +747,10 @@ def get_attendance_status_for_detailed_view(
 
 		status = merge_shift_attendance_for_day(entries)
 
-		if status is None and holidays:
-			status = get_holiday_status(dt, holidays)
+		# if status is None and holidays:
+		# 	status = get_holiday_status(dt, holidays)
+		if status is None:
+			status = get_dynamic_holiday_status(employee, dt)
 
 		row[dt.strftime("%d-%m-%Y")] = status_map.get(status, status or "")
 

@@ -7,6 +7,7 @@ from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority ,get_employee
 from jkmpcl_hr.py.utils import send_notification_email
 from erpnext.setup.doctype.employee.employee import is_holiday
 from jkmpcl_hr.py.scheduler_method import get_employee_shift,create_or_update_attendance
+from jkmpcl_hr.py.utils import get_emp_hr_manager, get_ceo_user
 
 
 class AttendanceRequest(HRMSAttendanceRequest):
@@ -21,7 +22,7 @@ class AttendanceRequest(HRMSAttendanceRequest):
 
     def on_update(self):
         self.handle_workflow_notification()
-
+        self.share_doc()
 
     def on_submit(self):
         # pass
@@ -48,6 +49,7 @@ class AttendanceRequest(HRMSAttendanceRequest):
                 send_system_notification=notification_doc.send_system_notification,
                 channel=notification_doc.channel
             )
+
 
     def validate_shift_assignment(self):
         
@@ -203,6 +205,23 @@ class AttendanceRequest(HRMSAttendanceRequest):
 
         return attendance_warnings
 
+
+    def share_doc(self):
+        old_doc = self.get_doc_before_save()
+        
+        if old_doc and old_doc.workflow_state:
+            if old_doc.workflow_state != self.workflow_state and self.workflow_state == "Approved by Reporting Manager":
+                hr_manager = get_emp_hr_manager(self.employee)
+                
+                if hr_manager:
+                    frappe.share.add_docshare(self.doctype, self.name, hr_manager, read=1, select=1, write=1, submit=1, flags={"ignore_share_permission": True})
+            
+            elif old_doc.workflow_state != self.workflow_state and self.workflow_state == "Approved by HR":
+                ceo = get_ceo_user()
+                
+                if ceo:
+                    frappe.share.add_docshare(self.doctype, self.name, ceo, read=1, select=1, write=1, submit=1, flags={"ignore_share_permission": True})
+        
     # def create_auto_checkin_and_attendance(self):
     #     if not self.employee or not self.custom_punch_type:
     #         return
@@ -543,22 +562,21 @@ def update_attendance_direct_db(employee, date, in_time, out_time, working_hours
         }
     )
 
-    if status == "Half Day":
+    if status in ("Half Day", "Absent"):
+
         leave_type = get_employee_leave_type(employee)
+
         if leave_type:
-            lle = frappe.get_doc({
-                "doctype": "Leave Ledger Entry",
-                "employee": employee,
-                "leave_type": leave_type,
-                "from_date": date,
-                "to_date": date,
-                "leaves": -0.5,
-                "transaction_type": "Attendance",
-                "transaction_name": attendance_name,
-                "custom_is_penalize": 1
-            })
-            lle.insert(ignore_permissions=True)
-            lle.submit()
+            leave_days = 0.5 if status == "Half Day" else 1
+
+            create_leave_ledger(
+                employee=employee,
+                leave_type=leave_type,
+                date=date,
+                status=status,
+                attendance=attendance_name,
+                leave_days=leave_days,
+            )
 
     frappe.db.commit()
 
@@ -592,8 +610,7 @@ def revert_penalty_leave(attendance_name):
             "leave_type": leave_type,
             "from_date": attendance_date,
             "custom_is_penalty": 1,              # ✅ recommended if you have this field
-            "transaction_type": "Attendance",
-            "transaction_name": att.name,
+            "custom_attendance": att.name,
         }
     )
 
@@ -788,11 +805,21 @@ def _process_attendance_request(doc_name):
         skip_shift_time_rules=True
     )
 
+    # if attendance_name:
+    #     att = frappe.get_doc("Attendance", attendance_name)
+    #     att.attendance_request = doc.name
+    #     att.flags.ignore_validate_update_after_submit = True
+    #     att.save(ignore_permissions=True)
+
+    # return attendance_name
     if attendance_name:
-        att = frappe.get_doc("Attendance", attendance_name)
-        att.attendance_request = doc.name
-        att.flags.ignore_validate_update_after_submit = True
-        att.save(ignore_permissions=True)
+        frappe.db.set_value(
+            "Attendance",
+            attendance_name,
+            "attendance_request",
+            doc.name,
+            update_modified=False   
+        )
 
     return attendance_name
 

@@ -2,60 +2,95 @@ import frappe
 from frappe.utils import getdate, cint
 from frappe import _
 from frappe.utils import strip_html
+from frappe.utils import get_datetime
+
+from frappe.utils import cint
 
 @frappe.whitelist()
 def get_manual_punches(
-    employee,
-    start_date=None,
-    end_date=None,
-    limit=None
+    view_type="self",
+    filters=None,
+    order_by="creation desc",
+    limit_page_length=None,
+    limit_start=0,
 ):
-    filters = {"employee": employee}
+    try:
+        user = frappe.session.user
 
-    if start_date:
-        filters["to_date"] = [">=", start_date]
+        filters = frappe.parse_json(filters) if filters else []
 
-    if end_date:
-        filters["from_date"] = ["<=", end_date]
+        if isinstance(filters, dict):
+            filters = [[k, "=", v] for k, v in filters.items()]
 
-    total_records = frappe.db.count(
-        "Attendance Request",
-        filters=filters
-    )
+        employee = frappe.db.get_value(
+            "Employee",
+            {"user_id": user},
+            "name"
+        )
 
-    records = frappe.get_all(
-        "Attendance Request",
-        filters=filters,
-        fields=[
-            "name",
-            "employee",
-            "employee_name",
-            "from_date",
-            "to_date",
-            "explanation",
-            "reason",
-            "custom_punch_type",
-            "custom_in_time",
-            "custom_out_time",
-            "workflow_state",
-            "custom_note",
-            "creation"
-        ],
-        # order_by="from_date desc",
-        order_by="creation desc",
-        
-        limit_page_length=int(limit) if limit else None
-    )
+        if not employee:
+            frappe.throw("Employee not linked with current user")
 
-    # 🔥 CLEAN HTML → TEXT
-    for row in records:
-        if row.get("custom_note"):
-            row["custom_note"] = strip_html(row["custom_note"]).strip()
+        if view_type == "self":
+            filters.append(["employee", "=", employee])
 
-    return {
-        "data": records,
-        "total_records": total_records
-    }
+        elif view_type == "team":
+            filters.append(["employee", "!=", employee])
+
+        else:
+            frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+        # Total Count (without pagination)
+        total_records = frappe.get_list(
+            "Attendance Request",
+            filters=filters
+        )
+
+        records = frappe.get_list(
+            "Attendance Request",
+            filters=filters,
+            fields=[
+                "name",
+                "employee",
+                "employee_name",
+                "from_date",
+                "to_date",
+                "explanation",
+                "reason",
+                "custom_punch_type",
+                "custom_in_time",
+                "custom_out_time",
+                "workflow_state",
+                "custom_note",
+                "creation",
+                "department",
+                "company",
+                "branch",
+                "shift"
+            ],
+            order_by=order_by,
+            limit_page_length=cint(limit_page_length) if limit_page_length else None,
+            limit_start=cint(limit_start)
+        )
+
+        for row in records:
+            if row.get("custom_note"):
+                row["custom_note"] = strip_html(row["custom_note"]).strip()
+
+        return {
+            "success": True,
+            "data": records,
+            "total_records": len(total_records),   # total matching records
+            "count": len(records),            # current page count
+            "message": "Manual Punch List Loaded Successfully!"
+        }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Manual Punch List API Error")
+        return {
+            "success": False,
+            "message": str(e)
+        }
 
 
 @frappe.whitelist(allow_guest=False)
@@ -145,9 +180,61 @@ def request_type_list():
     return {
             "success": True,
             "message": "Request types fetched successfully",
-            "data": ["Manual Punch","Field Visit"]
+            "data": ["Miss Punch","Field Visit"]
         }
+@frappe.whitelist()
+def request_type_list(employee=None):
 
+    user = frappe.session.user
+
+    settings = frappe.get_single("HR Settings")
+
+    from_time = get_datetime(settings.custom_system_error_window_from) \
+        if settings.custom_system_error_window_from else None
+
+    to_time = get_datetime(settings.custom_system_error_window_to) \
+        if settings.custom_system_error_window_to else None
+
+    allowed_role = settings.custom_allowed_role
+
+    now = get_datetime()
+
+    show_system_error = False
+
+    if from_time and to_time:
+        if from_time <= now <= to_time:
+            show_system_error = True
+
+    user_roles = frappe.get_roles(user)
+
+    if allowed_role and allowed_role in user_roles:
+        show_system_error = True
+
+    attendance_source = None
+
+    if employee:
+        attendance_source = frappe.db.get_value(
+            "Employee",
+            employee,
+            "custom_attendance_source"
+        )
+
+    options = []
+
+    if show_system_error:
+        options.append("System Error")
+
+    if attendance_source == "Biometric":
+        options.extend(["Miss Punch", "Field Visit"])
+
+    elif attendance_source in ("Field", "Punch"):
+        options.append("Miss Punch")
+
+    return {
+        "success": True,
+        "message": "Request types fetched successfully",
+        "data": list(set(options))
+    }
 
 @frappe.whitelist()
 def punch_type_list():
@@ -197,7 +284,7 @@ def get_manual_punch_note(employeeId, from_date,request_type=None, current_punch
 
     filters = {
         "employee": employeeId,
-        "reason": "Manual Punch",
+        "reason": "Miss Punch",
         "docstatus": ["<", 2]
     }
 
@@ -209,12 +296,13 @@ def get_manual_punch_note(employeeId, from_date,request_type=None, current_punch
         filters=filters,
         fields=["custom_punch_type", "from_date"]
     )
-
+    print(f"Existing manual punches for employee {employeeId} in month {month}-{year}: {existing}")
     total = 0
     for row in existing:
         d = getdate(row.from_date)
         if d.month == month and d.year == year:
             total += punch_count(row.custom_punch_type)
+            print(f"Existing Punch: {row.custom_punch_type} on {row.from_date} counts as {punch_count(row.custom_punch_type)} punches")
 
     total += punch_count(current_punch_type)
 
