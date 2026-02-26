@@ -58,20 +58,29 @@ def get_employee_details(email):
         if checkinRecords:
             latest_checkin = checkinRecords[0]
 
-            attachment = frappe.db.get_value(
-                "File",
-                {
-                    "attached_to_doctype": "Employee Checkin",
-                    "attached_to_name": latest_checkin["name"],
-                },
-                "file_url",
-            )
+            if getdate(latest_checkin["time"]) == getdate(nowdate()):
 
-            checkInData = {
-                "log_type": latest_checkin["log_type"],
-                "time": latest_checkin["time"].strftime("%H:%M:%S") if latest_checkin.get("time") else None,
-                "attachments": frappe.utils.get_url(attachment) if attachment else None,
-            }
+                attachment = frappe.db.get_value(
+                    "File",
+                    {
+                        "attached_to_doctype": "Employee Checkin",
+                        "attached_to_name": latest_checkin["name"],
+                    },
+                    "file_url",
+                )
+            
+                checkInData = {
+                    "log_type": latest_checkin["log_type"],
+                    "time": latest_checkin["time"].strftime("%H:%M:%S") if latest_checkin.get("time") else None,
+                    "attachments": frappe.utils.get_url(attachment) if attachment else None,
+                }
+            else:
+                isCheckedIn = False
+                checkInData = {
+                    "log_type": "OUT",
+                    "time": "00:00:00",
+                    "attachments": None,
+                }
 
         # Get photo
         photo = frappe.db.get_value("File", {"attached_to_name": employee_name}, "file_url")
@@ -240,7 +249,8 @@ def get_upcoming_holidays(employeeId=None):
                     "month": holiday_date.strftime("%b").upper(),
                     "display_date": holiday_date.strftime("%d %b"),
                     "full_date": holiday_date.strftime("%A, %d %B %Y"),
-                    "occasion": strip_html(row.description or "")
+                    "occasion": strip_html(row.description or ""),
+                    "restricted_holiday": row.custom_is_restricted_holiday
                 })
 
     except Exception as e:
