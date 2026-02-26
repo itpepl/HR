@@ -2,6 +2,7 @@ import frappe
 from frappe.utils import getdate, nowdate
 import calendar
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
+from hrms.hr.doctype.leave_allocation.leave_allocation import create_additional_leave_ledger_entry
 from jkmpcl_hr.py.utils import get_current_holiday_list
 
 
@@ -290,15 +291,41 @@ def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, i
         if already_allocated:
         # Accrual already processed for this period
             return
-        doc.new_leaves_allocated += pl_days
-        doc.custom_last_allocation_date = today_date
-        doc.append("custom_leave_accrual", {
-            "from_date": effective_start,
-            "to_date": end_date,
-            "eligible_days": eligible_days,
-            "leave_allocated": pl_days
-        })
-        doc.submit()
+        
+        new_allocation = flt(doc.total_leaves_allocated) + flt(1)
+                            
+        if new_allocation != doc.total_leaves_allocated:
+                doc.db_set("total_leaves_allocated", new_allocation, update_modified=False)
+
+                date = today_date or frappe.flags.current_date or getdate()
+                create_additional_leave_ledger_entry(doc, pl_days, date)
+            
+                frappe.get_doc({
+                    "doctype": "Leave Accrual",
+                    "parent": doc.name,
+                    "parenttype": "Leave Allocation",
+                    "parentfield": "custom_leave_accrual",
+                    "from_date": effective_start,
+                    "to_date": end_date,
+                    "eligible_days": eligible_days,
+                    "leave_allocated": pl_days,
+                }).insert(ignore_permissions=True)
+
+                
+                doc.db_set(
+                    "custom_last_allocation_date",
+                    today_date,
+                    update_modified=False
+                )
+        # doc.new_leaves_allocated += pl_days
+        # doc.custom_last_allocation_date = today_date
+        # doc.append("custom_leave_accrual", {
+        #     "from_date": effective_start,
+        #     "to_date": end_date,
+        #     "eligible_days": eligible_days,
+        #     "leave_allocated": pl_days
+        # })
+        # doc.submit()
     else:
         doc = frappe.new_doc("Leave Allocation")
         doc.employee = employee
