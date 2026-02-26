@@ -3,7 +3,7 @@ from frappe.utils import getdate, nowdate
 import calendar
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
 from hrms.hr.doctype.leave_allocation.leave_allocation import create_additional_leave_ledger_entry
-from jkmpcl_hr.py.utils import get_current_holiday_list
+from jkmpcl_hr.py.utils import get_current_holiday_list, custom_create_additional_leave_ledger_entry
 
 
 
@@ -298,7 +298,7 @@ def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, i
                 doc.db_set("total_leaves_allocated", new_allocation, update_modified=False)
 
                 date = today_date or frappe.flags.current_date or getdate()
-                create_additional_leave_ledger_entry(doc, pl_days, date)
+                custom_create_additional_leave_ledger_entry(doc, pl_days, date, is_accrual=1)
             
                 frappe.get_doc({
                     "doctype": "Leave Accrual",

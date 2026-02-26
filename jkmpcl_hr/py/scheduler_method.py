@@ -3,14 +3,16 @@ from frappe.utils import getdate, today,add_days,now_datetime,add_to_date, date_
 
 from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
-from hrms.hr.doctype.leave_allocation.leave_allocation import create_additional_leave_ledger_entry
+
 from frappe.utils import get_datetime
 from datetime import datetime, time,timedelta
 from frappe.utils import flt
 import calendar
 
 
-from jkmpcl_hr.py.utils import get_current_holiday_list
+
+
+from jkmpcl_hr.py.utils import get_current_holiday_list, custom_create_additional_leave_ledger_entry
 
 
 # from jkmpcl_hr.py.utils import send_notification_email
@@ -3112,16 +3114,15 @@ def allocate_cl_to_probation_and_contract_employees(dt=None):
                                 allocation.db_set("total_leaves_allocated", new_allocation, update_modified=False)
 
                                 date = today_date or frappe.flags.current_date or getdate()
-                                create_additional_leave_ledger_entry(allocation, 1, date)
+                                custom_create_additional_leave_ledger_entry(allocation, 1, date, is_accrual=1)
                             
                                 frappe.get_doc({
-                                    "doctype": "Leave Accrual",  # child table doctype name
+                                    "doctype": "Leave Accrual",
                                     "parent": allocation.name,
                                     "parenttype": "Leave Allocation",
-                                    "parentfield": "custom_leave_accrual",  # fieldname in parent
+                                    "parentfield": "custom_leave_accrual",
                                     "from_date": month_start_date,
                                     "to_date": to_date,
-                                    # "eligible_days": eligible_days,
                                     "leave_allocated": 1,
                                 }).insert(ignore_permissions=True)
 
@@ -3253,7 +3254,7 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
                                 alloc_doc.db_set("total_leaves_allocated", new_allocation, update_modified=False)
 
                                 date = today_date or frappe.flags.current_date or getdate()
-                                create_additional_leave_ledger_entry(alloc_doc, monthly_sl, date)
+                                custom_create_additional_leave_ledger_entry(alloc_doc, monthly_sl, date, is_accrual=1)
                             
                                 frappe.get_doc({
                                     "doctype": "Leave Accrual",
