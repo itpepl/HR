@@ -246,3 +246,15 @@ def get_current_holiday_list(emp, from_date):
         
     except Exception as e:
         frappe.log_error("error_get_current_holiday_list", frappe.get_traceback())
+
+
+
+
+def custom_create_additional_leave_ledger_entry(allocation, leaves, date, is_accrual=0):
+	"""Create leave ledger entry for leave types"""
+	allocation.new_leaves_allocated = leaves
+	allocation.from_date = date
+	allocation.unused_leaves = 0
+	# allocation["custom_is_accrued"] = 1
+	# print(f"\n\n  {allocation.name}\n\n")
+	allocation.create_leave_ledger_entry(is_accrual=is_accrual)
