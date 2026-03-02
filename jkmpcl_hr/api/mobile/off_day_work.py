@@ -26,6 +26,7 @@ def create_off_day_work(data):
                 "employee": employee,
                 "date": date,
                 "docstatus": ["!=", 2],
+                "workflow_state": ["!=", "Rejected"],
             },
         )
         if exists:

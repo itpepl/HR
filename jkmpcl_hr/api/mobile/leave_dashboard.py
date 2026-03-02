@@ -64,136 +64,136 @@ from jkmpcl_hr.py.leave_application import custom_get_leave_details
 
 
 
-@frappe.whitelist()
-def get_leave_balance(employeeId, as_on_date=None):
-    try:
-        if not employeeId:
-            frappe.throw("Employee is required")
+# @frappe.whitelist()
+# def get_leave_balance(employeeId, as_on_date=None):
+#     try:
+#         if not employeeId:
+#             frappe.throw("Employee is required")
 
-        as_on_date = getdate(as_on_date or nowdate())
+#         as_on_date = getdate(as_on_date or nowdate())
 
-        LEAVE_SEQUENCE = [
-            "Compensatory Off",
-            "Casual Leave",
-            "Sick Leave",
-            "Privilege Leave",
-            "Medical Emergency Leave",
-            # "Leave Without Pay",
-            "Maternity Leave",
-            "Special Maternity Leave",
-            "Child Adoption Leave"
-        ]
+#         LEAVE_SEQUENCE = [
+#             "Compensatory Off",
+#             "Casual Leave",
+#             "Sick Leave",
+#             "Privilege Leave",
+#             "Medical Emergency Leave",
+#             # "Leave Without Pay",
+#             "Maternity Leave",
+#             "Special Maternity Leave",
+#             "Child Adoption Leave"
+#         ]
 
-        FEMALE_ONLY_LEAVES = {
+#         FEMALE_ONLY_LEAVES = {
             
             
-            "Maternity Leave",
-            "Special Maternity Leave",
-            "Child Adoption Leave"
-        }
+#             "Maternity Leave",
+#             "Special Maternity Leave",
+#             "Child Adoption Leave"
+#         }
 
-        ALLOCATION_REQUIRED = {
-            "Medical Emergency Leave",
-            # "Leave Without Pay",
-            "Maternity Leave",
-            "Special Maternity Leave",
-            "Child Adoption Leave"
-        }
+#         ALLOCATION_REQUIRED = {
+#             "Medical Emergency Leave",
+#             # "Leave Without Pay",
+#             "Maternity Leave",
+#             "Special Maternity Leave",
+#             "Child Adoption Leave"
+#         }
 
-        employee_gender = frappe.db.get_value(
-            "Employee", employeeId, "gender"
-        )
-
-
-        allocations = frappe.get_all(
-            "Leave Allocation",
-            filters={
-                "employee": employeeId,
-                "docstatus": 1,
-                "from_date": ["<=", as_on_date],
-                "to_date": [">=", as_on_date]
-            },
-            fields=["leave_type"]
-        )
-
-        allocated_leave_types = {a.leave_type for a in allocations}
+#         employee_gender = frappe.db.get_value(
+#             "Employee", employeeId, "gender"
+#         )
 
 
-        final_leave_types = []
+#         allocations = frappe.get_all(
+#             "Leave Allocation",
+#             filters={
+#                 "employee": employeeId,
+#                 "docstatus": 1,
+#                 "from_date": ["<=", as_on_date],
+#                 "to_date": [">=", as_on_date]
+#             },
+#             fields=["leave_type"]
+#         )
 
-        for leave_type in LEAVE_SEQUENCE:
+#         allocated_leave_types = {a.leave_type for a in allocations}
 
-            if (
-                leave_type in FEMALE_ONLY_LEAVES
-                and employee_gender != "Female"
-            ):
-                continue
 
-            if (
-                leave_type in ALLOCATION_REQUIRED
-                and leave_type not in allocated_leave_types
-            ):
-                continue
+#         final_leave_types = []
 
-            final_leave_types.append(leave_type)
+#         for leave_type in LEAVE_SEQUENCE:
 
-        result = []
+#             if (
+#                 leave_type in FEMALE_ONLY_LEAVES
+#                 and employee_gender != "Female"
+#             ):
+#                 continue
 
-        for lt in final_leave_types:
+#             if (
+#                 leave_type in ALLOCATION_REQUIRED
+#                 and leave_type not in allocated_leave_types
+#             ):
+#                 continue
 
-            earned = frappe.db.sql("""
-                SELECT SUM(leaves)
-                FROM `tabLeave Ledger Entry`
-                WHERE employee = %s
-                AND leave_type = %s
-                AND leaves > 0
-                AND from_date <= %s
-                AND to_date >= %s
-            """, (employeeId, lt, as_on_date, as_on_date))[0][0] or 0
-            print(f"Earned for {lt}: {earned}")
-            used = frappe.db.sql("""
-                SELECT ABS(SUM(leaves))
-                FROM `tabLeave Ledger Entry`
-                WHERE employee = %s
-                AND leave_type = %s
-                AND leaves < 0
-                AND from_date <= %s
-                AND to_date >= %s
-            """, (employeeId, lt, as_on_date, as_on_date))[0][0] or 0
-            print(f"Used for {lt}: {used}")
-            remaining = earned - used
+#             final_leave_types.append(leave_type)
 
-            row = {
-                "leave_type": lt,
-                "allocated": round(earned, 2),
-                "used": round(used, 2)
-            }
+#         result = []
 
-            if remaining >= 0:
-                row["remaining"] = round(remaining, 2)
-            else :
-                row["remaining"]= 0
+#         for lt in final_leave_types:
 
-            result.append(row)
+#             earned = frappe.db.sql("""
+#                 SELECT SUM(leaves)
+#                 FROM `tabLeave Ledger Entry`
+#                 WHERE employee = %s
+#                 AND leave_type = %s
+#                 AND leaves > 0
+#                 AND from_date <= %s
+#                 AND to_date >= %s
+#             """, (employeeId, lt, as_on_date, as_on_date))[0][0] or 0
+#             print(f"Earned for {lt}: {earned}")
+#             used = frappe.db.sql("""
+#                 SELECT ABS(SUM(leaves))
+#                 FROM `tabLeave Ledger Entry`
+#                 WHERE employee = %s
+#                 AND leave_type = %s
+#                 AND leaves < 0
+#                 AND from_date <= %s
+#                 AND to_date >= %s
+#             """, (employeeId, lt, as_on_date, as_on_date))[0][0] or 0
+#             print(f"Used for {lt}: {used}")
+#             remaining = earned - used
 
-        return {
-            "success": True,
-            "message": "Leave balance fetched successfully",
-            "data": {
-                "employee": employeeId,
-                "gender": employee_gender,
-                "as_on_date": str(as_on_date),
-                "leave_balance": result
-            }
-        }
+#             row = {
+#                 "leave_type": lt,
+#                 "allocated": round(earned, 2),
+#                 "used": round(used, 2)
+#             }
 
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Leave Balance API Error")
-        return {
-            "success": False,
-            "message": str(e),
-            "data": None
-        }
+#             if remaining >= 0:
+#                 row["remaining"] = round(remaining, 2)
+#             else :
+#                 row["remaining"]= 0
+
+#             result.append(row)
+
+#         return {
+#             "success": True,
+#             "message": "Leave balance fetched successfully",
+#             "data": {
+#                 "employee": employeeId,
+#                 "gender": employee_gender,
+#                 "as_on_date": str(as_on_date),
+#                 "leave_balance": result
+#             }
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Leave Balance API Error")
+#         return {
+#             "success": False,
+#             "message": str(e),
+#             "data": None
+#         }
 
 
 
@@ -330,7 +330,7 @@ def get_leave_balance(employeeId, as_on_date=None):
                     "pending": 0,
                     "expired": 0,
                     "penalized": 0,
-                    "remaining": ledger_data["remaining"],
+                    "remaining": 0,
                 })
                 continue
 
