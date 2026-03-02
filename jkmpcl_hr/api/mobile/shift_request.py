@@ -128,9 +128,58 @@ def get_shift_requests(
             "message": str(e)
         }
 
+# @frappe.whitelist()
+# def create_shift_request(data):
+
+#     try:
+#         if isinstance(data, str):
+#             data = frappe.parse_json(data)
+
+#         employee = data.get("employee")
+#         shift_type = data.get("shift_type")
+#         from_date = data.get("from_date")
+#         to_date = data.get("to_date")
+#         remarks = data.get("remarks")  
+#         approver=data.get("approver")
+
+#         if not employee or not shift_type or not from_date or not to_date:
+#             return {
+#                 "success": False,
+#                 "message": "Missing required fields",
+#                 "data": None
+#             }
+#         shift_request = frappe.get_doc({
+#             "doctype": "Shift Request",
+#             "employee": employee,
+#             "shift_type": shift_type,
+#             "from_date": from_date,
+#             "to_date": to_date,
+#             "custom_remarks": remarks,
+#             "approver": approver
+#         })
+#         # ✅ THIS LINE IS CRITICAL
+#         shift_request.flags.skip_approver_validation = True
+
+#         shift_request.insert(ignore_permissions=True)
+
+#         return {
+#             "success": True,
+#             "message": "Shift request created successfully",
+#             "data": {"name": shift_request.name}
+#         }
+
+#     except Exception as e:
+#         error_message = f"Error creating shift request: {str(e)}"
+#         frappe.log_error(error_message, "Shift Request Create API Error")
+
+#         return {
+#             "success": False,
+#             "message": error_message,
+#             "data": None
+#         }
+
 @frappe.whitelist()
 def create_shift_request(data):
-
     try:
         if isinstance(data, str):
             data = frappe.parse_json(data)
@@ -139,46 +188,87 @@ def create_shift_request(data):
         shift_type = data.get("shift_type")
         from_date = data.get("from_date")
         to_date = data.get("to_date")
-        remarks = data.get("remarks")  
-        approver=data.get("approver")
-
-        if not employee or not shift_type or not from_date or not to_date:
+        remarks = data.get("remarks")
+        approver = data.get("approver")
+        status = data.get("status")  # Approved / Rejected / None
+        name = data.get("name")  # Required if updating existing request
+        if not employee:
             return {
                 "success": False,
-                "message": "Missing required fields",
+                "message": "Employee is required",
                 "data": None
             }
-        shift_request = frappe.get_doc({
-            "doctype": "Shift Request",
-            "employee": employee,
-            "shift_type": shift_type,
-            "from_date": from_date,
-            "to_date": to_date,
-            "custom_remarks": remarks,
-            "approver": approver
-        })
-        # ✅ THIS LINE IS CRITICAL
-        shift_request.flags.skip_approver_validation = True
 
-        shift_request.insert(ignore_permissions=True)
+        if status and name:
 
-        return {
-            "success": True,
-            "message": "Shift request created successfully",
-            "data": {"name": shift_request.name}
-        }
+            shift_request = frappe.get_doc("Shift Request", name)
+
+            if shift_request.docstatus == 2:
+                return {
+                    "success": False,
+                    "message": "Document already cancelled",
+                    "data": None
+                }
+
+            shift_request.status = status
+            shift_request.custom_remarks = remarks
+
+            shift_request.flags.skip_approver_validation = True
+            shift_request.save(ignore_permissions=True)
+            if shift_request.docstatus == 0:
+                shift_request.submit()
+
+            return {
+                "success": True,
+                "message": f"Shift request {status} and submitted successfully",
+                "data": {
+                    "name": shift_request.name,
+                    "status": shift_request.status,
+                    "docstatus": shift_request.docstatus
+                }
+            }
+        else:
+            if not shift_type or not from_date or not to_date:
+                return {
+                    "success": False,
+                    "message": "Missing required fields",
+                    "data": None
+                }
+
+            shift_request = frappe.get_doc({
+                "doctype": "Shift Request",
+                "employee": employee,
+                "shift_type": shift_type,
+                "from_date": from_date,
+                "to_date": to_date,
+                "custom_remarks": remarks,
+                "approver": approver
+            })
+
+            shift_request.flags.skip_approver_validation = True
+            shift_request.insert(ignore_permissions=True)
+
+            return {
+                "success": True,
+                "message": "Shift request created successfully",
+                "data": {
+                    "name": shift_request.name,
+                    "status": shift_request.status,
+                    "docstatus": shift_request.docstatus
+                }
+            }
 
     except Exception as e:
-        error_message = f"Error creating shift request: {str(e)}"
-        frappe.log_error(error_message, "Shift Request Create API Error")
+        error_message = f"Error in Shift Request API: {str(e)}"
+        frappe.log_error(error_message, "Shift Request API Error")
 
         return {
             "success": False,
             "message": error_message,
             "data": None
         }
-
-
+        
+        
 import frappe
 from frappe.utils import getdate
 
