@@ -5,12 +5,31 @@ import frappe
 from frappe import _
 from frappe.model.document import Document, getdate
 from jkmpcl_hr.py.utils import send_notification_email, get_current_holiday_list
+from frappe.model.workflow import apply_workflow
 
 
 class OffDayWorkRequest(Document):
     def validate(self):
         self.validate_working_day()
         self.validate_duplicate_request()
+
+    # def after_insert(self):
+    #     approver = frappe.db.get_list(
+    #         "Approver",
+    #         filters={
+    #             "parent": self.employee,
+    #             "effective_from": ["<=", frappe.utils.now_datetime()],
+    #             "parentfield": "custom_reporting_manager"
+    #         },
+    #         fields=["name"],
+    #         order_by="effective_from desc",
+    #         ignore_permissions=True,
+    #         limit=1
+    #     )
+    #     approver_user = frappe.db.get_value("Approver", approver[0].name, "user") if approver else None
+
+    #     if approver_user == frappe.session.user:
+    #         apply_workflow(self, "Approve")
 
     def validate_working_day(self):
         if not check_working_day_valid(self.employee, self.date):
@@ -24,7 +43,8 @@ class OffDayWorkRequest(Document):
             {
                 "employee": self.employee,
                 "date": self.date,
-                "docstatus": ["!=", 2],   # ignore cancelled
+                "docstatus": ["!=", 2], 
+                "workflow_state": ["!=", "Rejected"],
                 "name": ["!=", self.name]  # allow updating same doc
             }
         )
