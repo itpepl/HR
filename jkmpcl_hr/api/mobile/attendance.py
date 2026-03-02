@@ -168,17 +168,66 @@ def get_attendance_calendar(employeeId, date):
             "Compensatory Off": "CO",
             "Casual Leave": "CL",
         }
+
+        # -----------------------------
+        # FETCH HOLIDAYS + RH PAIRS
+        # -----------------------------
         holiday_map = {}
+        restricted_rows = {}
+
         employee = frappe.get_doc("Employee", employeeId)
 
         if employee.holiday_list:
             holiday_doc = frappe.get_doc("Holiday List", employee.holiday_list)
+
             for h in holiday_doc.holidays:
-                holiday_map[str(h.holiday_date)] = {
+                holiday_date_str = str(h.holiday_date)
+
+                holiday_map[holiday_date_str] = {
                     "weekly_off": h.weekly_off,
                     "description": h.description,
                     "is_half_day": h.is_half_day,
+                    "restricted_holiday": getattr(h, "custom_is_restricted_holiday", 0)
                 }
+
+                # Collect RH pairs
+                if (
+                    getattr(h, "custom_is_restricted_holiday", 0)
+                    and getattr(h, "custom_restricted_holiday_date", None)
+                ):
+                    restricted_rows[getdate(h.holiday_date)] = getdate(
+                        h.custom_restricted_holiday_date
+                    )
+
+            # for h in holiday_doc.holidays:
+            #     holiday_map[str(h.holiday_date)] = {
+            #         "weekly_off": h.weekly_off,
+            #         "description": h.description,
+            #         "is_half_day": h.is_half_day,
+
+            #     }
+
+        # -----------------------------
+        # CREATE RH PAIR MAP
+        # -----------------------------
+        rh_pair_map = {}
+        visited = set()
+        pair_counter = 1
+
+        for holiday_date, pair_date in restricted_rows.items():
+
+            if holiday_date in visited:
+                continue
+
+            pair_label = f"RH{pair_counter}"
+
+            rh_pair_map[str(holiday_date)] = pair_label
+            rh_pair_map[str(pair_date)] = pair_label
+
+            visited.add(holiday_date)
+            visited.add(pair_date)
+
+            pair_counter += 1
 
         today = sys_date.today()
         month_data = []
@@ -205,14 +254,36 @@ def get_attendance_calendar(employeeId, date):
                 continue
 
             # -----------------------------
-            # HOLIDAY / WEEKLY OFF
+            # HOLIDAY / WEEKLY OFF / RH
             # -----------------------------
+
             if date_str in holiday_map:
                 holiday = holiday_map[date_str]
+
                 if holiday["weekly_off"]:
                     day_data["status"] = "WO"
+
+                elif holiday.get("restricted_holiday"):
+                    rh_label = rh_pair_map.get(date_str)
+
+                    if rh_label:
+                        day_data["status"] = rh_label
+                    else:
+                        day_data["status"] = "RH"
+
                 else:
                     day_data["status"] = "H"
+
+            # if date_str in holiday_map:
+            #     holiday = holiday_map[date_str]
+            #     if holiday["weekly_off"]:
+            #         day_data["status"] = "WO"
+            #     else:
+            #         day_data["status"] = "H"
+
+            # -----------------------------
+            # ATTENDANCE OVERRIDES HOLIDAY
+            # -----------------------------
 
             if date_str in attendance_map:
                 record = attendance_map[date_str]
