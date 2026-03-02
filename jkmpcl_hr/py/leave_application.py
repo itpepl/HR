@@ -249,7 +249,12 @@ def get_valid_comp_off(employee, leave_date, leave_type_name):
         )
         
         if record:
-            return record
+            leave_app_exists = frappe.db.exists("Leave Application", {"employee": employee, "custom_off_day_work_request": record.name, "docstatus": ["!=", 2]}, "name")
+            if leave_app_exists:
+                record = None
+                continue
+            else:
+                return record
     
     if not record:
         return None
