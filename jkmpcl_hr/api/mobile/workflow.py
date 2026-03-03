@@ -23,11 +23,19 @@ def apply_workflow_action(doctype, docname, action):
 
         frappe.db.commit()
 
-        return {
-            "success": True,
-            "message": f"{action} applied successfully",
-            "workflow_state": doc.workflow_state
-        }
+        if action == "Reject":
+            return {
+                "success": True,
+                "message": f"Request Rejected",
+                "workflow_state": doc.workflow_state
+            }
+
+        else:
+            return {
+                "success": True,
+                "message": f"{action} applied successfully",
+                "workflow_state": doc.workflow_state
+            }
 
     except Exception as e:
         frappe.db.rollback()

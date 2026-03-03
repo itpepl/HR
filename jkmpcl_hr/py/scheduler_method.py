@@ -2539,16 +2539,34 @@ def get_required_hours_by_date(employee, date):
 def get_employee_shift(employee, date):
     date = getdate(date)
     
-    assigned_shift = frappe.db.get_value(
+    # assigned_shift = frappe.db.get_value(
+    #     "Shift Assignment",
+    #     {
+    #         "employee": employee,
+    #         "start_date": ("<=", date),
+    #         "end_date": (">=", date),
+    #         "status": "Active"
+    #     },
+    #     "shift_type"
+    # )
+
+    shift_assignment = frappe.db.get_list(
         "Shift Assignment",
-        {
+        filters={
             "employee": employee,
-            "start_date": ("<=", date),
-            "end_date": (">=", date),
+            "start_date": ["<=", date],
             "status": "Active"
         },
-        "shift_type"
+        or_filters=[
+            {"end_date": [">=", date]},
+            {"end_date": ["is", "not set"]}
+        ],
+        fields=["shift_type"],
+        # order_by="start_date desc",
+        limit=1
     )
+
+    assigned_shift = shift_assignment[0].shift_type if shift_assignment else None
 
     if assigned_shift:
         return assigned_shift
