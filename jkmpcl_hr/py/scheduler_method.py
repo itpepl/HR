@@ -1524,6 +1524,7 @@ def create_or_update_attendance(
             "Attendance",
             att_name,
             {
+                "shift": shift_type,
                 "in_time": in_time,
                 "out_time": out_time,
                 "working_hours": working_hours,
@@ -2585,30 +2586,28 @@ def get_employee_shift(employee, date):
     if not emp or not emp.default_shift:
         return None
 
-    shift_type = frappe.db.get_value(
-        "Shift Type",
-        emp.default_shift,
-        "custom_shift_type"
-    )
-    if not shift_type:
-        return emp.default_shift
-
-    required_hours = get_required_hours_by_date(employee, date)
-
-    shift = frappe.db.get_value(
-        "Shift Type",
-        {
-            "custom_branch": emp.branch,
-            "custom_shift_type": shift_type,
-            "custom_attendance_source": emp.custom_attendance_source, 
-            "custom_hours": f"{required_hours}hours"                 
-        },
-        "name"
-    )
-    if employee=="20015":
-        print("call",emp.default_shift)
+    # shift_type = frappe.db.get_value(
+    #     "Shift Type",
+    #     emp.default_shift,
+    #     "custom_shift_type"
+    # )
+    # if not shift_type:
+    #     return emp.default_shift
+    
+    # shift = frappe.db.get_value(
+    #     "Shift Type",
+    #     {
+    #         "custom_branch": emp.branch,
+    #         "custom_shift_type": shift_type,
+    #         "custom_attendance_source": emp.custom_attendance_source, 
+    #         "custom_hours": f"{required_hours}hours"                 
+    #     },
+    #     "name"
+    # )
+    
     # 6️⃣ Return matched shift or fallback
-    return shift or emp.default_shift
+    # return shift or emp.default_shift
+    return emp.default_shift
 def get_shift_end_datetime(shift_type, date):
     end_time = frappe.db.get_value(
         "Shift Type", shift_type, "end_time"
@@ -2707,6 +2706,7 @@ def process_comp_off_scheduler(comp_off_date=None, branch=None):
                 frappe.get_traceback(),
                 f"Comp-Off Scheduler Error - {req.name}"
             )
+            # continue
     frappe.db.commit()
 
 # =========================================================
@@ -2757,7 +2757,7 @@ def process_working_day(req):
         try:
             handle_workflow_notification(req["name"])
         except Exception as e:
-            frappe.log_error("handle notification errror", f"{frappe.get_traceback()}")    
+            frappe.log_error("handle notification error", f"{frappe.get_traceback()}")    
         return
 
     # RH only
