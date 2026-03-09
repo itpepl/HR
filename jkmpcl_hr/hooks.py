@@ -160,7 +160,8 @@ doc_events = {
     },
     "Employee": {
         "after_insert": "jkmpcl_hr.py.employee.after_insert",
-        "on_update": "jkmpcl_hr.py.employee.on_update"
+        "on_update": "jkmpcl_hr.py.employee.on_update",
+        "validate": "jkmpcl_hr.py.employee.validate"
     },
     "Leave Application": {
         "validate": "jkmpcl_hr.py.leave_application.validate",
