@@ -11,7 +11,7 @@ from pypika.terms import Criterion
 import frappe
 from frappe import _
 from frappe.query_builder import Case
-from frappe.query_builder.functions import Count, Extract, Sum
+from frappe.query_builder.functions import Count, Extract, Sum, Abs
 from frappe.utils import cint, cstr, formatdate, getdate
 from frappe.utils.nestedset import get_descendants_of
 
@@ -234,6 +234,7 @@ def get_columns(filters: Filters) -> list[dict]:
 			]
 		)
 		columns.extend(get_columns_for_leave_types())
+		columns.extend(get_penalty_columns())
 		columns.extend(
 			[
 				{
@@ -264,6 +265,35 @@ def get_columns_for_leave_types() -> list[dict]:
 		types.append({"label": entry, "fieldname": frappe.scrub(entry), "fieldtype": "Float", "width": 120})
 
 	return types
+
+
+def get_penalty_columns():
+	return [
+		{
+			"label": "Casual Leave Penalty",
+			"fieldname": "casual_leave_penalty",
+			"fieldtype": "Float",
+			"width": 120
+		},
+		{
+			"label": "Sick Leave Penalty",
+			"fieldname": "sick_leave_penalty",
+			"fieldtype": "Float",
+			"width": 120
+		},
+		{
+			"label": "Privilege Leave Penalty",
+			"fieldname": "privilege_leave_penalty",
+			"fieldtype": "Float",
+			"width": 120
+		},
+		{
+			"label": "Leave Without Pay Penalty",
+			"fieldname": "leave_without_pay_penalty",
+			"fieldtype": "Float",
+			"width": 120
+		},
+	]
 
 
 def get_columns_for_days(filters: Filters) -> list[dict]:
@@ -387,7 +417,9 @@ def get_attendance_map(filters: Filters) -> dict:
 
 		attendance_map[d.employee][shift][d.attendance_date] = {
 			"status": d.status,
-			"leave_type": d.leave_type
+			"leave_type": d.leave_type,
+			"is_penalize": d.custom_is_penalize,
+    	"penalty_leave_type": d.custom_penalty_leave_type
 		}
 
 	return attendance_map
@@ -443,6 +475,8 @@ def get_attendance_records(filters: Filters) -> list[dict]:
 			(status).as_("status"),
 			Attendance.shift,
 			Attendance.leave_type,
+			Attendance.custom_is_penalize,
+    	Attendance.custom_penalty_leave_type,
 		)
 		.where(
 			(Attendance.docstatus == 1)
@@ -596,12 +630,14 @@ def get_rows(employee_details: dict, filters: Filters, holiday_map: dict, attend
 				continue
 
 			leave_summary = get_leave_summary(employee, filters)
+			penalty_leave_summary = get_penalty_leave_summary(employee, filters)
 			entry_exits_summary = get_entry_exits_summary(employee, filters)
 
 			row = {"employee": employee, "employee_name": details.employee_name}
 			set_defaults_for_summarized_view(filters, row)
 			row.update(attendance)
 			row.update(leave_summary)
+			row.update(penalty_leave_summary)
 			row.update(entry_exits_summary)
 
 			records.append(row)
@@ -839,6 +875,36 @@ def get_leave_summary(employee: str, filters: Filters) -> dict[str, float]:
 	return leaves
 
 
+def get_penalty_leave_summary(employee: str, filters: Filters) -> dict:
+
+    Attendance = frappe.qb.DocType("Attendance")
+
+    attendance_date_condition = get_date_condition(
+        Attendance.attendance_date, filters
+    )
+
+    penalty_leaves = (
+        frappe.qb.from_(Attendance)
+        .select(Attendance.custom_penalty_leave_type, Sum(Abs(Attendance.custom_penalty_leave_count)).as_("leave_days"))
+        .where(
+            (Attendance.employee == employee)
+            & (Attendance.docstatus == 1)
+            & (Attendance.custom_penalty_leave_type.isnotnull())
+            & (Attendance.company.isin(filters.companies))
+            & (attendance_date_condition)
+        )
+        .groupby(Attendance.custom_penalty_leave_type)
+    ).run(as_dict=True)
+
+    leaves = {}
+
+    for d in penalty_leaves:
+        leave_type = frappe.scrub(d.custom_penalty_leave_type)
+        leaves[f"{leave_type}_penalty"] = d.leave_days
+
+    return leaves
+
+
 def get_entry_exits_summary(employee: str, filters: Filters) -> dict[str, float]:
 	"""Returns total late entries and total early exits for employee like:
 	{'total_late_entries': 5, 'total_early_exits': 2}
@@ -960,12 +1026,21 @@ def merge_shift_attendance_for_day(entries: list[dict]) -> str | None:
 
 	statuses = [e["status"] for e in entries]
 	leave_types = [e.get("leave_type") for e in entries if e.get("leave_type")]
+
+	is_penalize = any(e.get("is_penalize") for e in entries)
+	penalty_leave_types = [e.get("penalty_leave_type") for e in entries if e.get("penalty_leave_type")]
 	
 	leave_abbr = get_leave_type_abbr(leave_types[0]) if leave_types else None
+	penalty_leave_abbr = get_leave_type_abbr(penalty_leave_types[0]) if penalty_leave_types else None
 
 	# Present overrides everything
 	if any(s in ("Present") for s in statuses):
 		return "Present"
+	
+	# Penalized Half Day → P/HD-LeaveType
+	if is_penalize and penalty_leave_abbr:
+		if any(s in ("Half Day", "Half Day/Other Half Present", "Half Day/Other Half Absent") for s in statuses):
+			return f"<span style='color:#E5533D'>P/HD-{penalty_leave_abbr}</span>"
 
 	# Half Day + Leave Type
 	if leave_abbr:
