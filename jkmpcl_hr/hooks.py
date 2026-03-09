@@ -167,8 +167,11 @@ doc_events = {
         "on_submit": "jkmpcl_hr.py.leave_application.on_submit",
         "before_submit":"jkmpcl_hr.py.leave_application.before_submit",
         "on_update":"jkmpcl_hr.py.leave_application.on_update"
+    },
+    "Holiday List": {
+        "validate": "jkmpcl_hr.py.holiday_list.validate_weekly_off"
     }
-  
+
 # 	"*": {
 # 		"on_update": "method",
 # 		"on_cancel": "method",
