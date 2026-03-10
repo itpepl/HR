@@ -240,7 +240,8 @@ scheduler_events = {
 #
 override_whitelisted_methods = {
 	# "frappe.desk.doctype.event.event.get_events": "jkmpcl_hr.event.get_events"
-    "hrms.hr.doctype.leave_application.leave_application.get_leave_balance_on": "jkmpcl_hr.overrides.leave_application_override.custom_get_leave_balance_on"
+    "hrms.hr.doctype.leave_application.leave_application.get_leave_balance_on": "jkmpcl_hr.overrides.leave_application_override.custom_get_leave_balance_on",
+    "hrms.hr.doctype.leave_application.leave_application.get_number_of_leave_days": "jkmpcl_hr.overrides.leave_application_override.custom_get_number_of_leave_days"
 }
 #
 # each overriding function accepts a `data` argument;
