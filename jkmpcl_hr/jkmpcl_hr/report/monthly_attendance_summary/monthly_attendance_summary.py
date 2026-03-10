@@ -1040,7 +1040,10 @@ def merge_shift_attendance_for_day(entries: list[dict]) -> str | None:
 	# Penalized Half Day → P/HD-LeaveType
 	if is_penalize and penalty_leave_abbr:
 		if any(s in ("Half Day", "Half Day/Other Half Present", "Half Day/Other Half Absent") for s in statuses):
-			return f"<span style='color:#E5533D'>P/HD-{penalty_leave_abbr}</span>"
+			return (
+				f"<span style='color:green'>P</span>"
+				f"<span style='color:#E5533D'>/HD-{penalty_leave_abbr}</span>"
+			)
 
 	# Half Day + Leave Type
 	if leave_abbr:
