@@ -4,9 +4,11 @@ from frappe.utils import cint, flt, nowdate, getdate, datetime
 from hrms.hr.doctype.leave_application.leave_application import LeaveApplication, get_leave_balance_on, get_leaves_pending_approval_for_period, get_number_of_leave_days, is_lwp, get_leave_allocation_records, get_leaves_for_period, get_manually_expired_leaves, get_remaining_leaves, get_allocation_expiry_for_cf_leaves
 
 
+
+
 def custom_validate_balance_leaves(self):
     precision = cint(frappe.db.get_single_value("System Settings", "float_precision")) or 2
-    print(f"\n\n Precision: {precision} \n\n")
+
     if self.from_date and self.to_date:
         self.total_leave_days = get_number_of_leave_days(
             self.employee,
@@ -34,9 +36,6 @@ def custom_validate_balance_leaves(self):
                 for_consumption=True,
                 leave_app_id=self.name,
             )
-            
-            
-            print(f"\n\n Leave Balance: {leave_balance} \n\n")
             
             leave_balance_for_consumption = flt(
                 leave_balance.get("leave_balance_for_consumption"), precision
@@ -123,7 +122,6 @@ def custom_get_leave_balance_on(
         allocation.to_date if (allocation and cint(consider_all_leaves_in_the_allocation_period)) else date
     )
     
-    print(f"\n\n  Allocation {end_date} \n\n")
     cf_expiry = get_allocation_expiry_for_cf_leaves(employee, leave_type, to_date, allocation.from_date)
 
     leaves_taken = get_leaves_for_period(employee, leave_type, allocation.from_date, end_date)
@@ -145,7 +143,6 @@ def custom_get_leave_balance_on(
             leaves_pending -= frappe.db.get_value("Leave Application", leave_app_id, "total_leave_days") or 0 
             
         frappe.log_error("custom_leaves_pending", f"{leaves_pending}")
-        print(f"\n\n Leaves Pending Approval: {leaves_pending} \n\n")
     
     if for_consumption:
         
@@ -154,9 +151,6 @@ def custom_get_leave_balance_on(
         return remaining_leaves
     else:
         return remaining_leaves.get("leave_balance") - leaves_pending
-
-
-
 
 def get_pending_leaves_app_id(employee, leave_type, from_date, to_date):
     leave_app_ids = frappe.db.get_all(
@@ -174,3 +168,59 @@ def get_pending_leaves_app_id(employee, leave_type, from_date, to_date):
     )
 
     return leave_app_ids
+
+
+
+def custom_create_or_update_attendance(self, attendance_name, date):
+    status = (
+        "Half Day" if self.half_day_date and getdate(date) == getdate(self.half_day_date) else "On Leave"
+    )
+    has_checkin = frappe.db.exists("Employee Checkin", {"employee": self.employee, "time": ["between", [f"{date} 00:00:00", f"{date} 23:59:59"]]})
+    
+    
+    if attendance_name:
+        # update existing attendance, change absent to on leave or half day
+        doc = frappe.get_doc("Attendance", attendance_name)
+        
+        half_day_status = None
+        modify_half_day_status = 0
+                
+        # half_day_status = None if status == "On Leave" else "Present"
+        # modify_half_day_status = 1 if doc.status == "Absent" and status == "Half Day" else 0
+        if status == "Half Day":   
+            half_day_status = "Present" if has_checkin else "Absent"
+            modify_half_day_status = 1 if has_checkin and doc.status == "Absent" else 0
+        
+        
+        doc.db_set(
+            {
+                "status": status,
+                "leave_type": self.leave_type,
+                "leave_application": self.name,
+                "half_day_status": half_day_status,
+                "modify_half_day_status": modify_half_day_status,
+            }
+        )
+    else:
+        # make new attendance and submit it
+        doc = frappe.new_doc("Attendance")
+        doc.employee = self.employee
+        doc.employee_name = self.employee_name
+        doc.attendance_date = date
+        doc.company = self.company
+        doc.leave_type = self.leave_type
+        doc.leave_application = self.name
+        doc.status = status
+        # doc.half_day_status = "Present" if status == "Half Day" else None
+        # doc.modify_half_day_status = 1 if status == "Half Day" else 0
+    
+        if status == "Half Day":
+            doc.half_day_status = "Present" if has_checkin else "Absent"
+            doc.modify_half_day_status = 1 if has_checkin else 0
+        else:
+            doc.half_day_status = None
+            doc.modify_half_day_status = 0
+    
+        doc.flags.ignore_validate = True  # ignores check leave record validation in attendance
+        doc.insert(ignore_permissions=True)
+        doc.submit()

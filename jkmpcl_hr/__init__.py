@@ -6,7 +6,10 @@ __version__ = "0.0.1"
 # =========================================================
 
 from hrms.hr.doctype.leave_allocation.leave_allocation import LeaveAllocation
+from hrms.hr.doctype.leave_application.leave_application import LeaveApplication
+
 from jkmpcl_hr.overrides.leave_allocation import custom_validate_allocation_overlap
+
 
 LeaveAllocation.validate_allocation_overlap = custom_validate_allocation_overlap
 
@@ -19,3 +22,11 @@ from hrms.hr.doctype.leave_application.leave_application import LeaveApplication
 from jkmpcl_hr.overrides.leave_application_override import custom_validate_balance_leaves
 
 LeaveApplication.validate_balance_leaves = custom_validate_balance_leaves
+
+
+
+# * OVERRIDED create_of_update_attendance to stop setting status for other half as present if no checkin rec found for the employee
+
+from jkmpcl_hr.overrides.leave_application_override import custom_create_or_update_attendance
+
+LeaveApplication.create_or_update_attendance = custom_create_or_update_attendance
