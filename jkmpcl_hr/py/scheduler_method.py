@@ -3406,35 +3406,66 @@ def set_approvers_in_employee(dt=None):
         if employees:
             for emp in employees:
                 try:
-                    current_emp_shift_approver = frappe.db.get_value("Employee", emp.name, "shift_request_approver") or None
-                    current_emp_leave_approver = frappe.db.get_value("Employee", emp.name, "leave_approver") or None
-                    current_emp_reports_to = frappe.db.get_value("Employee", emp.name, "reports_to") or None
+                    
+                    emp_doc = frappe.get_doc("Employee", emp.name)
+                    
+                    if emp_doc:
+                        if emp_doc.get("custom_reporting_manager"):
+                            current_rm = None
+                            
+                    
+
+                        for row in emp_doc.get("custom_reporting_manager"):
+                            if row.get("effective_from") and getdate(row.get("effective_from") <= getdate(today())):
+                                current_rm = row.get("employee")
+
+                        if current_rm:
+                            if emp_doc.get("reports_to") != current_rm:
+                                emp_doc.reports_to = current_rm
+                    
+                            
+                            current_rm_user = emp_doc.get("user_id") if frappe.db.get_value("User", emp_doc.get("user_id")) else None
+
+                            if current_rm_user:
+                                if emp_doc.get("expense_approver") != current_rm_user:
+                                    emp_doc.expense_approver = current_rm_user
+                                
+                                if emp_doc.get("leave_approver") != current_rm_user:
+                                    emp_doc.leave_approver = current_rm_user
+                                    
+                                if emp_doc.get("shift_request_approver") != current_rm_user:
+                                    emp_doc.shift_request_approver = current_rm_user
+                    
+                    emp_doc.save(ignore_permissions=True)          
+                    # current_emp_shift_approver = frappe.db.get_value("Employee", emp.name, "shift_request_approver") or None
+                    # current_emp_leave_approver = frappe.db.get_value("Employee", emp.name, "leave_approver") or None
+                    # current_emp_reports_to = frappe.db.get_value("Employee", emp.name, "reports_to") or None
                     
                     
-                    current_holiday_list = get_current_holiday_list(emp.name, from_date)
-                    frappe.log_error("Holiday List", f"{current_holiday_list} {emp.holiday_list}")
-                    if current_holiday_list:
-                        if not emp.holiday_list:
-                            frappe.db.set_value("Employee", emp.name, "holiday_list", current_holiday_list)
+                    # current_holiday_list = get_current_holiday_list(emp.name, from_date)
+                    # frappe.log_error("Holiday List", f"{current_holiday_list} {emp.holiday_list}")
+                    # if current_holiday_list:
+                    #     if not emp.holiday_list:
+                    #         frappe.db.set_value("Employee", emp.name, "holiday_list", current_holiday_list)
                         
-                        elif emp.holiday_list != current_holiday_list:
-                            frappe.db.set_value("Employee", emp.name, "holiday_list", current_holiday_list)
+                    #     elif emp.holiday_list != current_holiday_list:
+                    #         frappe.db.set_value("Employee", emp.name, "holiday_list", current_holiday_list)
                             
 
                     
                     
-                    emp_rm = get_emp_reporting_manager(emp.name)
-                    emp_rm_emp = frappe.db.get_value("Employee", {"user_id": emp_rm}, "name") if emp_rm else None
-                    if not emp_rm_emp:
-                        frappe.log_error(f"Reporting Manager Employee Not Found for User ID: {emp_rm}", f"Employee: {emp.name}")
+                    # emp_rm = get_emp_reporting_manager(emp.name)
+                    # emp_rm_emp = frappe.db.get_value("Employee", {"user_id": emp_rm}, "name") if emp_rm else None
+                    # if not emp_rm_emp:
+                    #     frappe.log_error(f"Reporting Manager Employee Not Found for User ID: {emp_rm}", f"Employee: {emp.name}")
                     
-                    if emp_rm:
-                        if current_emp_shift_approver != emp_rm:
-                            frappe.db.set_value("Employee", emp.name, "shift_request_approver", emp_rm)
-                        if current_emp_leave_approver != emp_rm:
-                            frappe.db.set_value("Employee", emp.name, "leave_approver", emp_rm)                        
-                        if current_emp_reports_to != emp_rm_emp:
-                            frappe.db.set_value("Employee", emp.name, "reports_to", emp_rm_emp)
+                    # if emp_rm:
+                    #     if current_emp_shift_approver != emp_rm:
+                    #         frappe.db.set_value("Employee", emp.name, "shift_request_approver", emp_rm)
+                    #     if current_emp_leave_approver != emp_rm:
+                    #         frappe.db.set_value("Employee", emp.name, "leave_approver", emp_rm)                        
+                    #     if current_emp_reports_to != emp_rm_emp:
+                    #         frappe.db.set_value("Employee", emp.name, "reports_to", emp_rm_emp)
                                                                                 
                 except Exception as e:
                     frappe.log_error(f"error_set_approvers_in_employee_{emp.name}", frappe.get_traceback())
