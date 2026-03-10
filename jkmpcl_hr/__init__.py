@@ -27,6 +27,7 @@ LeaveApplication.validate_balance_leaves = custom_validate_balance_leaves
 
 # * OVERRIDED create_of_update_attendance to stop setting status for other half as present if no checkin rec found for the employee
 
-from jkmpcl_hr.overrides.leave_application_override import custom_create_or_update_attendance
+from jkmpcl_hr.overrides.leave_application_override import custom_create_or_update_attendance, custom_update_attendance
 
 LeaveApplication.create_or_update_attendance = custom_create_or_update_attendance
+LeaveApplication.update_attendance = custom_update_attendance
