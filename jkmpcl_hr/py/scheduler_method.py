@@ -1385,6 +1385,8 @@ def create_or_update_attendance(
         is_holiday_work=False
 ):
     try:
+        if employee == "20111: AJAY  KUMAR":
+                    frappe.log_error(f"mark attendance for {employee}", f"{date} {in_time} {out_time}")
         no_checkin_found = not first_checkin_id and not last_checkin_id
  
         shift_type = get_employee_shift(employee, date)
@@ -1398,6 +1400,7 @@ def create_or_update_attendance(
                 "start_time",
                 "end_time",
                 "late_entry_grace_period",
+                "early_exit_grace_period",
                 "allow_check_out_after_shift_end_time",
                 "working_hours_threshold_for_half_day",
                 "working_hours_threshold_for_absent"
@@ -1423,6 +1426,7 @@ def create_or_update_attendance(
         )
  
         late_entry = 0
+        early_exit = 0
         single_checkin = False
         if first_checkin_id and last_checkin_id:
             if first_checkin_id == last_checkin_id:
@@ -1483,9 +1487,14 @@ def create_or_update_attendance(
             if in_time and out_time and not skip_shift_time_rules and not is_holiday_work:
  
                 shift_start = combine_datetime(date, shift.start_time)
- 
+                shift_end = combine_datetime(date, shift.end_time)
+                
                 allowed_late_minutes = shift.late_entry_grace_period
- 
+                allowed_early_exit_minutes = shift.early_exit_grace_period
+                
+                if employee == "20111: AJAY  KUMAR":
+                    frappe.log_error(f"mark_attednance{employee}", f"{allowed_early_exit_minutes} {allowed_late_minutes}")
+                    
                 if allowed_late_minutes and int(allowed_late_minutes) > 0:
  
                     latest_allowed_in = add_to_date(
@@ -1496,8 +1505,22 @@ def create_or_update_attendance(
                     if in_time > latest_allowed_in:
                         late_entry = 1
                         status = "Half Day"
- 
-   
+                
+                
+                if not late_entry and allowed_early_exit_minutes and int(allowed_early_exit_minutes) > 0:
+                    
+                    latest_allowed_out = add_to_date(
+                        shift_end,
+                        minutes=-int(allowed_early_exit_minutes)
+                    )
+                    if employee == "20111: AJAY  KUMAR":
+                        frappe.log_error(f"Early Exit {employee}", f"{allowed_early_exit_minutes} {latest_allowed_out}  {out_time} {shift_end}")
+                        
+                    if out_time < latest_allowed_out:
+                        early_exit = 1
+                        status = "Half Day"
+                        
+                
         attendance_name = frappe.db.exists(
             "Attendance",
             {
@@ -1519,7 +1542,8 @@ def create_or_update_attendance(
         if attendance_name:
  
             att_name = attendance_name
- 
+            if employee == "20111: AJAY  KUMAR":
+                frappe.log_error(f"Marking Attendance {employee}", f"{early_exit}")
             frappe.db.set_value(
             "Attendance",
             att_name,
@@ -1530,6 +1554,7 @@ def create_or_update_attendance(
                 "working_hours": working_hours,
                 "status": status,
                 "late_entry": late_entry,
+                "early_exit": early_exit,
                 "employee_name": employee_details.employee_name,
                 "department": employee_details.department,
                 "company": employee_details.company,
@@ -1546,11 +1571,11 @@ def create_or_update_attendance(
                 INSERT INTO `tabAttendance`
                 (name, employee, employee_name, department, company,
                 attendance_date, shift, in_time, out_time,
-                working_hours, status, late_entry, custom_branch,
+                working_hours, status, late_entry, early_exit, custom_branch,
                 docstatus, creation, modified, owner, modified_by)
  
                 VALUES (%s,%s,%s,%s,%s,
-                        %s,%s,%s,%s,
+                        %s,%s,%s,%s, %s,
                         %s,%s,%s,%s,
                         1, NOW(), NOW(), %s, %s)
             """, (
@@ -1566,6 +1591,7 @@ def create_or_update_attendance(
                 working_hours,
                 status,
                 late_entry,
+                early_exit,
                 employee_details.branch,
                 frappe.session.user,
                 frappe.session.user,
@@ -1635,6 +1661,7 @@ def create_or_update_attendance(
         return att_name
         
     except Exception as e:
+        frappe.log_error("create_or_update attendance", frappe.get_traceback())
         log_attendance_error(
             employee,
             date,
