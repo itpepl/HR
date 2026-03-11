@@ -342,14 +342,18 @@ def custom_get_holidays(employee, from_date, to_date, holiday_list=None):
         if hd.get("weekly_off"):
             valid_holidays.append(holiday_date)
             continue
-
+        
+        if pair_date and getdate(holiday_date) < getdate(pair_date):            
+            valid_holidays.append(holiday_date)
+            continue
+        
         pair_doc = pair_holiday_map.get(pair_date)
 
         # If pair date weekly off
         if pair_doc and pair_doc.get("weekly_off"):
             valid_holidays.append(holiday_date)
             continue
-
+        
         # Attendance check
         if pair_date and frappe.db.exists(
             "Attendance",
@@ -497,87 +501,90 @@ def custom_update_attendance(self):
             self.create_or_update_attendance(attendance_name, date)
 
 def custom_get_holiday_dates_for_employee(employee, start_date, end_date):
-	"""Return a list of holiday dates for the given employee between start_date and end_date"""
+    """Return a list of holiday dates for the given employee between start_date and end_date"""
 
-	start_date = getdate(start_date)
-	end_date = getdate(end_date)
+    start_date = getdate(start_date)
+    end_date = getdate(end_date)
 
-	holidays = get_holidays_for_employee(employee, start_date, end_date)
+    holidays = get_holidays_for_employee(employee, start_date, end_date)
 
-	if not holidays:
-		return []
+    if not holidays:
+        return []
 
-	holiday_dates = [h.holiday_date for h in holidays]
+    holiday_dates = [h.holiday_date for h in holidays]
 
-	holiday_list = get_holiday_list_for_employee(employee, as_on=start_date)
+    holiday_list = get_holiday_list_for_employee(employee, as_on=start_date)
 
-	if not holiday_list:
-		return [cstr(d) for d in holiday_dates]
+    if not holiday_list:
+        return [cstr(d) for d in holiday_dates]
 
-	valid_holidays = []
+    valid_holidays = []
 
-	holiday_records = frappe.get_all(
-		"Holiday",
-		filters={"parent": holiday_list, "holiday_date": ["in", holiday_dates]},
-		fields=[
-			"holiday_date",
-			"weekly_off",
-			"custom_is_restricted_holiday",
-			"custom_restricted_holiday_date",
-		],
-	)
+    holiday_records = frappe.get_all(
+        "Holiday",
+        filters={"parent": holiday_list, "holiday_date": ["in", holiday_dates]},
+        fields=[
+            "holiday_date",
+            "weekly_off",
+            "custom_is_restricted_holiday",
+            "custom_restricted_holiday_date",
+        ],
+    )
 
-	if not holiday_records:
-		return [cstr(d) for d in holiday_dates]
+    if not holiday_records:
+        return [cstr(d) for d in holiday_dates]
 
-	pair_dates = [
-		d.custom_restricted_holiday_date
-		for d in holiday_records
-		if d.custom_is_restricted_holiday and d.custom_restricted_holiday_date
-	]
+    pair_dates = [
+        d.custom_restricted_holiday_date
+        for d in holiday_records
+        if d.custom_is_restricted_holiday and d.custom_restricted_holiday_date
+    ]
 
-	pair_holiday_map = {}
+    pair_holiday_map = {}
 
-	if pair_dates:
-		pair_holidays = frappe.get_all(
-			"Holiday",
-			filters={"parent": holiday_list, "holiday_date": ["in", pair_dates]},
-			fields=["holiday_date", "weekly_off"],
-		)
+    if pair_dates:
+        pair_holidays = frappe.get_all(
+            "Holiday",
+            filters={"parent": holiday_list, "holiday_date": ["in", pair_dates]},
+            fields=["holiday_date", "weekly_off"],
+        )
 
-		pair_holiday_map = {p.holiday_date: p for p in pair_holidays}
+        pair_holiday_map = {p.holiday_date: p for p in pair_holidays}
 
-	for hd in holiday_records:
+    for hd in holiday_records:
 
-		holiday_date = hd.holiday_date
-		pair_date = hd.custom_restricted_holiday_date
+        holiday_date = hd.holiday_date
+        pair_date = hd.custom_restricted_holiday_date
 
-		# normal holiday
-		if not hd.custom_is_restricted_holiday:
-			valid_holidays.append(holiday_date)
-			continue
+        # normal holiday
+        if not hd.custom_is_restricted_holiday:
+            valid_holidays.append(holiday_date)
+            continue
 
-		# if current date weekly off
-		if hd.weekly_off:
-			valid_holidays.append(holiday_date)
-			continue
+        # if current date weekly off
+        if hd.weekly_off:
+            valid_holidays.append(holiday_date)
+            continue
+        
+        if pair_date and getdate(holiday_date) < getdate(pair_date):
+            valid_holidays.append(holiday_date)
+            continue
+        pair_doc = pair_holiday_map.get(pair_date)
 
-		pair_doc = pair_holiday_map.get(pair_date)
+        # if pair weekly off
+        if pair_doc and pair_doc.weekly_off:
+            valid_holidays.append(holiday_date)
+            continue
 
-		# if pair weekly off
-		if pair_doc and pair_doc.weekly_off:
-			valid_holidays.append(holiday_date)
-			continue
+        # attendance rule
+        if pair_date and frappe.db.exists(
+            "Attendance",
+            {
+                "employee": employee,
+                "attendance_date": pair_date,
+                "docstatus": ["!=", 2],
+            },
+        ):
+            valid_holidays.append(holiday_date)
 
-		# attendance rule
-		if pair_date and frappe.db.exists(
-			"Attendance",
-			{
-				"employee": employee,
-				"attendance_date": pair_date,
-				"docstatus": ["!=", 2],
-			},
-		):
-			valid_holidays.append(holiday_date)
-
-	return [cstr(d) for d in valid_holidays]
+    return [cstr(d) for d in valid_holidays]
