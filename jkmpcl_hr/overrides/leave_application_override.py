@@ -306,7 +306,7 @@ def custom_get_holidays(employee, from_date, to_date, holiday_list=None):
         ],
     )
 
-    print(f"\n\n holiday recprds {holiday_records}\n\n")
+    
     if not holiday_records:
         return len(holiday_dates)
 
@@ -378,7 +378,7 @@ def custom_get_holidays(employee, from_date, to_date, holiday_list=None):
 
         # Normal holiday
         if not hd.get("custom_is_restricted_holiday"):
-            print("\n not restricted\n")
+            
             valid_holidays.append(holiday_date)
             continue
 
@@ -404,12 +404,12 @@ def custom_get_holidays(employee, from_date, to_date, holiday_list=None):
             {
                 "employee": employee,
                 "attendance_date": pair_date,
-                "docstatus": ["!=", 2],
+                "status": "Present"
             },
         ):
-            print(f"\n\n attendanc exists \n\n")
+            
             valid_holidays.append(holiday_date)
-    print(f"\n\n valid {len(valid_holidays)} \n\n")
+    
     return len(valid_holidays)
 # @frappe.whitelist()
 # def custom_get_holidays(employee, from_date, to_date, holiday_list=None):
@@ -653,7 +653,7 @@ def custom_get_holiday_dates_for_employee(employee, start_date, end_date):
             {
                 "employee": employee,
                 "attendance_date": pair_date,
-                "docstatus": ["!=", 2],
+                "status": "Present",
             },
         ):
             valid_holidays.append(holiday_date)
