@@ -6,7 +6,7 @@ from datetime import datetime, date,timedelta, time
 from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority ,get_employee_leave_type, create_leave_ledger
 from jkmpcl_hr.py.utils import send_notification_email
 from erpnext.setup.doctype.employee.employee import is_holiday
-from jkmpcl_hr.py.scheduler_method import get_employee_shift,create_or_update_attendance
+from jkmpcl_hr.py.scheduler_method import get_employee_shift,create_or_update_attendance, mark_attendance
 from jkmpcl_hr.py.utils import get_emp_hr_manager, get_ceo_user
 
 
@@ -766,45 +766,52 @@ def _process_attendance_request(doc_name):
 
     date_val = doc.from_date
 
-    shift_type = get_employee_shift(doc.employee, date_val)
-    if not shift_type:
-        frappe.throw(f"No Shift found for employee {doc.employee} on {date_val}")
+    # shift_type = get_employee_shift(doc.employee, date_val)
+    # if not shift_type:
+    #     frappe.throw(f"No Shift found for employee {doc.employee} on {date_val}")
 
-    def parse_datetime(val):
-        if isinstance(val, datetime):
-            return val
-        if isinstance(val, str):
-            try:
-                return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
-            except Exception:
-                frappe.throw(f"Invalid datetime: {val}")
-        frappe.throw(f"Invalid datetime: {val}")
+    # def parse_datetime(val):
+    #     if isinstance(val, datetime):
+    #         return val
+    #     if isinstance(val, str):
+    #         try:
+    #             return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
+    #         except Exception:
+    #             frappe.throw(f"Invalid datetime: {val}")
+    #     frappe.throw(f"Invalid datetime: {val}")
 
-    if doc.custom_shift_type == "Night":
-        in_datetime = parse_datetime(doc.custom_shift_in_time)
-        out_datetime = parse_datetime(doc.custom_shift_in_out)
+    # if doc.custom_shift_type == "Night":
+    #     in_datetime = parse_datetime(doc.custom_shift_in_time)
+    #     out_datetime = parse_datetime(doc.custom_shift_in_out)
 
-        if out_datetime <= in_datetime:
-            out_datetime += timedelta(days=1)
+    #     if out_datetime <= in_datetime:
+    #         out_datetime += timedelta(days=1)
 
-    else:
-        in_datetime = make_datetime(date_val, doc.custom_in_time)
-        out_datetime = make_datetime(date_val, doc.custom_out_time)
+    # else:
+        
+    #     in_datetime = make_datetime(date_val, doc.custom_in_time)
+    #     out_datetime = make_datetime(date_val, doc.custom_out_time)
 
-        if out_datetime < in_datetime:
-            frappe.throw("Out time cannot be less than In time")
+    #     if out_datetime < in_datetime:
+    #         frappe.throw("Out time cannot be less than In time")
 
-    working_hours = (out_datetime - in_datetime).total_seconds() / 3600
+    # working_hours = (out_datetime - in_datetime).total_seconds() / 3600
 
-    attendance_name = create_or_update_attendance(
-        employee=doc.employee,
-        date=date_val,
-        in_time=in_datetime,
-        out_time=out_datetime,
-        working_hours=working_hours,
-        skip_shift_time_rules=True
-    )
-
+    # checkin_id = frappe.db.get_value("Employee Checkin", {"custom_attendance_request": doc.name, "time": in_datetime})
+    # checkout_id = frappe.db.get_value("Employee Checkin", {"custom_attendance_request": doc.name, "time": out_datetime})
+    # attendance_name = create_or_update_attendance(
+    #     employee=doc.employee,
+    #     date=date_val,
+    #     in_time=in_datetime,
+    #     out_time=out_datetime,        
+    #     working_hours=working_hours,
+    #     first_checkin_id=checkin_id or None,
+    #     last_checkin_id= checkout_id or None,
+    #     skip_shift_time_rules=False
+    # )
+    
+    attendance_name = mark_attendance(doc.employee, getdate(date_val))
+    frappe.log_error("attendance regularized", f"attendance id {attendance_name}")
     # if attendance_name:
     #     att = frappe.get_doc("Attendance", attendance_name)
     #     att.attendance_request = doc.name
