@@ -17,6 +17,11 @@ def execute(filters=None):
 
     leave_types = get_leave_types(filters)
 
+    fy_start = getdate(f"{from_date.year}-04-01")
+
+    if from_date.month < 4:
+        fy_start = getdate(f"{from_date.year - 1}-04-01")
+
     for emp in employees:
 
         row = {
@@ -48,8 +53,16 @@ def execute(filters=None):
 
                 # Opening balance
                 if entry.from_date < from_date:
+                    # Casual Leave lapses every financial year
+                    if lt == "Casual Leave" and entry.from_date < fy_start:
+                        continue
+                    
                     opening += leaves
-                    availed_till_last_month += abs(leaves) if entry.transaction_type == "Leave Application" else 0
+
+                    if entry.transaction_type == "Leave Application":
+                        availed_till_last_month += abs(leaves)
+                    # opening += leaves
+                    # availed_till_last_month += abs(leaves) if entry.transaction_type == "Leave Application" else 0
 
                 # Inside period
                 if from_date <= entry.from_date <= to_date:
