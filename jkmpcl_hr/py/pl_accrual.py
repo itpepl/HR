@@ -264,6 +264,8 @@ def get_eligible_days(employee, start_date, end_date):
 
 def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, is_carry_forward, effective_start, end_date, eligible_days, today_date):
     
+    if employee == "001100: CL Test Eleven":
+        print(f"\n\n allocatinf pl  \n\n")
     effective_start = getdate(effective_start)
     end_date = getdate(end_date)
     
@@ -292,13 +294,15 @@ def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, i
         # Accrual already processed for this period
             return
         
-        new_allocation = flt(doc.total_leaves_allocated) + flt(1)
+        new_allocation = flt(doc.total_leaves_allocated) + flt(pl_days)
                             
         if new_allocation != doc.total_leaves_allocated:
                 doc.db_set("total_leaves_allocated", new_allocation, update_modified=False)
 
-                date = today_date or frappe.flags.current_date or getdate()
-                custom_create_additional_leave_ledger_entry(doc, pl_days, date, is_accrual=1)
+                # date = today_date or frappe.flags.current_date or getdate()
+                # date = end_date
+                # print(f"\n\n main date{date}\n\n")
+                custom_create_additional_leave_ledger_entry(doc, pl_days, end_date, is_accrual=1)
             
                 frappe.get_doc({
                     "doctype": "Leave Accrual",
@@ -334,7 +338,7 @@ def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, i
         doc.to_date = year_end_date
         doc.new_leaves_allocated = pl_days
         doc.carry_forward = 1 if is_carry_forward else 0
-        doc.custom_last_allocation_date = today_date
+        doc.custom_last_allocation_date = end_date
         doc.append("custom_leave_accrual", {
             "from_date": effective_start,
             "to_date": end_date,

@@ -12,7 +12,7 @@ import calendar
 
 
 
-from jkmpcl_hr.py.utils import get_current_holiday_list, custom_create_additional_leave_ledger_entry
+from jkmpcl_hr.py.utils import get_current_holiday_list, custom_create_additional_leave_ledger_entry, get_ceo_employees
 
 
 # from jkmpcl_hr.py.utils import send_notification_email
@@ -600,6 +600,9 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
 
     frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")
 
+
+    ceo_employees = get_ceo_employees()
+    
     if not att_date:
         att_date = add_days(getdate(), -1)
     else:
@@ -610,19 +613,38 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
     # ==============================
     # Fetch Employees
     # ==============================
+    
+    
+    
     if only_for_jammu:
-        employees = frappe.get_all(
-            "Employee",
-            filters={
-                "status": "Active",
-                "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",
-            },
-            pluck="name",
-        )
+        if ceo_employees:
+            
+            employees = frappe.get_all(
+                "Employee",
+                filters={
+                    "status": "Active",
+                    "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",
+                    "name": ["not in", ceo_employees]
+                },
+                pluck="name",
+            )
+        else:
+            employees = frappe.get_all(
+                "Employee",
+                filters={
+                    "status": "Active",
+                    "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",            
+                },
+                pluck="name",
+            )
     else:
         filters = {"status": "Active"}
+        
         if branch:
             filters["branch"] = branch
+
+        if ceo_employees:
+            filters["name"]=["not in", ceo_employees]
 
         employees = frappe.get_all("Employee", filters=filters, pluck="name")
 
@@ -3419,6 +3441,16 @@ def allocate_cl_to_probation_and_contract_employees(dt=None):
                             })
                             allocation.insert(ignore_permissions=True)
                             allocation.submit()
+                            frappe.get_doc({
+                                    "doctype": "Leave Accrual",
+                                    "parent": allocation.name,
+                                    "parenttype": "Leave Allocation",
+                                    "parentfield": "custom_leave_accrual",
+                                    "from_date": month_start_date,
+                                    "to_date": to_date,
+                                    "leave_allocated": 1,
+                            }).insert(ignore_permissions=True)
+                            
                     except Exception as e:
                         frappe.log_error(f"error_allocate_cl_to_probation_and_contract_employees_{emp.name}", f"{frappe.get_traceback()} \n \n {month_start_date} {to_date}")
                         continue
@@ -3473,6 +3505,7 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
             ["name", "employment_type", "date_of_joining", "contract_end_date"],
         )
 
+        frappe.log_error("sl eligible employee", f"{employees}")
         for emp in employees:
             try:
                 joining_date = getdate(emp.date_of_joining)
@@ -3513,18 +3546,21 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
                 if emp.name == "20135: KARAN KUMAR":
                         frappe.log_error(f"last_alloc{emp.name}", f"{last_alloc_date} - {joining_date} - {month_start_date} - {month_end_date}")
                             
-                already_allocated_this_month = True if last_alloc_date and last_alloc_date.year == today_date.year and last_alloc_date.month == today_date.month else False
-
+                already_allocated_this_month = True if last_alloc_date and last_alloc_date.year == today_date.year and last_alloc_date.month == today_date.month and last_alloc_date != current_fy_start else False
+                
+                if emp.name == "001100: CL Test Eleven":
+                    frappe.log_error("Already_allocated", f"{already_allocated_this_month} - last alloc date {last_alloc_date} - today date {today_date} - current fy start {current_fy_start}")
                 if not new_financial_year:
                     if current_alloc and not already_allocated_this_month:
                         
                         alloc_doc = frappe.get_doc("Leave Allocation", current_alloc[0].name)
-                        new_allocation = flt(alloc_doc.total_leaves_allocated) + flt(1)
+                        new_allocation = flt(alloc_doc.total_leaves_allocated) + flt(monthly_sl)
                             
                         if new_allocation != alloc_doc.total_leaves_allocated:
                                 alloc_doc.db_set("total_leaves_allocated", new_allocation, update_modified=False)
-
                                 date = today_date or frappe.flags.current_date or getdate()
+                                if emp.name == "001100: CL Test Eleven":
+                                    frappe.log_error("New Allocation", f"{date} New Allocation {monthly_sl}")
                                 custom_create_additional_leave_ledger_entry(alloc_doc, monthly_sl, date, is_accrual=1)
                             
                                 frappe.get_doc({
@@ -3616,7 +3652,7 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
                         "to_date": effective_to_date,
                         "custom_opening_balance": last_year_balance,
                         "new_leaves_allocated": 0,
-                        "custom_last_allocation_date": prev_fy_end,
+                        "custom_last_allocation_date": current_fy_start,
                     })
                     fy_alloc.insert(ignore_permissions=True)
                     fy_alloc.submit()
