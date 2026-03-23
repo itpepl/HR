@@ -1602,16 +1602,11 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
                 entries.append(status_dict[dt])
 
         # ─────────────────────────────────────────────────────────────
-        # NO ATTENDANCE RECORD — check holiday list directly
-        # RH is NOT counted here — only counted when attendance record
-        # explicitly has status "Restricted Holiday"
+        # NO ATTENDANCE RECORD — skip entirely
+        # WO, HO, RH are only counted when an actual submitted
+        # attendance record exists with the corresponding status
         # ─────────────────────────────────────────────────────────────
         if not entries:
-            holiday_status = get_dynamic_holiday_status(employee, dt)
-            if holiday_status == "Weekly Off":
-                metrics["weekly_off"] += 1
-            elif holiday_status == "Holiday":
-                metrics["holiday"] += 1
             continue
 
         # ─────────────────────────────────────────────────────────────
