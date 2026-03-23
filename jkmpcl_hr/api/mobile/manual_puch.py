@@ -119,7 +119,7 @@ def create_manual_punch(data):
         warning_message = ""
 
         # ❗ Skip warning for Field Visit
-        if request_type != "Field Visit":
+        if request_type not in ["Field Visit", "System Error"]:
             warning_data = get_manual_punch_note(
                 employeeId=employee,
                 from_date=date,
