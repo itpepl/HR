@@ -11,8 +11,6 @@ def execute(filters=None):
 
     employees = get_employees(filters)
 
-    ledger_entries = get_leave_ledger_entries(to_date)
-
     data = []
 
     leave_types = get_leave_types(filters)
@@ -21,6 +19,8 @@ def execute(filters=None):
 
     if from_date.month < 4:
         fy_start = getdate(f"{from_date.year - 1}-04-01")
+
+    ledger_entries = get_leave_ledger_entries(fy_start, to_date)
 
     for emp in employees:
 
@@ -52,7 +52,7 @@ def execute(filters=None):
                 leaves = flt(entry.leaves)
 
                 # Opening balance
-                if entry.from_date < from_date:
+                if fy_start <= entry.from_date < from_date:
                     # Casual Leave lapses every financial year
                     if lt == "Casual Leave" and entry.from_date < fy_start:
                         continue
@@ -65,7 +65,7 @@ def execute(filters=None):
                     # availed_till_last_month += abs(leaves) if entry.transaction_type == "Leave Application" else 0
 
                 # Inside period
-                if from_date <= entry.from_date <= to_date:
+                if fy_start <= entry.from_date <= to_date and entry.from_date >= from_date:
 
                     if entry.transaction_type == "Leave Allocation" and not entry.custom_is_penalty:
                         accrued += leaves
@@ -289,7 +289,7 @@ def get_employees(filters):
 # -------------------------------------------------------
 
 
-def get_leave_ledger_entries(to_date):
+def get_leave_ledger_entries(fy_start, to_date):
 
     return frappe.db.sql(
         """
@@ -301,9 +301,9 @@ def get_leave_ledger_entries(to_date):
             from_date,
             custom_is_penalty
         FROM `tabLeave Ledger Entry`
-        WHERE from_date <= %s
+        WHERE from_date BETWEEN %s AND %s
         """,
-        to_date,
+        (fy_start, to_date),
         as_dict=1,
     )
 
