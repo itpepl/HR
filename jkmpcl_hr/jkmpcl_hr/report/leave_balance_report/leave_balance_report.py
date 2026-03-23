@@ -76,6 +76,29 @@ def execute(filters=None):
                     elif entry.custom_is_penalty:
                         deduction += abs(leaves)
 
+            # row[f"{prefix}_opening"] = opening
+            # row[f"{prefix}_accrued"] = accrued
+
+            # ✅ For April month — override opening and accrued from
+            # Leave Allocation document directly via Leave Ledger Entry
+            is_april = (from_date.month == 4)
+            if is_april and lt in ("Sick Leave", "Privilege Leave"):
+                # Contractual and Probation employees accrue on 30-Apr
+                # Confirmed and others accrue on 01-Apr
+                is_monthly_accrual = emp.get("employment_type") in (
+                    "Contractual", "Probation"
+                )
+                april_first = from_date  # always 01-04-yyyy
+                april_last = getdate(f"{from_date.year}-04-30")
+
+                accrual_date = april_last if is_monthly_accrual else april_first
+
+                april_data = get_april_allocation_data(
+                    emp.name, lt, april_first, accrual_date
+                )
+                opening = april_data["opening"]
+                accrued = april_data["accrued"]
+
             row[f"{prefix}_opening"] = opening
             row[f"{prefix}_accrued"] = accrued
             row[f"{prefix}_availed_last_month"] = availed_till_last_month
@@ -251,7 +274,8 @@ def get_employees(filters):
             name,
             employee_name,
             branch,
-            designation
+            designation,
+            employment_type
         FROM `tabEmployee`
         {conditions}
     """,
@@ -307,3 +331,94 @@ def get_prefix(leave_type):
     }
 
     return mapping.get(leave_type, leave_type.lower())
+
+
+# -------------------------------------------------------
+
+
+def get_april_allocation_data(employee: str, leave_type: str, april_date, accrual_date=None) -> dict:
+    """
+    For April month only — fetch opening balance and new leaves allocated
+    directly from the Leave Allocation document linked via Leave Ledger Entry.
+    - april_date   → used to fetch opening balance (01-04-yyyy)
+    - accrual_date → used to fetch accrued leaves
+                     01-04-yyyy for Confirmed (from Leave Allocation doc)
+                     30-04-yyyy for Contractual/Probation (from Leave Ledger Entry leaves field directly)
+    Returns {"opening": 0, "accrued": 0}
+    """
+    if accrual_date is None:
+        accrual_date = april_date
+
+    # ── Opening balance → always from 01-Apr ledger entry ──────────
+    opening_ledger = frappe.db.get_value(
+        "Leave Ledger Entry",
+        {
+            "employee": employee,
+            "leave_type": leave_type,
+            "from_date": april_date,
+            "transaction_type": "Leave Allocation",
+            "custom_is_penalty": 0,
+            "docstatus": 1,
+        },
+        ["transaction_name"],
+        as_dict=True,
+    )
+
+    opening = 0
+    if opening_ledger and opening_ledger.transaction_name:
+        allocation = frappe.db.get_value(
+            "Leave Allocation",
+            {
+                "name": opening_ledger.transaction_name,
+                "docstatus": 1,
+            },
+            ["custom_opening_balance"],
+            as_dict=True,
+        )
+        if allocation:
+            opening = flt(allocation.custom_opening_balance or 0)
+
+    # ── Accrued → read directly from the Leave Ledger Entry leaves field
+    # For Contractual/Probation the accrual entry on 30-Apr updates the
+    # existing allocation — so new_leaves_allocated on the allocation doc
+    # is not reliable. The actual accrued amount is in the ledger entry itself.
+    accrual_ledger = frappe.db.get_value(
+        "Leave Ledger Entry",
+        {
+            "employee": employee,
+            "leave_type": leave_type,
+            "from_date": accrual_date,
+            "transaction_type": "Leave Allocation",
+            "custom_is_penalty": 0,
+            "docstatus": 1,
+        },
+        ["transaction_name", "leaves"],
+        as_dict=True,
+    )
+
+    accrued = 0
+    if accrual_ledger:
+        # ── Confirmed employees (accrual_date == april_date == 01-Apr):
+        # fetch new_leaves_allocated from the Leave Allocation document
+        if accrual_date == april_date:
+            if accrual_ledger.transaction_name:
+                allocation = frappe.db.get_value(
+                    "Leave Allocation",
+                    {
+                        "name": accrual_ledger.transaction_name,
+                        "docstatus": 1,
+                    },
+                    ["new_leaves_allocated"],
+                    as_dict=True,
+                )
+                if allocation:
+                    accrued = flt(allocation.new_leaves_allocated or 0)
+
+        # ── Contractual/Probation (accrual_date == 30-Apr):
+        # new_leaves_allocated on the allocation is unreliable since
+        # monthly accrual only updates total_leaves_allocated.
+        # Read the actual accrued amount directly from the ledger entry.
+        else:
+            accrued = flt(accrual_ledger.leaves or 0)
+
+    return {"opening": opening, "accrued": accrued}
