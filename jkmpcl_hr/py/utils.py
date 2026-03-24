@@ -22,9 +22,10 @@ def get_emp_hr_manager(emp_id, as_on_date=today()):
 def get_ceo_user():
     ceo_users = frappe.get_all(
         "Has Role",
-        filters={"role": "CEO"},
+        filters={"role": "CEO", "parenttype": "User"},
         fields=["parent as user"]
     )
+    
     return ceo_users[0]["user"] if ceo_users and ceo_users[0] else None
 
 def send_notification_email(

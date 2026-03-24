@@ -1506,7 +1506,8 @@ class AttendanceRequest(HRMSAttendanceRequest):
                 
                 if ceo:
                     frappe.share.add_docshare(self.doctype, self.name, ceo, read=1, select=1, write=1, submit=1, flags={"ignore_share_permission": True})
-        
+                else:
+                    frappe.throw("No User found with CEO Role")
     # def create_auto_checkin_and_attendance(self):
     #     if not self.employee or not self.custom_punch_type:
     #         return
