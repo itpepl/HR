@@ -1673,13 +1673,21 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
         # → 0.5 present + leave consumed
         # Compensatory Off is always deducted as full day (1.0)
         # All other leave types are deducted as half day (0.5)
+        # FIXED
         if raw_status in ("Half Day/Other Half Present", "Half Day"):
             metrics["present_days"] += 0.5
-            leave_days_to_deduct = 1.0 if leave_type == "Compensatory Off" else 0.5
-            _add_leave(metrics, leave_type, leave_days_to_deduct)
-
+        
             if is_penalize:
+                # P/HD-XX: Present half + Penalty half
+                # leave_type here is the penalty leave type, NOT a consumed leave
+                # so only add to penalty bucket, never to leave bucket
                 _add_penalty(metrics, penalty_type, penalty_days)
+            else:
+                # Genuine half-day leave (CL/P, PL/P etc.)
+                # Compensatory Off always deducts full 1.0 even on half-day
+                leave_days_to_deduct = 1.0 if leave_type == "Compensatory Off" else 0.5
+                _add_leave(metrics, leave_type, leave_days_to_deduct)
+        
             continue
 
         # ── Half Day / Other Half Absent ─────────────────────────────
@@ -1700,11 +1708,10 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
                 _add_penalty(metrics, penalty_type, penalty_days)
             continue
 
-        # ── On Leave (full day) ──────────────────────────────────────
+        # ── On Leave (full day) ──────────────────────────────────────────────
         if raw_status == "On Leave":
             _add_leave(metrics, leave_type, 1)
-            if is_penalize:
-                _add_penalty(metrics, penalty_type, penalty_days)
+            # Penalty is never counted on On Leave days
             continue
 
         # ── Absent (full day) ────────────────────────────────────────
