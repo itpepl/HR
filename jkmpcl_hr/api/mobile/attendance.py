@@ -153,7 +153,7 @@ def get_attendance_calendar(employeeId, date):
                 "leave_application"
             ]
         )
-
+        # return attendance_data
         attendance_map = {
             str(row.attendance_date): row
             for row in attendance_data
@@ -249,9 +249,9 @@ def get_attendance_calendar(employeeId, date):
             # -----------------------------
             # FUTURE DATE → BLANK
             # -----------------------------
-            if date_obj > today:
-                month_data.append(day_data)
-                continue
+            # if date_obj > today:
+            #     month_data.append(day_data)
+            #     continue
 
             # -----------------------------
             # HOLIDAY / WEEKLY OFF / RH
