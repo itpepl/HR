@@ -146,7 +146,8 @@ def create_manual_punch(data):
         })
 
         doc.insert(ignore_permissions=True)
-
+        if not warning_message:
+            doc.db_set("custom_note", "")
         return {
             "success": True,
             "message": "Miss punch created successfully",
