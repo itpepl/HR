@@ -171,6 +171,9 @@ doc_events = {
     },
     "Holiday List": {
         "validate": "jkmpcl_hr.py.holiday_list.validate_weekly_off"
+    },
+    "Employee Transfer": {
+        "on_submit":"jkmpcl_hr.py.employee_transfer.on_submit"
     }
 
 # 	"*": {
