@@ -103,6 +103,9 @@ def custom_get_leave_balance_on(
         for rec in off_day_records:
             if not rec.leave_allocation:
                 continue
+            # * IN CASE LEAVE APPLICATION IS CREATED BUT NOT YET APPROVED OR REJECTED
+            if frappe.db.exists("Leave Application", {"docstatus":["<",2], "custom_off_day_work_request": rec.name}):
+                continue
 
             allocation_to_date = frappe.db.get_value(
                 "Leave Allocation",

@@ -542,7 +542,7 @@ def get_total_allocated_leaves(employee, leave_type, fy_start, fy_end):
             & (Ledger.to_date <= fy_end)
         )
 
-    print(f"\n\n Date Condition \n {date_condition} \n\n")
+    # print(f"\n\n Date Condition \n {date_condition} \n\n")
     query = (
         frappe.qb.from_(Ledger)
         .select(Sum(Ledger.leaves).as_("total_leaves"))
@@ -560,7 +560,7 @@ def get_total_allocated_leaves(employee, leave_type, fy_start, fy_end):
 
     result = query.run(as_dict=True)
 
-    print(f"\n\n Total Allocated Leaves \n {result[0].total_leaves} \n\n")
+    # print(f"\n\n Total Allocated Leaves \n {result[0].total_leaves} \n\n")
     return result[0].total_leaves or 0
 
 def get_used_leaves(employee, leave_type, from_date, to_date):
