@@ -42,6 +42,14 @@ frappe.ui.form.on("Leave Application", {
                     frm.set_df_property("custom_proof_document", "reqd", 1);
                     frm.set_df_property("description", "reqd", 1);
                 }
+                console.log("sadasdas", leave_type)
+                if (leave_type === "Leave Without Pay") {
+                    frm.set_df_property("custom_proof_document", "reqd", 1);                    
+                }
+
+                if (leave_type === "Sick Leave" && frm.doc.total_leave_days > 2) {
+                    frm.set_df_property("custom_proof_document", "reqd", 1);                    
+                }
             }
         });
     },
@@ -67,6 +75,13 @@ frappe.ui.form.on("Leave Application", {
         toggle_comp_off_fields(frm, true);
         set_leave_type_query_extended(frm);
     },
+
+    total_leave_days(frm) {
+        if (frm.doc.leave_type === "Sick Leave" && frm.doc.total_leave_days > 2) {
+            frm.set_df_property("custom_proof_document", "reqd", 1);                    
+        }
+    },
+
     make_dashboard: function (frm) {
 		let leave_details;
 		let lwps;
@@ -221,6 +236,8 @@ function toggle_maternity_fields(frm) {
                 frm.set_df_property("custom_maternity_leave_type", "reqd", 1);                    
                 frm.set_df_property("custom_no_of_surviving_children", "reqd", 1);
                 frm.set_df_property("to_date", "read_only", 1);
+                frm.set_df_property("custom_proof_document", "reqd", 1);
+
             }
 
             if (leave_type === "Child Adoption Leave") {
