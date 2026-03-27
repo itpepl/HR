@@ -1374,6 +1374,7 @@ def get_date_range(filters):
     last_day_of_month = calendar.monthrange(year, month)[1]
     last_date_of_month = getdate(f"{year}-{month:02d}-{last_day_of_month:02d}")
     to_date = min(last_date_of_month, getdate(today()))
+    # to_date = min(last_date_of_month, getdate("2026-06-01"))
 
     return from_date, to_date
 
