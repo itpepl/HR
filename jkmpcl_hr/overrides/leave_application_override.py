@@ -99,12 +99,14 @@ def custom_get_leave_balance_on(
         )
 
         valid_balance = 0
-
+        leave_balance_for_consumption = 0
         for rec in off_day_records:
             if not rec.leave_allocation:
                 continue
             # * IN CASE LEAVE APPLICATION IS CREATED BUT NOT YET APPROVED OR REJECTED
-            if frappe.db.exists("Leave Application", {"docstatus":["<",2], "custom_off_day_work_request": rec.name}):
+            if a := frappe.db.exists("Leave Application", {"docstatus":["<",2], "custom_off_day_work_request": rec.name}, "name"):
+                if for_consumption and leave_app_id and a == leave_app_id:
+                    leave_balance_for_consumption += 1
                 continue
 
             allocation_to_date = frappe.db.get_value(
@@ -115,11 +117,12 @@ def custom_get_leave_balance_on(
 
             if allocation_to_date and getdate(allocation_to_date) >= date:
                 valid_balance += 1
+                leave_balance_for_consumption +=1
 
         if for_consumption:
             return {
                 "leave_balance": valid_balance,
-                "leave_balance_for_consumption": valid_balance,
+                "leave_balance_for_consumption": leave_balance_for_consumption,
             }
 
         
