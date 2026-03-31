@@ -1160,13 +1160,21 @@ def merge_shift_attendance_for_day(entries: list[dict]) -> str | None:
 	if any(s in ("Present") for s in statuses):
 		return "Present"
 	
-	# Penalized Half Day → P/HD-LeaveType
+	# Penalized Half Day → P/HD-LWP OR L/HD-LWP
 	if is_penalize and penalty_leave_abbr:
 		if any(s in ("Half Day", "Half Day/Other Half Present", "Half Day/Other Half Absent") for s in statuses):
-			return (
-				f"<span style='color:green'>P</span>"
-				f"<span style='color:#E5533D'>/HD-{penalty_leave_abbr}</span>"
-			)
+				# ✅ CASE 1: Half Present + Half Absent → P/HD-LWP
+				if not leave_types:
+						return (
+								f"<span style='color:green'>P</span>"
+								f"<span style='color:#E5533D'>/HD-{penalty_leave_abbr}</span>"
+						)
+				# ✅ CASE 2: Half Leave + Half Absent → L/HD-LWP
+				leave_abbr = get_leave_type_abbr(leave_types[0])
+				return (
+						f"<span style='color:#3187D8'>{leave_abbr}</span>"
+						f"<span style='color:#E5533D'>/HD-{penalty_leave_abbr}</span>"
+				)
 
 	# Half Day + Leave Type
 	if leave_abbr:
@@ -1601,23 +1609,14 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
             if dt in status_dict:
                 entries.append(status_dict[dt])
 
-        # ─────────────────────────────────────────────────────────────
-        # NO ATTENDANCE RECORD — skip entirely
-        # WO, HO, RH are only counted when an actual submitted
-        # attendance record exists with the corresponding status
-        # ─────────────────────────────────────────────────────────────
+        # No attendance record → skip
         if not entries:
             continue
 
-        # ─────────────────────────────────────────────────────────────
-        # ATTENDANCE RECORD EXISTS
-        # Use raw_status from DB (not merged HTML string) for comparisons
-        # ─────────────────────────────────────────────────────────────
-        raw_status   = entries[0].get("status")
-        leave_type   = entries[0].get("leave_type")
+        raw_status  = entries[0].get("status")
+        leave_type  = entries[0].get("leave_type")
         is_penalize = any(e.get("is_penalize") for e in entries)
 
-        # ✅ Read actual stored penalty count (stored as negative e.g. -0.5, -1)
         penalty_days = abs(
             float(
                 next(
@@ -1627,12 +1626,11 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
                 )
             )
         )
-        # Fallback if field is null/missing — infer from status
         if is_penalize and penalty_days == 0:
             if raw_status in (
+                "Half Day",
                 "Half Day/Other Half Present",
                 "Half Day/Other Half Absent",
-                "Half Day",
                 "Partially",
             ):
                 penalty_days = 0.5
@@ -1644,96 +1642,99 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
             None
         )
 
-        # ── Weekly Off ───────────────────────────────────────────────
+        # ── Weekly Off ────────────────────────────────────────────────
         if raw_status == "Weekly Off":
             metrics["weekly_off"] += 1
             continue
 
-        # ── Holiday ──────────────────────────────────────────────────
+        # ── Holiday ───────────────────────────────────────────────────
         if raw_status == "Holiday":
             metrics["holiday"] += 1
             continue
 
-        # ── Restricted Holiday ───────────────────────────────────────
+        # ── Restricted Holiday ────────────────────────────────────────
         if raw_status == "Restricted Holiday":
             metrics["restricted_holiday"] += 1
             continue
 
-        # ── Present (full day) ───────────────────────────────────────
+        # ── Present (full day) ────────────────────────────────────────
         if raw_status == "Present":
             metrics["present_days"] += 1
-            # Penalty check: present but penalised for something
-            # (e.g. late entry penalty already applied by scheduler)
             if is_penalize:
                 _add_penalty(metrics, penalty_type, penalty_days)
             continue
 
-       # ── Half Day / Other Half Present ────────────────────────────
-        # Employee was on LEAVE for one half, PRESENT for the other half
-        # → 0.5 present + leave consumed
-        # Compensatory Off is always deducted as full day (1.0)
-        # All other leave types are deducted as half day (0.5)
-        # FIXED
+        # ── Half Day / Other Half Present ─────────────────────────────
+        # raw_status == "Half Day/Other Half Present" means half_day_status="Present"
+        # in DB — the employee WAS present for that half, no matter what leave_type says.
+        # So ALWAYS credit 0.5 present_days here.
+        #
+        # raw_status == "Half Day" (no half_day_status set) — treat same as above.
+        #
+        # Penalty on this status means the OTHER (absent) half was penalized.
+        # The present half is still present.
         if raw_status in ("Half Day/Other Half Present", "Half Day"):
             metrics["present_days"] += 0.5
-        
+
             if is_penalize:
-                # P/HD-XX: Present half + Penalty half
-                # leave_type here is the penalty leave type, NOT a consumed leave
-                # so only add to penalty bucket, never to leave bucket
+                # Employee was present for one half; absent+penalized for the other.
+                # The present half always gets 0.5 present credit (added above).
+                # Just record the penalty — no leave consumed here.
                 _add_penalty(metrics, penalty_type, penalty_days)
             else:
-                # Genuine half-day leave (CL/P, PL/P etc.)
-                # Compensatory Off always deducts full 1.0 even on half-day
-                leave_days_to_deduct = 1.0 if leave_type == "Compensatory Off" else 0.5
-                _add_leave(metrics, leave_type, leave_days_to_deduct)
-        
+                # Normal half-day: present for one half, leave for the other.
+                if leave_type:
+                    leave_days = 1.0 if leave_type == "Compensatory Off" else 0.5
+                    _add_leave(metrics, leave_type, leave_days)
+
             continue
 
-        # ── Half Day / Other Half Absent ─────────────────────────────
-        # Always count the absent half as UAB
-        # If penalty also applied → add to penalty bucket as well
+        # ── Half Day / Other Half Absent ──────────────────────────────
+        # raw_status == "Half Day/Other Half Absent" means half_day_status="Absent"
+        # in DB — the employee was ABSENT for one half.
+        # If leave_type is set → they took leave for the other half (not present).
+        # If leave_type is not set → plain half absent, other half was present.
         if raw_status == "Half Day/Other Half Absent":
-            metrics["present_days"] += 0.5
-            metrics["uab"] += 0.5
             if is_penalize:
-                _add_penalty(metrics, penalty_type, penalty_days)
+                if leave_type:
+                    # CASE A: Employee took leave for one half; absent+penalized for other.
+                    # No present credit — leave is not presence.
+                    _add_leave(metrics, leave_type, 0.5)
+                    _add_penalty(metrics, penalty_type, penalty_days)
+                else:
+                    # CASE B: Employee was absent for one half (no leave); penalized.
+                    # The other half was present but that would show as a separate record.
+                    metrics["uab"] += 0.5
+                    _add_penalty(metrics, penalty_type, penalty_days)
+            else:
+                # Normal: present for one half, absent (no leave) for the other.
+                metrics["present_days"] += 0.5
+                metrics["uab"] += 0.5
             continue
 
-        # ── Partially (single checkin — in OR out only) ──────────────
-        # Partial presence counted separately; penalty for the missing punch
+        # ── Partially ─────────────────────────────────────────────────
         if raw_status == "Partially":
             metrics["partial"] += 1
             if is_penalize:
                 _add_penalty(metrics, penalty_type, penalty_days)
             continue
 
-        # ── On Leave (full day) ──────────────────────────────────────────────
+        # ── On Leave (full day) ───────────────────────────────────────
         if raw_status == "On Leave":
             _add_leave(metrics, leave_type, 1)
-            # Penalty is never counted on On Leave days
             continue
 
-        # ── Absent (full day) ────────────────────────────────────────
-        # Always count as UAB regardless of penalty
-        # If penalty also applied → add to penalty bucket as well
+        # ── Absent (full day) ─────────────────────────────────────────
         if raw_status == "Absent":
             metrics["uab"] += 1
             if is_penalize:
                 _add_penalty(metrics, penalty_type, penalty_days)
             continue
 
-        # ── RH via rh_map — only count if attendance record explicitly
-        # has status "Restricted Holiday", handled above in raw_status check
-        # This fallback is intentionally removed to avoid double counting
-        pass
-				
-		# ✅ Add rejected leave days to UAB
+    # Add rejected leave days to UAB
     metrics["uab"] += float(rejected_leave_days or 0)
 
-    # ─────────────────────────────────────────────────────────────────
-    # NET PAYABLE DAYS
-    # ─────────────────────────────────────────────────────────────────
+    # ── Net Payable Days ──────────────────────────────────────────────
     metrics["net_payable_days"] = (
         metrics["present_days"]
         + metrics["weekly_off"]
