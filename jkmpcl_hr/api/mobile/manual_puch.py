@@ -127,7 +127,8 @@ def create_manual_punch(data):
             )
 
             if warning_data.get("show_warning"):
-                warning_message = warning_data.get("message")
+                # warning_message = warning_data.get("message")
+                warning_message = '<div style="color:#fff;background-color:#d32f2f;padding:12px;border-radius:4px;font-weight:700;">⚠️ {0}</div>'.format(frappe.utils.escape_html(warning_data.get("message")))
 
         # -----------------------------
         # CREATE ATTENDANCE REQUEST
