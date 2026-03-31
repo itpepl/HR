@@ -4937,9 +4937,9 @@ from jkmpcl_hr.py.utils import get_current_holiday_list, custom_create_additiona
 from jkmpcl_hr.py.utils import create_shift_assignment_rec, send_notification_email, get_emp_reporting_manager
 
 @frappe.whitelist(allow_guest=True)
-def create_shift_assignments():
+def create_shift_assignments(dt=None):
     frappe.log_error("start_create_shift_assignments", "Scheduler Started")
-    today_date = getdate(today())
+    today_date = getdate(today()) if not dt else getdate(dt)
     start_year = today_date.year if today_date.month >= 4 else today_date.year - 1
     
     emp_filters = {"status": "Active"}
