@@ -182,28 +182,112 @@ def get_pending_leaves_app_id(employee, leave_type, from_date, to_date):
     return leave_app_ids
 
 
-
-def custom_create_or_update_attendance(self, attendance_name, date):
-    status = (
-        "Half Day" if self.half_day_date and getdate(date) == getdate(self.half_day_date) else "On Leave"
-    )
-    has_checkin = frappe.db.exists("Employee Checkin", {"employee": self.employee, "time": ["between", [f"{date} 00:00:00", f"{date} 23:59:59"]]})
+# def custom_create_or_update_attendance(self, attendance_name, date):
+#     status = (
+#         "Half Day" if self.half_day_date and getdate(date) == getdate(self.half_day_date) else "On Leave"
+#     )
+#     has_checkin = frappe.db.exists("Employee Checkin", {"employee": self.employee, "time": ["between", [f"{date} 00:00:00", f"{date} 23:59:59"]]})
     
     
-    if attendance_name:
-        # update existing attendance, change absent to on leave or half day
-        doc = frappe.get_doc("Attendance", attendance_name)
+#     if attendance_name:
+#         # update existing attendance, change absent to on leave or half day
+#         doc = frappe.get_doc("Attendance", attendance_name)
         
+#         half_day_status = None
+#         modify_half_day_status = 0
+                
+#         # half_day_status = None if status == "On Leave" else "Present"
+#         # modify_half_day_status = 1 if doc.status == "Absent" and status == "Half Day" else 0
+#         if status == "Half Day":   
+#             half_day_status = "Present" if has_checkin else "Absent"
+#             modify_half_day_status = 1 if has_checkin and doc.status == "Absent" else 0
+        
+        
+#         doc.db_set(
+#             {
+#                 "status": status,
+#                 "leave_type": self.leave_type,
+#                 "leave_application": self.name,
+#                 "half_day_status": half_day_status,
+#                 "modify_half_day_status": modify_half_day_status,
+#             }
+#         )
+#     else:
+#         # make new attendance and submit it
+#         doc = frappe.new_doc("Attendance")
+#         doc.employee = self.employee
+#         doc.employee_name = self.employee_name
+#         doc.attendance_date = date
+#         doc.company = self.company
+#         doc.leave_type = self.leave_type
+#         doc.leave_application = self.name
+#         doc.status = status
+#         # doc.half_day_status = "Present" if status == "Half Day" else None
+#         # doc.modify_half_day_status = 1 if status == "Half Day" else 0
+    
+#         if status == "Half Day":
+#             doc.half_day_status = "Present" if has_checkin else "Absent"
+#             doc.modify_half_day_status = 1 if has_checkin else 0
+#         else:
+#             doc.half_day_status = None
+#             doc.modify_half_day_status = 0
+    
+#         doc.flags.ignore_validate = True  # ignores check leave record validation in attendance
+#         doc.insert(ignore_permissions=True)
+#         doc.submit()
+
+def custom_update_attendance(self):
+    if self.status != "Approved":
+        return
+
+    for dt in daterange(getdate(self.from_date), getdate(self.to_date)):
+        date = dt.strftime("%Y-%m-%d")
+
+        attendance_name = frappe.db.exists(
+            "Attendance",
+            dict(
+                employee=self.employee,
+                attendance_date=date,
+                docstatus=("!=", 2),
+            ),
+        )
+
+        # ALWAYS create/update attendance (no skipping)
+        self.create_or_update_attendance(attendance_name, date) 
+    
+def custom_create_or_update_attendance(self, attendance_name, date):
+    
+    day_type = get_day_type(self.employee, date)
+
+    #  If it's holiday/weekoff → override leave logic
+    if day_type:
+        status = day_type
+    else:
+        status = (
+            "Half Day"
+            if self.half_day_date and getdate(date) == getdate(self.half_day_date)
+            else "On Leave"
+        )
+
+    has_checkin = frappe.db.exists(
+        "Employee Checkin",
+        {
+            "employee": self.employee,
+            "time": ["between", [f"{date} 00:00:00", f"{date} 23:59:59"]],
+        },
+    )
+
+    if attendance_name:
+        doc = frappe.get_doc("Attendance", attendance_name)
+        if doc.status == "Present":
+            return
         half_day_status = None
         modify_half_day_status = 0
-                
-        # half_day_status = None if status == "On Leave" else "Present"
-        # modify_half_day_status = 1 if doc.status == "Absent" and status == "Half Day" else 0
-        if status == "Half Day":   
+
+        if status == "Half Day":
             half_day_status = "Present" if has_checkin else "Absent"
             modify_half_day_status = 1 if has_checkin and doc.status == "Absent" else 0
-        
-        
+
         doc.db_set(
             {
                 "status": status,
@@ -213,8 +297,8 @@ def custom_create_or_update_attendance(self, attendance_name, date):
                 "modify_half_day_status": modify_half_day_status,
             }
         )
+
     else:
-        # make new attendance and submit it
         doc = frappe.new_doc("Attendance")
         doc.employee = self.employee
         doc.employee_name = self.employee_name
@@ -223,22 +307,17 @@ def custom_create_or_update_attendance(self, attendance_name, date):
         doc.leave_type = self.leave_type
         doc.leave_application = self.name
         doc.status = status
-        # doc.half_day_status = "Present" if status == "Half Day" else None
-        # doc.modify_half_day_status = 1 if status == "Half Day" else 0
-    
+
         if status == "Half Day":
             doc.half_day_status = "Present" if has_checkin else "Absent"
             doc.modify_half_day_status = 1 if has_checkin else 0
         else:
             doc.half_day_status = None
             doc.modify_half_day_status = 0
-    
-        doc.flags.ignore_validate = True  # ignores check leave record validation in attendance
+
+        doc.flags.ignore_validate = True
         doc.insert(ignore_permissions=True)
         doc.submit()
-
-
-
 
 
 
@@ -515,40 +594,43 @@ def daterange(start_date, end_date):
 	for n in range(int((end_date - start_date).days) + 1):
 		yield start_date + timedelta(n)
 
-def custom_update_attendance(self):
-        print(f"\n\n custom update attendance override \n\n")
-        if self.status != "Approved":
-            return
+# def custom_update_attendance(self):
+#         if self.status != "Approved":
+#             return
 
-        holiday_dates = []
-        if not frappe.db.get_value("Leave Type", self.leave_type, "include_holiday"):
-            holiday_dates = custom_get_holiday_dates_for_employee(self.employee, self.from_date, self.to_date)
-            print(f"\n\n holiday_dates {holiday_dates}\n\n")
+#         holiday_dates = []
+#         if not frappe.db.get_value("Leave Type", self.leave_type, "include_holiday"):
+#             holiday_dates = custom_get_holiday_dates_for_employee(self.employee, self.from_date, self.to_date)
+            
         
-        for dt in daterange(getdate(self.from_date), getdate(self.to_date)):
-            date = dt.strftime("%Y-%m-%d")
-            # check for existing attenadnce absent or if half day with half day status absent,
-            attendance_name = frappe.db.exists(
-                "Attendance",
-                dict(
-                    employee=self.employee,
-                    attendance_date=date,
-                    docstatus=("!=", 2),
-                ),
-            )
-            # don't mark attendance for holidays
-            # if leave type does not include holidays within leaves as leaves
-            if date in holiday_dates:
-                if attendance_name:
-                    # cancel and delete existing attendance for holidays
-                    attendance = frappe.get_doc("Attendance", attendance_name)
-                    attendance.flags.ignore_permissions = True
-                    if attendance.docstatus == 1:
-                        attendance.cancel()
-                    frappe.delete_doc("Attendance", attendance_name, force=1)
-                continue
+#         for dt in daterange(getdate(self.from_date), getdate(self.to_date)):
+#             date = dt.strftime("%Y-%m-%d")
+#             # check for existing attenadnce absent or if half day with half day status absent,
+#             attendance_name = frappe.db.exists( 
+#                 "Attendance",
+#                 dict(
+#                     employee=self.employee,
+#                     attendance_date=date,
+#                     docstatus=("!=", 2),
+#                 ),
+#             )
+#             # don't mark attendance for holidays
+#             # if leave type does not include holidays within leaves as leaves
+            
+#             # if date in holiday_dates:
+#             #     if attendance_name:
+#             #         # cancel and delete existing attendance for holidays
+#             #         attendance = frappe.get_doc("Attendance", attendance_name)
+#             #         attendance.flags.ignore_permissions = True
+#             #         if attendance.docstatus == 1:
+#             #             attendance.cancel()
+#             #         frappe.delete_doc("Attendance", attendance_name, force=1)
+#             #     continue
 
-            self.create_or_update_attendance(attendance_name, date)
+#             self.create_or_update_attendance(attendance_name, date)
+
+
+
 
 def custom_get_holiday_dates_for_employee(employee, start_date, end_date):
     """Return a list of holiday dates for the given employee between start_date and end_date"""
@@ -665,3 +747,35 @@ def custom_get_holiday_dates_for_employee(employee, start_date, end_date):
             valid_holidays.append(holiday_date)
 
     return [cstr(d) for d in valid_holidays]
+
+
+
+def get_day_type(employee, date):
+    holiday_list = get_holiday_list_for_employee(employee, as_on=date)
+
+    if not holiday_list:
+        return None
+
+    holiday = frappe.db.get_value(
+        "Holiday",
+        {
+            "parent": holiday_list,
+            "holiday_date": date,
+        },
+        [
+            "weekly_off",
+            "custom_is_restricted_holiday",
+        ],
+        as_dict=True,
+    )
+
+    if not holiday:
+        return None
+
+    # PRIORITY: Weekly Off > Holiday > Restricted Holiday
+    if holiday.weekly_off:
+        return "Weekly Off"
+    elif holiday.custom_is_restricted_holiday:
+        return "Restricted Holiday"
+    else:
+        return "Holiday"
