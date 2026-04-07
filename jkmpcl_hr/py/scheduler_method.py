@@ -5541,6 +5541,7 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
                 "Employee",
                 filters={
                     "status": "Active",
+                    "date_of_joining":["<=", att_date],
                     "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",
                     "name": ["not in", ceo_employees]
                 },
@@ -5551,12 +5552,13 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
                 "Employee",
                 filters={
                     "status": "Active",
+                    "date_of_joining":["<=", att_date],
                     "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",            
                 },
                 pluck="name",
             )
     else:
-        filters = {"status": "Active"}
+        filters = {"status": "Active", "date_of_joining":["<=", att_date]}
         
         if branch:
             filters["branch"] = branch

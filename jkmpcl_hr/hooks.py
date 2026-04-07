@@ -144,7 +144,8 @@ override_doctype_class = {
     "Shift Request":"jkmpcl_hr.overrides.shift_request_override.CustomShiftRequest",
     "Leave Allocation": "jkmpcl_hr.overrides.leave_allocation.CustomLeaveAllocation",
     "Attendance": "jkmpcl_hr.overrides.attendance.Attendance",
-    "Salary Slip": "jkmpcl_hr.overrides.salary_slip_override.CustomSalarySlip"
+    "Salary Slip": "jkmpcl_hr.overrides.salary_slip_override.CustomSalarySlip",
+    "Leave Application": "jkmpcl_hr.overrides.leave_application_override.CustomLeaveApplication"
 }
 
 # Document Events
