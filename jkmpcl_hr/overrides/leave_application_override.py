@@ -9,6 +9,35 @@ from hrms.hr.utils import get_holidays_for_employee
 
 
 
+class CustomLeaveApplication(LeaveApplication):
+    
+    def on_submit(self):
+        if self.status in ["Open", "Cancelled"]:
+            frappe.throw(_("Only Leave Applications with status 'Approved' and 'Rejected' can be submitted"))
+
+        self.validate_back_dated_application()
+        self.update_attendance()
+        self.validate_for_self_approval()
+
+        # notify leave applier about approval
+        if frappe.db.get_single_value("HR Settings", "send_leave_notification"):
+            self.notify_employee()
+
+        self.create_leave_ledger_entry()
+        # # create a reverse ledger entry for backdated leave applications for whom expiry entry already exists
+        # leave_allocation = self.get_leave_allocation()
+        # if not leave_allocation:
+        #     return
+        # to_date = leave_allocation.get("to_date")
+        # can_expire = not frappe.db.get_value("Leave Type", self.leave_type, "is_carry_forward")
+
+        # if to_date < getdate() and can_expire:
+        #     args = frappe._dict(
+        #         leaves=self.total_leave_days, from_date=to_date, to_date=to_date, is_carry_forward=0
+        #     )
+        #     create_leave_ledger_entry(self, args)
+
+        self.reload()
 
 
 def custom_validate_balance_leaves(self):
