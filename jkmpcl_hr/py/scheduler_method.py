@@ -9239,6 +9239,7 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
             {
                 "employment_type": ["in", ["Probation", "Contractual"]],
                 "status": "Active",
+                "date_of_joining": ["<=", month_end_date]
             },
             ["name", "employment_type", "date_of_joining", "contract_end_date"],
         )
