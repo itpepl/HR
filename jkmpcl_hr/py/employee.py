@@ -425,7 +425,7 @@ def update_cl_and_sl_after_confirmation(doc):
                 "to_date": fy_end,
                 "custom_opening_balance": remaining_balance,
                 "new_leaves_allocated": months_remaining,
-                "custom_last_allocation_date": getdate(),
+                "custom_last_allocation_date": confirmation_date,
                 "description": "Auto CL allocation after confirmation"
             })
 
@@ -446,7 +446,7 @@ def update_cl_and_sl_after_confirmation(doc):
                 "to_date": fy_end,
                 "custom_opening_balance": round(remaining_sl_balance),
                 "new_leaves_allocated": round(new_sl),
-                "custom_last_allocation_date": getdate(),
+                "custom_last_allocation_date": confirmation_date,
                 "description": "Auto SL allocation after confirmation"
             })
             sl_alloc.insert(ignore_permissions=True)
@@ -456,7 +456,7 @@ def update_cl_and_sl_after_confirmation(doc):
             
     except Exception as e:
         frappe.log_error("error_update_cl_and_sl_after_confirmation", frappe.get_traceback())
-        frappe.throw(e)
+        frappe.throw(str(e))
 
 
 # ? ENQUEUE FUNCTION
