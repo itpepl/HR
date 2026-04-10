@@ -401,7 +401,7 @@ def update_cl_and_sl_after_confirmation(doc):
             if current_alloc:
                 frappe.db.set_value("Leave Allocation", current_alloc[0].name, "to_date", add_days(getdate(confirmation_date), -1))
                 frappe.db.set_value("Leave Allocation", current_alloc[0].name, "custom_last_allocation_date", getdate())
-                frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_alloc[0].name}, "to_date", add_days(getdate(confirmation_date), -1))
+                # frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_alloc[0].name}, "to_date", add_days(getdate(confirmation_date), -1))
                 # alloc_doc.to_date = confirmation_date
                 # alloc_doc.save(ignore_permissions=True)
             
@@ -409,7 +409,7 @@ def update_cl_and_sl_after_confirmation(doc):
             if current_sl_alloc:
                 frappe.db.set_value("Leave Allocation", current_sl_alloc[0].name, "to_date", add_days(getdate(confirmation_date), -1))
                 frappe.db.set_value("Leave Allocation", current_sl_alloc[0].name, "custom_last_allocation_date", getdate())
-                frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_sl_alloc[0].name}, "to_date", add_days(getdate(confirmation_date), -1))
+                # frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_sl_alloc[0].name}, "to_date", add_days(getdate(confirmation_date), -1))
             
             
             next_month_start = get_first_day(add_months(confirmation_date, 1))
