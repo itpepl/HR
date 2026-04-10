@@ -423,7 +423,7 @@ def update_cl_and_sl_after_confirmation(doc):
                 "leave_type": leave_type,
                 "from_date": confirmation_date,
                 "to_date": fy_end,
-                "custom_opening_balance": remaining_balance,
+                "custom_opening_balance_on_confirmed": remaining_balance,
                 "new_leaves_allocated": months_remaining,
                 "custom_last_allocation_date": confirmation_date,
                 "description": "Auto CL allocation after confirmation"
@@ -444,7 +444,7 @@ def update_cl_and_sl_after_confirmation(doc):
                 "leave_type": sl_leave_type,
                 "from_date": confirmation_date or next_month_start,
                 "to_date": fy_end,
-                "custom_opening_balance": round(remaining_sl_balance),
+                "custom_opening_balance_on_confirmed": round(remaining_sl_balance),
                 "new_leaves_allocated": round(new_sl),
                 "custom_last_allocation_date": confirmation_date,
                 "description": "Auto SL allocation after confirmation"
