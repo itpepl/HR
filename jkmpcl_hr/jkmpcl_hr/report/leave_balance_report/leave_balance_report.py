@@ -1676,14 +1676,13 @@ def execute(filters=None):
                     availed_till_last_mth += abs(leaves)
 
                 # ── 3b. AVAILED TILL LAST MONTH — Previous-month deductions ───
-                # Penalty Leave Allocations within the PREVIOUS MONTH ONLY
-                # (prev_month_start → availed_prev_end).
-                # NOT the entire FY — strictly the one previous month.
+                # Penalty Leave Allocations from FINANCIAL YEAR START up to
+                # end of previous month (opening_date → availed_prev_end).
 
                 elif (
                     prev_month_start is not None
                     and availed_prev_end is not None
-                    and prev_month_start <= e_date <= availed_prev_end
+                    and opening_date <= e_date <= availed_prev_end
                     and txn_type == "Leave Allocation"
                     and is_penalty
                 ):
@@ -1923,7 +1922,7 @@ def get_date_range(filters):
     last_day_of_month  = calendar.monthrange(year, month)[1]
     last_date_of_month = getdate(f"{year}-{month:02d}-{last_day_of_month:02d}")
     to_date            = min(last_date_of_month, getdate(today()))
-    # to_date = min(last_date_of_month, getdate("2026-07-01"))
+    # to_date = min(last_date_of_month, getdate("2026-09-01"))
 
     return from_date, to_date
 
