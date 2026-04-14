@@ -14,22 +14,49 @@ from jkmpcl_hr.py.utils import create_shift_assignment_rec
 def on_update(doc, event):
     # pass
     update_cl_and_sl_after_confirmation(doc)
+    # set_approvers(doc)
+
+def validate(doc, event):
     set_approvers(doc)
-
-
-
 def set_approvers(doc):
     try:
-        if doc.name:
-            actual_emp_rm = get_emp_reporting_manager(doc.name)
-            if actual_emp_rm:
-                emp_rm_emp = frappe.db.get_value("Employee", {"user_id": actual_emp_rm}, "name") if actual_emp_rm else None
-                if doc.shift_request_approver != actual_emp_rm:
-                    frappe.db.set_value("Employee", doc.name, "shift_request_approver", actual_emp_rm)
-                if doc.leave_approver != actual_emp_rm:
-                    frappe.db.set_value("Employee", doc.name, "leave_approver", actual_emp_rm)
-                if emp_rm_emp and doc.reports_to != emp_rm_emp:
-                    frappe.db.set_value("Employee", doc.name, "reports_to", emp_rm_emp)
+        # if doc.name:
+        #     actual_emp_rm = get_emp_reporting_manager(doc.name)
+        #     if actual_emp_rm:
+        #         emp_rm_emp = frappe.db.get_value("Employee", {"user_id": actual_emp_rm}, "name") if actual_emp_rm else None
+        #         if doc.shift_request_approver != actual_emp_rm:
+        #             frappe.db.set_value("Employee", doc.name, "shift_request_approver", actual_emp_rm)
+        #         if doc.leave_approver != actual_emp_rm:
+        #             frappe.db.set_value("Employee", doc.name, "leave_approver", actual_emp_rm)
+        #         if emp_rm_emp and doc.reports_to != emp_rm_emp:
+        #             frappe.db.set_value("Employee", doc.name, "reports_to", emp_rm_emp)
+        
+        if not doc.custom_reporting_manager:
+            return
+        
+        current_rm = ""
+        current_rm_user = ""
+        
+        for row in doc.custom_reporting_manager:        
+            if row.effective_from and getdate(row.effective_from) <= getdate(today()):
+                current_rm = row.employee
+        
+        if current_rm and current_rm != doc.name:
+                        
+            if doc.reports_to != current_rm:
+                doc.reports_to = current_rm
+            
+            current_rm_user = frappe.db.get_value("Employee", current_rm, "user_id") or ''
+            if current_rm_user:
+                if doc.shift_request_approver != current_rm_user:
+                    doc.shift_request_approver = current_rm_user
+                    
+                if doc.leave_approver != current_rm_user:
+                    doc.leave_approver = current_rm_user
+                
+                if doc.expense_approver != current_rm_user:
+                    doc.expense_approver = current_rm_user
+            
     except Exception as e:
         frappe.log_error("error_set_approvers_on_employee_update", frappe.get_traceback())
         
@@ -374,7 +401,7 @@ def update_cl_and_sl_after_confirmation(doc):
             if current_alloc:
                 frappe.db.set_value("Leave Allocation", current_alloc[0].name, "to_date", add_days(getdate(confirmation_date), -1))
                 frappe.db.set_value("Leave Allocation", current_alloc[0].name, "custom_last_allocation_date", getdate())
-                frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_alloc[0].name}, "to_date", add_days(getdate(confirmation_date), -1))
+                # frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_alloc[0].name}, "to_date", add_days(getdate(confirmation_date), -1))
                 # alloc_doc.to_date = confirmation_date
                 # alloc_doc.save(ignore_permissions=True)
             
@@ -382,7 +409,7 @@ def update_cl_and_sl_after_confirmation(doc):
             if current_sl_alloc:
                 frappe.db.set_value("Leave Allocation", current_sl_alloc[0].name, "to_date", add_days(getdate(confirmation_date), -1))
                 frappe.db.set_value("Leave Allocation", current_sl_alloc[0].name, "custom_last_allocation_date", getdate())
-                frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_sl_alloc[0].name}, "to_date", add_days(getdate(confirmation_date), -1))
+                # frappe.db.set_value("Leave Ledger Entry", {"custom_is_penalty": 0, "employee": employee, "transaction_type": "Leave Allocation", "transaction_name": current_sl_alloc[0].name}, "to_date", add_days(getdate(confirmation_date), -1))
             
             
             next_month_start = get_first_day(add_months(confirmation_date, 1))
@@ -396,9 +423,9 @@ def update_cl_and_sl_after_confirmation(doc):
                 "leave_type": leave_type,
                 "from_date": confirmation_date,
                 "to_date": fy_end,
-                "custom_opening_balance": remaining_balance,
+                "custom_opening_balance_on_confirmed": remaining_balance,
                 "new_leaves_allocated": months_remaining,
-                "custom_last_allocation_date": getdate(),
+                "custom_last_allocation_date": confirmation_date,
                 "description": "Auto CL allocation after confirmation"
             })
 
@@ -417,9 +444,9 @@ def update_cl_and_sl_after_confirmation(doc):
                 "leave_type": sl_leave_type,
                 "from_date": confirmation_date or next_month_start,
                 "to_date": fy_end,
-                "custom_opening_balance": round(remaining_sl_balance),
+                "custom_opening_balance_on_confirmed": remaining_sl_balance,
                 "new_leaves_allocated": round(new_sl),
-                "custom_last_allocation_date": getdate(),
+                "custom_last_allocation_date": confirmation_date,
                 "description": "Auto SL allocation after confirmation"
             })
             sl_alloc.insert(ignore_permissions=True)
@@ -429,7 +456,7 @@ def update_cl_and_sl_after_confirmation(doc):
             
     except Exception as e:
         frappe.log_error("error_update_cl_and_sl_after_confirmation", frappe.get_traceback())
-        frappe.throw(e)
+        frappe.throw(str(e))
 
 
 # ? ENQUEUE FUNCTION

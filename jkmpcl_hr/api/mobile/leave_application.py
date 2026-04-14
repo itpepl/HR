@@ -974,12 +974,18 @@ def get_valid_comp_off(employeeId, from_date, to_date, leave_type_name):
         )
 
         if record:
-            return {
-                "valid": True,
-                "date": record.date,
-                "name":record.name,
-                "message": "Valid Compensatory Off available."
-            }
+            leave_app_exists = frappe.db.exists("Leave Application", {"employee": employeeId, "custom_off_day_work_request": record.name, "docstatus": ["!=", 2]}, "name")
+            
+            if leave_app_exists:
+                record = None
+                continue
+            else:
+                return {
+                    "valid": True,
+                    "date": record.date,
+                    "name":record.name,
+                    "message": "Valid Compensatory Off available."
+                }
 
     return {
         "valid": False,

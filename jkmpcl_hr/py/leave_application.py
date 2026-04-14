@@ -249,7 +249,12 @@ def get_valid_comp_off(employee, leave_date, leave_type_name):
         )
         
         if record:
-            return record
+            leave_app_exists = frappe.db.exists("Leave Application", {"employee": employee, "custom_off_day_work_request": record.name, "docstatus": ["!=", 2]}, "name")
+            if leave_app_exists:
+                record = None
+                continue
+            else:
+                return record
     
     if not record:
         return None
@@ -537,7 +542,7 @@ def get_total_allocated_leaves(employee, leave_type, fy_start, fy_end):
             & (Ledger.to_date <= fy_end)
         )
 
-    print(f"\n\n Date Condition \n {date_condition} \n\n")
+    # print(f"\n\n Date Condition \n {date_condition} \n\n")
     query = (
         frappe.qb.from_(Ledger)
         .select(Sum(Ledger.leaves).as_("total_leaves"))
@@ -555,7 +560,7 @@ def get_total_allocated_leaves(employee, leave_type, fy_start, fy_end):
 
     result = query.run(as_dict=True)
 
-    print(f"\n\n Total Allocated Leaves \n {result[0].total_leaves} \n\n")
+    # print(f"\n\n Total Allocated Leaves \n {result[0].total_leaves} \n\n")
     return result[0].total_leaves or 0
 
 def get_used_leaves(employee, leave_type, from_date, to_date):

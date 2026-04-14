@@ -11,7 +11,7 @@ from pypika.terms import Criterion
 import frappe
 from frappe import _
 from frappe.query_builder import Case
-from frappe.query_builder.functions import Count, Extract, Sum
+from frappe.query_builder.functions import Count, Extract, Sum, Abs
 from frappe.utils import cint, cstr, formatdate, getdate
 from frappe.utils.nestedset import get_descendants_of
 
@@ -100,6 +100,7 @@ status_map = {
 	"On Leave": "L",
 	"Holiday": "H",
 	"Weekly Off": "WO",
+	"Restricted Holiday": "RH",
 }
 
 day_abbr = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -151,15 +152,16 @@ def execute(filters: Filters | None = None) -> tuple:
 def get_message() -> str:
 	message = ""
 	colors = [
-		"green",
-		"red",
-		"orange",
-		"#914EE3",
-		"#3187D8",
-		"#3187D8",
-		"#878787",
-		"#878787",
-	]
+    "green",
+    "red",
+    "orange",
+    "#914EE3",
+    "#3187D8",
+    "#3187D8",
+    "#878787",
+    "#878787",
+    "#FF8800",  # NEW
+]
 
 	count = 0
 	for status, abbr in status_map.items():
@@ -234,6 +236,7 @@ def get_columns(filters: Filters) -> list[dict]:
 			]
 		)
 		columns.extend(get_columns_for_leave_types())
+		columns.extend(get_penalty_columns())
 		columns.extend(
 			[
 				{
@@ -252,7 +255,10 @@ def get_columns(filters: Filters) -> list[dict]:
 		)
 	else:
 		# columns.append({"label": _("Shift"), "fieldname": "shift", "fieldtype": "Data", "width": 120})
-		columns.extend(get_columns_for_days(filters))
+		# columns.extend(get_columns_for_days(filters))
+  
+		columns.extend(get_columns_for_days(filters))  # date columns first
+		columns.extend(get_additional_summary_columns())  # then your new columns
 
 	return columns
 
@@ -264,6 +270,35 @@ def get_columns_for_leave_types() -> list[dict]:
 		types.append({"label": entry, "fieldname": frappe.scrub(entry), "fieldtype": "Float", "width": 120})
 
 	return types
+
+
+def get_penalty_columns():
+	return [
+		{
+			"label": "Casual Leave Penalty",
+			"fieldname": "casual_leave_penalty",
+			"fieldtype": "Float",
+			"width": 120
+		},
+		{
+			"label": "Sick Leave Penalty",
+			"fieldname": "sick_leave_penalty",
+			"fieldtype": "Float",
+			"width": 120
+		},
+		{
+			"label": "Privilege Leave Penalty",
+			"fieldname": "privilege_leave_penalty",
+			"fieldtype": "Float",
+			"width": 120
+		},
+		{
+			"label": "Leave Without Pay Penalty",
+			"fieldname": "leave_without_pay_penalty",
+			"fieldtype": "Float",
+			"width": 120
+		},
+	]
 
 
 def get_columns_for_days(filters: Filters) -> list[dict]:
@@ -387,7 +422,10 @@ def get_attendance_map(filters: Filters) -> dict:
 
 		attendance_map[d.employee][shift][d.attendance_date] = {
 			"status": d.status,
-			"leave_type": d.leave_type
+			"leave_type": d.leave_type,
+			"is_penalize": d.custom_is_penalize,
+    	"penalty_leave_type": d.custom_penalty_leave_type,
+			"penalty_leave_count": d.custom_penalty_leave_count,
 		}
 
 	return attendance_map
@@ -443,6 +481,9 @@ def get_attendance_records(filters: Filters) -> list[dict]:
 			(status).as_("status"),
 			Attendance.shift,
 			Attendance.leave_type,
+			Attendance.custom_is_penalize,
+    	Attendance.custom_penalty_leave_type,
+			Attendance.custom_penalty_leave_count,
 		)
 		.where(
 			(Attendance.docstatus == 1)
@@ -580,57 +621,133 @@ def get_holiday_map(filters: Filters) -> dict[str, list[dict]]:
 	return holiday_map
 
 
-def get_rows(employee_details: dict, filters: Filters, holiday_map: dict, attendance_map: dict) -> list[dict]:
-	records = []
-	default_holiday_list = frappe.get_cached_value("Company", filters.company, "default_holiday_list")
+# def get_rows(employee_details: dict, filters: Filters, holiday_map: dict, attendance_map: dict) -> list[dict]:
+# 	records = []
+# 	default_holiday_list = frappe.get_cached_value("Company", filters.company, "default_holiday_list")
 
-	for employee, details in employee_details.items():
-		emp_holiday_list = details.holiday_list or default_holiday_list
-		holidays = holiday_map.get(emp_holiday_list)
+# 	for employee, details in employee_details.items():
+# 		emp_holiday_list = details.holiday_list or default_holiday_list
+# 		holidays = holiday_map.get(emp_holiday_list)
 
-		if filters.summarized_view:
-			attendance = get_attendance_status_for_summarized_view(
-				employee, filters, holidays, details.joined_in_current_period, details.joined_date
-			)
-			if not attendance:
-				continue
+# 		if filters.summarized_view:
+# 			attendance = get_attendance_status_for_summarized_view(
+# 				employee, filters, holidays, details.joined_in_current_period, details.joined_date
+# 			)
+# 			if not attendance:
+# 				continue
 
-			leave_summary = get_leave_summary(employee, filters)
-			entry_exits_summary = get_entry_exits_summary(employee, filters)
+# 			leave_summary = get_leave_summary(employee, filters)
+# 			penalty_leave_summary = get_penalty_leave_summary(employee, filters)
+# 			entry_exits_summary = get_entry_exits_summary(employee, filters)
 
-			row = {"employee": employee, "employee_name": details.employee_name}
-			set_defaults_for_summarized_view(filters, row)
-			row.update(attendance)
-			row.update(leave_summary)
-			row.update(entry_exits_summary)
+# 			row = {"employee": employee, "employee_name": details.employee_name}
+# 			set_defaults_for_summarized_view(filters, row)
+# 			row.update(attendance)
+# 			row.update(leave_summary)
+# 			row.update(penalty_leave_summary)
+# 			row.update(entry_exits_summary)
 
-			records.append(row)
-		else:
-			employee_attendance = attendance_map.get(employee)
-			if not employee_attendance:
-				continue
+# 			records.append(row)
+# 		else:
+# 			employee_attendance = attendance_map.get(employee)
+# 			if not employee_attendance:
+# 				continue
 
-			# attendance_for_employee = get_attendance_status_for_detailed_view(
-			# 	employee, filters, employee_attendance, holidays
-			# )
-			# # set employee details in the first row
-			# for record in attendance_for_employee:
-			# 	record.update({"employee": employee, "employee_name": details.employee_name})
+# 			# attendance_for_employee = get_attendance_status_for_detailed_view(
+# 			# 	employee, filters, employee_attendance, holidays
+# 			# )
+# 			# # set employee details in the first row
+# 			# for record in attendance_for_employee:
+# 			# 	record.update({"employee": employee, "employee_name": details.employee_name})
 
-			# records.extend(attendance_for_employee)
+# 			# records.extend(attendance_for_employee)
    
-			attendance_row = get_attendance_status_for_detailed_view(
-				employee, filters, employee_attendance, holidays
-			)
+# 			rh_map = get_employee_restricted_holiday_map(employee, filters)
 
-			attendance_row.update({
-				"employee": employee,
-				"employee_name": details.employee_name
-			})
+# 			attendance_row = get_attendance_status_for_detailed_view(
+# 				employee,
+# 				filters,
+# 				employee_attendance,
+# 				holidays,
+# 				rh_map
+# 			)
 
-			records.append(attendance_row)
+# 			attendance_row.update({
+# 				"employee": employee,
+# 				"employee_name": details.employee_name
+# 			})
 
-	return records
+# 			records.append(attendance_row)
+
+# 	return records
+
+def get_rows(employee_details: dict, filters: Filters, holiday_map: dict, attendance_map: dict) -> list[dict]:
+    records = []
+    default_holiday_list = frappe.get_cached_value("Company", filters.company, "default_holiday_list")
+
+    for employee, details in employee_details.items():
+        emp_holiday_list = details.holiday_list or default_holiday_list
+        holidays = holiday_map.get(emp_holiday_list)
+
+        if filters.summarized_view:
+            attendance = get_attendance_status_for_summarized_view(
+                employee, filters, holidays, details.joined_in_current_period, details.joined_date
+            )
+            if not attendance:
+                continue
+
+            leave_summary = get_leave_summary(employee, filters)
+            penalty_leave_summary = get_penalty_leave_summary(employee, filters)
+            entry_exits_summary = get_entry_exits_summary(employee, filters)
+
+            row = {"employee": employee, "employee_name": details.employee_name}
+            set_defaults_for_summarized_view(filters, row)
+            row.update(attendance)
+            row.update(leave_summary)
+            row.update(penalty_leave_summary)
+            row.update(entry_exits_summary)
+
+            records.append(row)
+
+        else:
+            employee_attendance = attendance_map.get(employee)
+            if not employee_attendance:
+                continue
+
+            # ✅ RH MAP (employee-wise)
+            rh_map = get_employee_restricted_holiday_map(employee, filters)
+
+            # ✅ Daily attendance row
+            attendance_row = get_attendance_status_for_detailed_view(
+                employee,
+                filters,
+                employee_attendance,
+                holidays,
+                rh_map
+            )
+
+            rejected_leave_days = get_rejected_leave_days(employee, filters)
+
+            # ✅ ADD NEW METRICS (IMPORTANT)
+            metrics = calculate_attendance_metrics(
+                employee,
+                filters,
+                employee_attendance,
+                rh_map,
+								rejected_leave_days
+            )
+
+            # ✅ Merge everything
+            attendance_row.update({
+                "employee": employee,
+                "employee_name": details.employee_name
+            })
+
+            attendance_row.update(metrics)
+
+            records.append(attendance_row)
+
+    return records
 
 
 def set_defaults_for_summarized_view(filters, row):
@@ -732,27 +849,69 @@ def get_attendance_summary_and_days(employee: str, filters: Filters) -> tuple[di
 
 
 def get_attendance_status_for_detailed_view(
-	employee: str, filters: Filters, employee_attendance: dict, holidays: list
+    employee: str, filters: Filters, employee_attendance: dict, holidays: list, rh_map: dict
 ) -> dict:
+	# total_days = get_dates_in_period(filters)
+	# row = {}
+
+	# for d in total_days:
+	# 	dt = getdate(d)
+	# 	entries = []
+
+	# 	for shift, status_dict in employee_attendance.items():
+	# 		if dt in status_dict:
+	# 			entries.append(status_dict[dt])
+
+	# 	status = merge_shift_attendance_for_day(entries)
+
+	# 	# if status is None and holidays:
+	# 	# 	status = get_holiday_status(dt, holidays)
+	# 	if status is None:
+	# 		status = get_dynamic_holiday_status(employee, dt)
+
+	# 	row[dt.strftime("%d-%m-%Y")] = status_map.get(status, status or "")
+
+	# return row
+ 
 	total_days = get_dates_in_period(filters)
 	row = {}
 
 	for d in total_days:
 		dt = getdate(d)
+		key = dt.strftime("%d-%m-%Y")
 		entries = []
 
 		for shift, status_dict in employee_attendance.items():
 			if dt in status_dict:
 				entries.append(status_dict[dt])
 
+		# Step 1 → Merge attendance
 		status = merge_shift_attendance_for_day(entries)
 
-		# if status is None and holidays:
-		# 	status = get_holiday_status(dt, holidays)
-		if status is None:
-			status = get_dynamic_holiday_status(employee, dt)
+		# ✅ Priority 1 → Attendance (SOURCE OF TRUTH)
+		if status:
+			row[key] = status_map.get(status, status)
+			continue
 
-		row[dt.strftime("%d-%m-%Y")] = status_map.get(status, status or "")
+		# ✅ Priority 2 → Restricted Holiday Pairing
+		# Only show RH label if attendance record exists with status "Restricted Holiday"
+		# Do NOT show for future dates or dates with no attendance record
+		if dt in rh_map:
+			rh_attendance_exists = frappe.db.exists(
+				"Attendance",
+				{
+					"employee": employee,
+					"attendance_date": dt,
+					"status": "Restricted Holiday",
+					"docstatus": 1,
+				}
+			)
+			if rh_attendance_exists:
+				row[key] = rh_map[dt]
+				continue
+
+		# ✅ Priority 3 → Empty
+		row[key] = ""
 
 	return row
 
@@ -837,6 +996,36 @@ def get_leave_summary(employee: str, filters: Filters) -> dict[str, float]:
 		leaves[leave_type] = d.leave_days
 
 	return leaves
+
+
+def get_penalty_leave_summary(employee: str, filters: Filters) -> dict:
+
+    Attendance = frappe.qb.DocType("Attendance")
+
+    attendance_date_condition = get_date_condition(
+        Attendance.attendance_date, filters
+    )
+
+    penalty_leaves = (
+        frappe.qb.from_(Attendance)
+        .select(Attendance.custom_penalty_leave_type, Sum(Abs(Attendance.custom_penalty_leave_count)).as_("leave_days"))
+        .where(
+            (Attendance.employee == employee)
+            & (Attendance.docstatus == 1)
+            & (Attendance.custom_penalty_leave_type.isnotnull())
+            & (Attendance.company.isin(filters.companies))
+            & (attendance_date_condition)
+        )
+        .groupby(Attendance.custom_penalty_leave_type)
+    ).run(as_dict=True)
+
+    leaves = {}
+
+    for d in penalty_leaves:
+        leave_type = frappe.scrub(d.custom_penalty_leave_type)
+        leaves[f"{leave_type}_penalty"] = d.leave_days
+
+    return leaves
 
 
 def get_entry_exits_summary(employee: str, filters: Filters) -> dict[str, float]:
@@ -960,12 +1149,32 @@ def merge_shift_attendance_for_day(entries: list[dict]) -> str | None:
 
 	statuses = [e["status"] for e in entries]
 	leave_types = [e.get("leave_type") for e in entries if e.get("leave_type")]
+
+	is_penalize = any(e.get("is_penalize") for e in entries)
+	penalty_leave_types = [e.get("penalty_leave_type") for e in entries if e.get("penalty_leave_type")]
 	
 	leave_abbr = get_leave_type_abbr(leave_types[0]) if leave_types else None
+	penalty_leave_abbr = get_leave_type_abbr(penalty_leave_types[0]) if penalty_leave_types else None
 
 	# Present overrides everything
 	if any(s in ("Present") for s in statuses):
 		return "Present"
+	
+	# Penalized Half Day → P/HD-LWP OR L/HD-LWP
+	if is_penalize and penalty_leave_abbr:
+		if any(s in ("Half Day", "Half Day/Other Half Present", "Half Day/Other Half Absent") for s in statuses):
+				# ✅ CASE 1: Half Present + Half Absent → P/HD-LWP
+				if not leave_types:
+						return (
+								f"<span style='color:green'>P</span>"
+								f"<span style='color:#E5533D'>/HD-{penalty_leave_abbr}</span>"
+						)
+				# ✅ CASE 2: Half Leave + Half Absent → L/HD-LWP
+				leave_abbr = get_leave_type_abbr(leave_types[0])
+				return (
+						f"<span style='color:#3187D8'>{leave_abbr}</span>"
+						f"<span style='color:#E5533D'>/HD-{penalty_leave_abbr}</span>"
+				)
 
 	# Half Day + Leave Type
 	if leave_abbr:
@@ -1077,3 +1286,511 @@ def get_leave_type_abbr(leave_type: str) -> str:
 # 		["Row 1", 1],
 # 		["Row 2", 2],
 # 	]
+
+def get_employee_restricted_holiday_map(employee, filters):
+    """
+    Returns RH mapping per employee based on their holiday list assignment
+    Example:
+    {
+        date1: "RH1",
+        paired_date1: "RH1",
+        date2: "RH2",
+        paired_date2: "RH2",
+    }
+    """
+
+    dates = get_dates_in_period(filters)
+    rh_map = {}
+    counter = 1
+    processed_pairs = set()
+
+    for d in dates:
+        dt = getdate(d)
+
+        holiday_list = get_current_holiday_list(employee, dt)
+        if not holiday_list:
+            continue
+
+        holiday = frappe.db.get_value(
+            "Holiday",
+            {
+                "parent": holiday_list,
+                "holiday_date": dt,
+                "custom_is_restricted_holiday": 1
+            },
+            ["holiday_date", "custom_restricted_holiday_date"],
+            as_dict=True
+        )
+
+        if not holiday:
+            continue
+
+        main_date = holiday.holiday_date
+        pair_date = holiday.custom_restricted_holiday_date
+
+        # Avoid duplicate pair counting
+        key = tuple(sorted([str(main_date), str(pair_date)]))
+        if key in processed_pairs:
+            continue
+
+        label = f"RH{counter}"
+
+        rh_map[getdate(main_date)] = label
+
+        if pair_date:
+            rh_map[getdate(pair_date)] = label
+
+        processed_pairs.add(key)
+        counter += 1
+
+    return rh_map
+
+
+def get_additional_summary_columns():
+    return [
+        {"label": "Present Days", "fieldname": "present_days", "fieldtype": "Float", "width": 120},
+        {"label": "WO", "fieldname": "weekly_off", "fieldtype": "Float", "width": 80},
+        {"label": "HO", "fieldname": "holiday", "fieldtype": "Float", "width": 80},
+        {"label": "RH", "fieldname": "restricted_holiday", "fieldtype": "Float", "width": 80},
+        {"label": "CO", "fieldname": "comp_off", "fieldtype": "Float", "width": 80},
+        {"label": "Leave", "fieldname": "paid_leave", "fieldtype": "Float", "width": 100},
+        {"label": "Leave Penalty", "fieldname": "leave_penalty", "fieldtype": "Float", "width": 140},
+        {"label": "PR", "fieldname": "partial", "fieldtype": "Float", "width": 80},
+        {"label": "UAB", "fieldname": "uab", "fieldtype": "Float", "width": 100},
+        {"label": "LWP", "fieldname": "lwp", "fieldtype": "Float", "width": 80},
+        {"label": "LWP Penalty", "fieldname": "lwp_penalty", "fieldtype": "Float", "width": 140},
+        {"label": "Net Payable Days", "fieldname": "net_payable_days", "fieldtype": "Float", "width": 160},
+    ]
+
+
+# def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map):
+#     metrics = {
+#         "present_days": 0,
+#         "weekly_off": 0,
+#         "holiday": 0,
+#         "restricted_holiday": 0,
+#         "comp_off": 0,
+#         "paid_leave": 0,
+#         "leave_penalty": 0,
+#         "partial": 0,
+#         "uab": 0,
+#         "lwp": 0,
+#         "lwp_penalty": 0,
+#     }
+
+#     dates = get_dates_in_period(filters)
+
+#     for d in dates:
+#         dt = getdate(d)
+#         entries = []
+
+#         for shift, status_dict in employee_attendance.items():
+#             if dt in status_dict:
+#                 entries.append(status_dict[dt])
+
+#         status = merge_shift_attendance_for_day(entries)
+
+#         # PRESENT
+#         if status == "Present":
+#             metrics["present_days"] += 1
+
+#         elif status == "Half Day/Other Half Present":
+#             metrics["present_days"] += 0.5
+#             metrics["paid_leave"] += 0.5
+
+#         elif status == "Half Day/Other Half Absent":
+#             metrics["present_days"] += 0.5
+#             metrics["uab"] += 0.5
+
+#         # WEEKLY OFF / HOLIDAY
+#         elif status == "Weekly Off":
+#             metrics["weekly_off"] += 1
+
+#         elif status == "Holiday":
+#             metrics["holiday"] += 1
+
+#         # RESTRICTED HOLIDAY
+#         elif status == "Restricted Holiday":
+#             metrics["restricted_holiday"] += 1
+
+#         elif dt in rh_map:
+#             metrics["restricted_holiday"] += 1
+
+#         # PARTIAL
+#         elif status == "Partially":
+#             metrics["partial"] += 1
+
+#         # LEAVE
+#         elif status == "On Leave":
+#             if entries:
+#                 leave_type = entries[0].get("leave_type")
+
+#                 if leave_type == "Leave Without Pay":
+#                     metrics["lwp"] += 1
+#                 elif leave_type == "Compensatory Off":
+#                     metrics["comp_off"] += 1
+#                 else:
+#                     metrics["paid_leave"] += 1
+
+#         # ABSENT → UAB
+#         elif status == "Absent":
+#             metrics["uab"] += 1
+
+#         # PENALTY
+#         for e in entries:
+#             if e.get("is_penalize"):
+#                 penalty_type = e.get("penalty_leave_type")
+
+#                 if penalty_type == "Leave Without Pay":
+#                     metrics["lwp_penalty"] += 1
+#                 else:
+#                     metrics["leave_penalty"] += 1
+
+#     # NET PAYABLE DAYS
+#     metrics["net_payable_days"] = (
+#         metrics["present_days"]
+#         + metrics["weekly_off"]
+#         + metrics["holiday"]
+#         + metrics["restricted_holiday"]
+#         + metrics["comp_off"]
+#         + metrics["paid_leave"]
+#         + metrics["leave_penalty"]
+#     )
+
+#     return metrics
+
+
+# def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map):
+#     metrics = {
+#         "present_days": 0,
+#         "weekly_off": 0,
+#         "holiday": 0,
+#         "restricted_holiday": 0,
+#         "comp_off": 0,
+#         "paid_leave": 0,
+#         "leave_penalty": 0,
+#         "partial": 0,
+#         "uab": 0,
+#         "lwp": 0,
+#         "lwp_penalty": 0,
+#     }
+
+#     dates = get_dates_in_period(filters)
+
+#     for d in dates:
+#         dt = getdate(d)
+#         entries = []
+
+#         # Collect all shift entries
+#         for shift, status_dict in employee_attendance.items():
+#             if dt in status_dict:
+#                 entries.append(status_dict[dt])
+
+#         # ------------------------
+#         # ✅ WEEKLY OFF (FIXED)
+#         # ------------------------
+#         if any(e.get("status") == "Weekly Off" for e in entries):
+#             metrics["weekly_off"] += 1
+#             continue
+
+#         # ------------------------
+#         # ✅ HOLIDAY (FIXED)
+#         # ------------------------
+#         if any(e.get("status") == "Holiday" for e in entries):
+#             metrics["holiday"] += 1
+#             continue
+
+#         # ------------------------
+#         # Merge attendance after WO/HO check
+#         # ------------------------
+#         status = merge_shift_attendance_for_day(entries)
+
+#         # ------------------------
+#         # PRESENT
+#         # ------------------------
+#         if status == "Present":
+#             metrics["present_days"] += 1
+
+#         elif status == "Half Day/Other Half Present":
+#             metrics["present_days"] += 0.5
+#             metrics["paid_leave"] += 0.5
+
+#         elif status == "Half Day/Other Half Absent":
+#             metrics["present_days"] += 0.5
+#             metrics["uab"] += 0.5
+
+#         # ------------------------
+#         # RESTRICTED HOLIDAY
+#         # ------------------------
+#         elif status == "Restricted Holiday":
+#             metrics["restricted_holiday"] += 1
+
+#         elif dt in rh_map:
+#             metrics["restricted_holiday"] += 1
+
+#         # ------------------------
+#         # PARTIAL
+#         # ------------------------
+#         elif status == "Partially":
+#             metrics["partial"] += 1
+
+#         # ------------------------
+#         # LEAVE
+#         # ------------------------
+#         elif status == "On Leave":
+#             if entries:
+#                 leave_type = entries[0].get("leave_type")
+
+#                 if leave_type == "Leave Without Pay":
+#                     metrics["lwp"] += 1
+#                 elif leave_type == "Compensatory Off":
+#                     metrics["comp_off"] += 1
+#                 else:
+#                     metrics["paid_leave"] += 1
+
+#         # ------------------------
+#         # ABSENT → UAB
+#         # ------------------------
+#         elif status == "Absent":
+#             metrics["uab"] += 1
+
+#         # ------------------------
+#         # PENALTY (from raw entries)
+#         # ------------------------
+#         for e in entries:
+#             if e.get("is_penalize"):
+#                 penalty_type = e.get("penalty_leave_type")
+
+#                 if penalty_type == "Leave Without Pay":
+#                     metrics["lwp_penalty"] += 1
+#                 else:
+#                     metrics["leave_penalty"] += 1
+
+#     # ------------------------
+#     # NET PAYABLE DAYS
+#     # ------------------------
+#     metrics["net_payable_days"] = (
+#         metrics["present_days"]
+#         + metrics["weekly_off"]
+#         + metrics["holiday"]
+#         + metrics["restricted_holiday"]
+#         + metrics["comp_off"]
+#         + metrics["paid_leave"]
+#         + metrics["leave_penalty"]
+#     )
+
+#     return metrics
+
+
+
+
+def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map, rejected_leave_days):
+    metrics = {
+        "present_days": 0,
+        "weekly_off": 0,
+        "holiday": 0,
+        "restricted_holiday": 0,
+        "comp_off": 0,
+        "paid_leave": 0,
+        "leave_penalty": 0,
+        "partial": 0,
+        "uab": 0,
+        "lwp": 0,
+        "lwp_penalty": 0,
+    }
+
+    dates = get_dates_in_period(filters)
+
+    for d in dates:
+        dt = getdate(d)
+        entries = []
+
+        for shift, status_dict in employee_attendance.items():
+            if dt in status_dict:
+                entries.append(status_dict[dt])
+
+        # No attendance record → skip
+        if not entries:
+            continue
+
+        raw_status  = entries[0].get("status")
+        leave_type  = entries[0].get("leave_type")
+        is_penalize = any(e.get("is_penalize") for e in entries)
+
+        penalty_days = abs(
+            float(
+                next(
+                    (e.get("penalty_leave_count", 0) or 0
+                     for e in entries if e.get("is_penalize")),
+                    0
+                )
+            )
+        )
+        if is_penalize and penalty_days == 0:
+            if raw_status in (
+                "Half Day",
+                "Half Day/Other Half Present",
+                "Half Day/Other Half Absent",
+                "Partially",
+            ):
+                penalty_days = 0.5
+            else:
+                penalty_days = 1.0
+
+        penalty_type = next(
+            (e.get("penalty_leave_type") for e in entries if e.get("penalty_leave_type")),
+            None
+        )
+
+        # ── Weekly Off ────────────────────────────────────────────────
+        if raw_status == "Weekly Off":
+            metrics["weekly_off"] += 1
+            continue
+
+        # ── Holiday ───────────────────────────────────────────────────
+        if raw_status == "Holiday":
+            metrics["holiday"] += 1
+            continue
+
+        # ── Restricted Holiday ────────────────────────────────────────
+        if raw_status == "Restricted Holiday":
+            metrics["restricted_holiday"] += 1
+            continue
+
+        # ── Present (full day) ────────────────────────────────────────
+        if raw_status == "Present":
+            metrics["present_days"] += 1
+            if is_penalize:
+                _add_penalty(metrics, penalty_type, penalty_days)
+            continue
+
+        # ── Half Day / Other Half Present ─────────────────────────────
+        # raw_status == "Half Day/Other Half Present" means half_day_status="Present"
+        # in DB — the employee WAS present for that half, no matter what leave_type says.
+        # So ALWAYS credit 0.5 present_days here.
+        #
+        # raw_status == "Half Day" (no half_day_status set) — treat same as above.
+        #
+        # Penalty on this status means the OTHER (absent) half was penalized.
+        # The present half is still present.
+        if raw_status in ("Half Day/Other Half Present", "Half Day"):
+            metrics["present_days"] += 0.5
+
+            if is_penalize:
+                # Employee was present for one half; absent+penalized for the other.
+                # The present half always gets 0.5 present credit (added above).
+                # Just record the penalty — no leave consumed here.
+                _add_penalty(metrics, penalty_type, penalty_days)
+            else:
+                # Normal half-day: present for one half, leave for the other.
+                if leave_type:
+                    leave_days = 1.0 if leave_type == "Compensatory Off" else 0.5
+                    _add_leave(metrics, leave_type, leave_days)
+
+            continue
+
+        # ── Half Day / Other Half Absent ──────────────────────────────
+        # raw_status == "Half Day/Other Half Absent" means half_day_status="Absent"
+        # in DB — the employee was ABSENT for one half.
+        # If leave_type is set → they took leave for the other half (not present).
+        # If leave_type is not set → plain half absent, other half was present.
+        if raw_status == "Half Day/Other Half Absent":
+            if is_penalize:
+                if leave_type:
+                    # CASE A: Employee took leave for one half; absent+penalized for other.
+                    # No present credit — leave is not presence.
+                    _add_leave(metrics, leave_type, 0.5)
+                    _add_penalty(metrics, penalty_type, penalty_days)
+                else:
+                    # CASE B: Employee was absent for one half (no leave); penalized.
+                    # The other half was present but that would show as a separate record.
+                    metrics["uab"] += 0.5
+                    _add_penalty(metrics, penalty_type, penalty_days)
+            else:
+                # Normal: present for one half, absent (no leave) for the other.
+                metrics["present_days"] += 0.5
+                metrics["uab"] += 0.5
+            continue
+
+        # ── Partially ─────────────────────────────────────────────────
+        if raw_status == "Partially":
+            metrics["partial"] += 1
+            if is_penalize:
+                _add_penalty(metrics, penalty_type, penalty_days)
+            continue
+
+        # ── On Leave (full day) ───────────────────────────────────────
+        if raw_status == "On Leave":
+            _add_leave(metrics, leave_type, 1)
+            continue
+
+        # ── Absent (full day) ─────────────────────────────────────────
+        if raw_status == "Absent":
+            metrics["uab"] += 1
+            if is_penalize:
+                _add_penalty(metrics, penalty_type, penalty_days)
+            continue
+
+    # Add rejected leave days to UAB
+    metrics["uab"] += float(rejected_leave_days or 0)
+
+    # ── Net Payable Days ──────────────────────────────────────────────
+    metrics["net_payable_days"] = (
+        metrics["present_days"]
+        + metrics["weekly_off"]
+        + metrics["holiday"]
+        + metrics["restricted_holiday"]
+        + metrics["comp_off"]
+        + metrics["paid_leave"]
+        + metrics["leave_penalty"]
+    )
+
+    return metrics
+
+
+# ─────────────────────────────────────────────────────────────────────
+# HELPERS — keep the main function readable
+# ─────────────────────────────────────────────────────────────────────
+
+def _add_leave(metrics: dict, leave_type: str | None, days: float):
+    """Route leave days to the correct leave bucket."""
+    if leave_type == "Leave Without Pay":
+        metrics["lwp"] += days
+    elif leave_type == "Compensatory Off":
+        metrics["comp_off"] += days
+    else:
+        metrics["paid_leave"] += days
+
+
+def _add_penalty(metrics: dict, penalty_leave_type: str | None, days: float):
+    """Route penalty days to the correct penalty bucket."""
+    if penalty_leave_type == "Leave Without Pay":
+        metrics["lwp_penalty"] += days
+    else:
+        metrics["leave_penalty"] += days
+
+
+def get_rejected_leave_days(employee: str, filters: Filters) -> float:
+    """
+    Returns total days where employee applied for leave but
+    the Leave Application was Rejected for the filter period.
+    """
+    LeaveApplication = frappe.qb.DocType("Leave Application")
+    attendance_date_condition = get_date_condition(LeaveApplication.from_date, filters)
+
+    rejected_leaves = (
+        frappe.qb.from_(LeaveApplication)
+        .select(LeaveApplication.from_date, LeaveApplication.to_date, LeaveApplication.total_leave_days)
+        .where(
+            (LeaveApplication.employee == employee)
+            & (LeaveApplication.status == "Rejected")
+            & (LeaveApplication.docstatus == 2)
+            & (attendance_date_condition)
+        )
+    ).run(as_dict=True)
+
+    total = 0.0
+    for leave in rejected_leaves:
+        total += float(leave.total_leave_days or 0)
+
+    return total

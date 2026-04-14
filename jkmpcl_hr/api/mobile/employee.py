@@ -58,20 +58,29 @@ def get_employee_details(email):
         if checkinRecords:
             latest_checkin = checkinRecords[0]
 
-            attachment = frappe.db.get_value(
-                "File",
-                {
-                    "attached_to_doctype": "Employee Checkin",
-                    "attached_to_name": latest_checkin["name"],
-                },
-                "file_url",
-            )
+            if getdate(latest_checkin["time"]) == getdate(nowdate()):
 
-            checkInData = {
-                "log_type": latest_checkin["log_type"],
-                "time": latest_checkin["time"].strftime("%H:%M:%S") if latest_checkin.get("time") else None,
-                "attachments": frappe.utils.get_url(attachment) if attachment else None,
-            }
+                attachment = frappe.db.get_value(
+                    "File",
+                    {
+                        "attached_to_doctype": "Employee Checkin",
+                        "attached_to_name": latest_checkin["name"],
+                    },
+                    "file_url",
+                )
+            
+                checkInData = {
+                    "log_type": latest_checkin["log_type"],
+                    "time": latest_checkin["time"].strftime("%H:%M:%S") if latest_checkin.get("time") else None,
+                    "attachments": frappe.utils.get_url(attachment) if attachment else None,
+                }
+            else:
+                isCheckedIn = False
+                checkInData = {
+                    "log_type": "OUT",
+                    "time": "00:00:00",
+                    "attachments": None,
+                }
 
         # Get photo
         photo = frappe.db.get_value("File", {"attached_to_name": employee_name}, "file_url")
@@ -226,22 +235,87 @@ def get_upcoming_holidays(employeeId=None):
 
         holiday_list = frappe.get_doc("Holiday List", holiday_list_name)
 
+        # for row in holiday_list.holidays:
+        #     if (
+        #         row.holiday_date
+        #         and start_of_year <= row.holiday_date <= end_of_year
+        #         and not row.weekly_off
+        #     ):
+        #         holiday_date = getdate(row.holiday_date)
+
+        #         final_result.append({
+        #             "date": row.holiday_date,
+        #             "day": holiday_date.day,
+        #             "month": holiday_date.strftime("%b").upper(),
+        #             "display_date": holiday_date.strftime("%d %b"),
+        #             "full_date": holiday_date.strftime("%A, %d %B %Y"),
+        #             "occasion": strip_html(row.description or ""),
+        #             "restricted_holiday": row.custom_is_restricted_holiday
+        #         })
+
+        valid_holidays = []
+        restricted_rows = {}
+
+        # -----------------------------
+        # First Pass: Filter Holidays
+        # -----------------------------
         for row in holiday_list.holidays:
             if (
                 row.holiday_date
                 and start_of_year <= row.holiday_date <= end_of_year
                 and not row.weekly_off
             ):
-                holiday_date = getdate(row.holiday_date)
+                valid_holidays.append(row)
 
-                final_result.append({
-                    "date": row.holiday_date,
-                    "day": holiday_date.day,
-                    "month": holiday_date.strftime("%b").upper(),
-                    "display_date": holiday_date.strftime("%d %b"),
-                    "full_date": holiday_date.strftime("%A, %d %B %Y"),
-                    "occasion": strip_html(row.description or "")
-                })
+                # Collect restricted holidays with their pair date
+                if (
+                    row.custom_is_restricted_holiday
+                    and row.custom_restricted_holiday_date
+                ):
+                    restricted_rows[getdate(row.holiday_date)] = getdate(
+                        row.custom_restricted_holiday_date
+                    )
+
+        # -----------------------------------
+        # Second Pass: Create RH Pair Mapping
+        # -----------------------------------
+        rh_pair_map = {}
+        visited = set()
+        pair_counter = 1
+
+        for holiday_date, pair_date in restricted_rows.items():
+
+            # Skip if already assigned
+            if holiday_date in visited:
+                continue
+
+            pair_label = f"RH{pair_counter}"
+
+            # Assign same label to both dates
+            rh_pair_map[holiday_date] = pair_label
+            rh_pair_map[pair_date] = pair_label
+
+            visited.add(holiday_date)
+            visited.add(pair_date)
+
+            pair_counter += 1
+
+        # -----------------------------------
+        # Third Pass: Build Final Response
+        # -----------------------------------
+        for row in valid_holidays:
+            holiday_date = getdate(row.holiday_date)
+
+            final_result.append({
+                "date": row.holiday_date,
+                "day": holiday_date.day,
+                "month": holiday_date.strftime("%b").upper(),
+                "display_date": holiday_date.strftime("%d %b"),
+                "full_date": holiday_date.strftime("%A, %d %B %Y"),
+                "occasion": strip_html(row.description or ""),
+                "restricted_holiday": row.custom_is_restricted_holiday,
+                "rh_pair": rh_pair_map.get(holiday_date)
+            })
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Error While Getting Year Holidays")

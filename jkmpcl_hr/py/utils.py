@@ -22,9 +22,10 @@ def get_emp_hr_manager(emp_id, as_on_date=today()):
 def get_ceo_user():
     ceo_users = frappe.get_all(
         "Has Role",
-        filters={"role": "CEO"},
+        filters={"role": "CEO", "parenttype": "User"},
         fields=["parent as user"]
     )
+    
     return ceo_users[0]["user"] if ceo_users and ceo_users[0] else None
 
 def send_notification_email(
@@ -246,3 +247,46 @@ def get_current_holiday_list(emp, from_date):
         
     except Exception as e:
         frappe.log_error("error_get_current_holiday_list", frappe.get_traceback())
+
+
+
+
+def custom_create_additional_leave_ledger_entry(allocation, leaves, date, is_accrual=0):
+    """Create leave ledger entry for leave types"""
+	# allocation.new_leaves_allocated = leaves
+	# allocation.from_date = date
+ 
+    if allocation.employee == "001100: CL Test Eleven":
+        print(f"\n\n custom creatre leave ledger entry called\n\n")
+    allocation.unused_leaves = 0
+    
+    print(f"\n\n date {date}\n\n")
+	# allocation["custom_is_accrued"] = 1
+	# print(f"\n\n  {allocation.name}\n\n")
+    allocation.create_leave_ledger_entry(is_accrual=is_accrual, accrued_date = date, accrued_leaves=leaves)
+    
+
+
+def get_ceo_employees():
+    try:
+        ceo_users = frappe.get_all(
+            "Has Role",
+            filters={"role": "CEO"},
+            pluck="parent"
+        )
+
+        if not ceo_users:
+            return []
+
+        ceo_employees = frappe.get_all(
+            "Employee",
+            {"user_id": ["in", ceo_users]},
+            "name",
+            pluck="name"
+        )
+
+        return ceo_employees
+        
+    except Exception as e:
+        frappe.throw("Error Fetching CEO Employee")
+        frappe.log_error("error_get_ceo_employee", frappe.get_traceback())

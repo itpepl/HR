@@ -143,7 +143,9 @@ override_doctype_class = {
     "Attendance Request": "jkmpcl_hr.overrides.attendance_request.AttendanceRequest",
     "Shift Request":"jkmpcl_hr.overrides.shift_request_override.CustomShiftRequest",
     "Leave Allocation": "jkmpcl_hr.overrides.leave_allocation.CustomLeaveAllocation",
-    "Attendance": "jkmpcl_hr.overrides.attendance.Attendance"
+    "Attendance": "jkmpcl_hr.overrides.attendance.Attendance",
+    "Salary Slip": "jkmpcl_hr.overrides.salary_slip_override.CustomSalarySlip",
+    "Leave Application": "jkmpcl_hr.overrides.leave_application_override.CustomLeaveApplication"
 }
 
 # Document Events
@@ -160,15 +162,22 @@ doc_events = {
     },
     "Employee": {
         "after_insert": "jkmpcl_hr.py.employee.after_insert",
-        "on_update": "jkmpcl_hr.py.employee.on_update"
+        "on_update": "jkmpcl_hr.py.employee.on_update",
+        "validate": "jkmpcl_hr.py.employee.validate"
     },
     "Leave Application": {
         "validate": "jkmpcl_hr.py.leave_application.validate",
         "on_submit": "jkmpcl_hr.py.leave_application.on_submit",
         "before_submit":"jkmpcl_hr.py.leave_application.before_submit",
         "on_update":"jkmpcl_hr.py.leave_application.on_update"
+    },
+    "Holiday List": {
+        "validate": "jkmpcl_hr.py.holiday_list.validate_weekly_off"
+    },
+    "Employee Transfer": {
+        "on_submit":"jkmpcl_hr.py.employee_transfer.on_submit"
     }
-  
+
 # 	"*": {
 # 		"on_update": "method",
 # 		"on_cancel": "method",
@@ -236,7 +245,8 @@ scheduler_events = {
 #
 override_whitelisted_methods = {
 	# "frappe.desk.doctype.event.event.get_events": "jkmpcl_hr.event.get_events"
-    "hrms.hr.doctype.leave_application.leave_application.get_leave_balance_on": "jkmpcl_hr.overrides.leave_application_override.custom_get_leave_balance_on"
+    "hrms.hr.doctype.leave_application.leave_application.get_leave_balance_on": "jkmpcl_hr.overrides.leave_application_override.custom_get_leave_balance_on",
+    "hrms.hr.doctype.leave_application.leave_application.get_number_of_leave_days": "jkmpcl_hr.overrides.leave_application_override.custom_get_number_of_leave_days"
 }
 #
 # each overriding function accepts a `data` argument;

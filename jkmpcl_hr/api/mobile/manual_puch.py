@@ -82,11 +82,11 @@ def get_manual_punches(
             "data": records,
             "total_records": len(total_records),   # total matching records
             "count": len(records),            # current page count
-            "message": "Manual Punch List Loaded Successfully!"
+            "message": "Miss Punch List Loaded Successfully!"
         }
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Manual Punch List API Error")
+        frappe.log_error(frappe.get_traceback(), "Miss Punch List API Error")
         return {
             "success": False,
             "message": str(e)
@@ -119,7 +119,7 @@ def create_manual_punch(data):
         warning_message = ""
 
         # ❗ Skip warning for Field Visit
-        if request_type != "Field Visit":
+        if request_type not in ["Field Visit", "System Error"]:
             warning_data = get_manual_punch_note(
                 employeeId=employee,
                 from_date=date,
@@ -127,7 +127,8 @@ def create_manual_punch(data):
             )
 
             if warning_data.get("show_warning"):
-                warning_message = warning_data.get("message")
+                # warning_message = warning_data.get("message")
+                warning_message = '<div style="color:#fff;background-color:#d32f2f;padding:12px;border-radius:4px;font-weight:700;">⚠️ {0}</div>'.format(frappe.utils.escape_html(warning_data.get("message")))
 
         # -----------------------------
         # CREATE ATTENDANCE REQUEST
@@ -146,10 +147,11 @@ def create_manual_punch(data):
         })
 
         doc.insert(ignore_permissions=True)
-
+        if not warning_message:
+            doc.db_set("custom_note", "")
         return {
             "success": True,
-            "message": "Manual punch created successfully",
+            "message": "Miss punch created successfully",
             "data": {
                 "attendance_request_id": doc.name
             }
@@ -168,10 +170,10 @@ def create_manual_punch(data):
         }
 
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Manual Punch API Error")
+        frappe.log_error(frappe.get_traceback(), "Miss Punch API Error")
         return {
             "success": False,
-            "message": "Unable to create manual punch. Please contact admin."
+            "message": "Unable to create miss punch. Please contact admin."
         }
 
 
@@ -256,7 +258,8 @@ def get_manual_punch_note(employeeId, from_date,request_type=None, current_punch
             "limit": 0,
             "message": ""
         }
-    if request_type == "Field Visit":
+    # if request_type == "Field Visit":
+    if request_type in ("Field Visit", "System Error"):
         return {
             "show_warning": False,
             "count": 0,
@@ -296,7 +299,7 @@ def get_manual_punch_note(employeeId, from_date,request_type=None, current_punch
         filters=filters,
         fields=["custom_punch_type", "from_date"]
     )
-    print(f"Existing manual punches for employee {employeeId} in month {month}-{year}: {existing}")
+    print(f"Existing miss punches for employee {employeeId} in month {month}-{year}: {existing}")
     total = 0
     for row in existing:
         d = getdate(row.from_date)
@@ -311,7 +314,7 @@ def get_manual_punch_note(employeeId, from_date,request_type=None, current_punch
     message = ""
     if show_warning:
         message = _(
-            "Manual Punch limit exceeded for {0}-{1}. Used {2} out of {3}."
+            "Miss Punch limit exceeded for {0}-{1}. Used {2} out of {3}."
         ).format(year, str(month).zfill(2), total, manual_punch_limit)
 
     return {

@@ -26,6 +26,7 @@ def create_off_day_work(data):
                 "employee": employee,
                 "date": date,
                 "docstatus": ["!=", 2],
+                "workflow_state": ["!=", "Rejected"],
             },
         )
         if exists:
@@ -37,8 +38,32 @@ def create_off_day_work(data):
         doc.employee = employee
         doc.date = date
         doc.remarks = remarks
+        # doc.workflow_state = "Approved"
 
         doc.insert(ignore_permissions=True)
+
+        approver = frappe.db.get_list(
+            "Approver",
+            filters={
+                "parent": employee,
+                "effective_from": ["<=", frappe.utils.now_datetime()],
+                "parentfield": "custom_reporting_manager",
+            },
+            fields=["user"],
+            order_by="effective_from desc",
+            ignore_permissions=True,
+            limit=1,
+        )
+        approver_user = approver[0].user if approver else None
+
+        if approver_user == frappe.session.user:
+            # bypass workflow permission checks by writing the state directly
+            frappe.db.set_value(
+                "Off-Day Work Request",
+                doc.name,
+                "workflow_state",
+                "Approved",
+            )
 
         frappe.db.commit()
         return {

@@ -12,14 +12,23 @@ frappe.listview_settings["Attendance"] = {
 	// },
 	get_indicator: function (doc) {
 		if (["Present", "Work From Home"].includes(doc.status)) {
-			return [__(doc.status), "green", "status,=," + doc.status];
+				return [__(doc.status), "green", "status,=," + doc.status];
 		} else if (["Absent", "On Leave"].includes(doc.status)) {
-			return [__(doc.status), "red", "status,=," + doc.status];
+				return [__(doc.status), "red", "status,=," + doc.status];
 		} else if (doc.status == "Half Day") {
-			return [__(doc.status), "orange", "status,=," + doc.status];
+				return [__(doc.status), "orange", "status,=," + doc.status];
 		}
-        else if (doc.status == "Partially") {
-			return [__(doc.status), "blue", "status,=," + doc.status];
+		else if (doc.status == "Partially") {
+				return [__(doc.status), "blue", "status,=,Holiday"];
+		}
+			else if (doc.status == "Holiday") {
+				return [__(doc.status), "purple", "status,=," + doc.status];
+		}
+			else if (doc.status == "Weekly Off") {
+				return [__(doc.status), "gray", "status,=," + doc.status];
+		}
+			else if (doc.status == "Restricted Holiday") {
+				return [__(doc.status), "yellow", "status,=," + doc.status];
 		}
 	},
 };

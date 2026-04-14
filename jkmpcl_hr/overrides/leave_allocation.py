@@ -92,7 +92,10 @@ class CustomLeaveAllocation(LeaveAllocation):
 			create_leave_ledger_entry(self, args, True)
 			self.db_update()
 
-	def create_leave_ledger_entry(self, submit=True):
+	def create_leave_ledger_entry(self, submit=True, is_accrual=0, accrued_date=None, accrued_leaves=None):
+		
+		if(self.employee == "001100: CL Test Eleven"):
+			print(f"\n\n END DATE {accrued_date} \n\n")
 		if self.unused_leaves:
 			expiry_days = frappe.db.get_value(
 				"Leave Type", self.leave_type, "expire_carry_forwarded_leaves_after_days"
@@ -109,9 +112,10 @@ class CustomLeaveAllocation(LeaveAllocation):
 				show_expire_leave_dialog(self.unused_leaves, self.leave_type)
 
 		args = dict(
-			leaves=self.new_leaves_allocated + (self.custom_opening_balance or 0),
-			from_date= self.custom_last_allocation_date or self.from_date,
+			leaves=self.new_leaves_allocated + (self.custom_opening_balance or 0) if not is_accrual else accrued_leaves,
+			from_date= accrued_date or self.custom_last_allocation_date or self.from_date,
 			to_date=self.to_date,
 			is_carry_forward=0,
+			custom_is_accrued = 1 if is_accrual else 0
 		)
 		create_leave_ledger_entry(self, args, submit)
