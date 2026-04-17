@@ -413,7 +413,7 @@ def get_manual_punch_note(employeeId, from_date, request_type=None, current_punc
             message = _("Waiver limit has been exhausted (Attempt No. {0})").format(total)
         else:
             # ✅ Employee Message
-            message = _("The waiver limit is over, so CEO approval is required.")
+            message = _("The waiver limit is over, so CEO approval is required. (Attempt No. {0})").format(total)
 
     return {
         "show_warning": show_warning,
