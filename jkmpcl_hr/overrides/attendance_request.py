@@ -1251,7 +1251,7 @@ def get_manual_punch_note_html(employee, from_date, current_punch_type=None, cur
         html = f"""
         <div style="color:#fff;background-color:#e53935;
         padding:10px;border-radius:5px;font-weight:600;">
-        ⚠️ The waiver limit is over, so CEO approval is required.
+        ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
         </div>
         """
 
@@ -1376,7 +1376,7 @@ def get_waiver_messages(employee, from_date, punch_type=None, docname=None, work
     # ✅ Employee Message (STATIC)
     employee_msg = """<div style="color:#fff;background-color:#e53935;
     padding:10px;border-radius:5px;font-weight:600;">
-    ⚠️ The waiver limit is over, so CEO approval is required.
+    ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
     </div>"""
 
     # ✅ Approver Message (DYNAMIC)
