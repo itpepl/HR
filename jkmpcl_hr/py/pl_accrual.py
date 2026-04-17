@@ -244,7 +244,7 @@ def get_eligible_days(employee, start_date, end_date):
         ]:
             if status == "On Leave" and leave_type != "Leave Without Pay":
                 eligible_days += 1
-            else:
+            elif status != "On Leave":
                 eligible_days += 1
 
         # Absent = 0 (do nothing)
