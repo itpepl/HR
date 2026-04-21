@@ -542,3 +542,119 @@ def rename_selected_employees_background(employee_list):
 
     return renamed_employees
 
+import frappe
+from frappe.utils import today, getdate
+
+
+def validate(self, method):
+
+    current_date = getdate(today())
+
+    from_date = self.custom_suspended_from_date
+    to_date = self.custom_suspended_to_date
+
+    # -------------------------------------------------
+    # ✅ STATUS LOGIC (UPDATED)
+    # -------------------------------------------------
+    if from_date:
+        from_date = getdate(from_date)
+        to_date = to_date and getdate(to_date)
+
+        # Before suspension
+        if current_date < from_date:
+            self.status = "Active"
+
+        # After suspension starts
+        else:
+            # 🔥 KEY CHANGE: if no to_date → always suspended
+            if not to_date:
+                self.status = "Suspended"
+
+            elif current_date <= to_date:
+                self.status = "Suspended"
+
+            else:
+                self.status = "Active"
+
+    # -------------------------------------------------
+    # ✅ HANDLE LOG
+    # -------------------------------------------------
+    if self.custom_suspended_from_date:
+        handle_suspension_log(self)
+
+
+def handle_suspension_log(self):
+
+    if not self.custom_suspended_from_date:
+        return
+
+    from_date = self.custom_suspended_from_date
+    to_date = self.custom_suspended_to_date
+    remark = self.custom_suspended_remark
+
+    # =====================================================
+    # 1️⃣ HANDLE CHILD TABLE FIRST
+    # =====================================================
+    existing_row = None
+
+    for row in self.custom_employee_suspension_history:
+        if str(row.from_date) == str(from_date):
+            existing_row = row
+            break
+
+    # -------------------------------
+    # ✅ UPDATE EXISTING ROW
+    # -------------------------------
+    if existing_row:
+        if to_date:
+            existing_row.to_date = to_date
+            existing_row.remark = remark
+
+    # -------------------------------
+    # ✅ CREATE NEW ROW
+    # -------------------------------
+    else:
+        self.append("custom_employee_suspension_history", {
+            "from_date": from_date,
+            "to_date": to_date,
+            "remark":remark
+        })
+
+    # =====================================================
+    # 2️⃣ HANDLE DB LOG (YOUR OLD LOGIC)
+    # =====================================================
+    existing_log = frappe.db.get_value(
+        "Suspended Employee Log",
+        {
+            "employee": self.name,
+            "from_date": from_date
+        },
+        ["name", "to_date"],
+        as_dict=True
+    )
+
+    if existing_log:
+
+        if not existing_log.to_date and to_date:
+            frappe.db.set_value(
+                "Suspended Employee Log",
+                existing_log.name,
+                "to_date",
+                to_date
+            )
+
+        elif existing_log.to_date:
+            create_new_log(self)
+
+    else:
+        create_new_log(self)
+
+
+def create_new_log(self):
+
+    doc = frappe.new_doc("Suspended Employee Log")
+    doc.employee = self.name
+    doc.posting_date = today()
+    doc.from_date = self.custom_suspended_from_date
+    doc.to_date = self.custom_suspended_to_date
+    doc.insert(ignore_permissions=True)
