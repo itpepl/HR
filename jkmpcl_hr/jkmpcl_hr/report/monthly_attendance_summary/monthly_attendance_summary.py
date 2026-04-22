@@ -3,6 +3,7 @@
 
 from calendar import monthrange
 from datetime import date
+from email.mime import message
 from itertools import groupby
 
 from pypika import Field
@@ -154,17 +155,17 @@ def execute(filters: Filters | None = None) -> tuple:
 def get_message() -> str:
 	message = ""
 	colors = [
-    "green",
-    "red",
-    "orange",
-    "#914EE3",
-    "#3187D8",
-	"#555555",
-    "#3187D8",
-    "#878787",
-    "#878787",
-    "#FF8800",  # NEW
-]
+		"green",
+		"red",
+		"orange",
+		"#914EE3",
+		"#3187D8",
+		"#555555",
+		"#3187D8",
+		"#878787",
+		"#878787",
+		"#FF8800",  # NEW
+	]
 
 	count = 0
 	for status, abbr in status_map.items():
@@ -175,8 +176,8 @@ def get_message() -> str:
 				</span>
 			"""
 			count += 1
-
-    return message
+			
+	return message
 
 
 def get_columns(filters: Filters) -> list[dict]:
