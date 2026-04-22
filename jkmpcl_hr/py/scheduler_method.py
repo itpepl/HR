@@ -5514,8 +5514,62 @@ def run_attendance_for_my_branch(att_date):
 
 #     frappe.db.commit()
 
-def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
 
+
+
+def update_employee_status():
+
+    today_date = getdate(today())
+
+    employees = frappe.get_all("Employee", fields=[
+        "name",
+        "status",
+        "custom_suspended_from_date",
+        "custom_suspended_to_date"
+    ])
+
+    for emp in employees:
+
+        if not emp.custom_suspended_from_date:
+            continue
+
+        from_date = getdate(emp.custom_suspended_from_date)
+        to_date = emp.custom_suspended_to_date and getdate(emp.custom_suspended_to_date)
+
+        # -------------------------------
+        # ✅ STATUS LOGIC (FINAL)
+        # -------------------------------
+        if today_date < from_date:
+            new_status = "Active"
+
+        else:
+            # 🔥 MAIN RULE
+            if not to_date:
+                new_status = "Suspended"
+
+            elif today_date <= to_date:
+                new_status = "Suspended"
+
+            else:
+                new_status = "Active"
+
+        # -------------------------------
+        # ✅ UPDATE IF CHANGED
+        # -------------------------------
+        if emp.status != new_status:
+
+            frappe.db.set_value("Employee", emp.name, "status", new_status)
+
+            # create log when becomes suspended
+            if new_status == "Suspended":
+                emp_doc = frappe.get_doc("Employee", emp.name)
+                handle_suspension_log(emp_doc)
+
+    frappe.db.commit()
+
+
+def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
+    update_employee_status()
     frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")
 
 
@@ -5540,7 +5594,7 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
             employees = frappe.get_all(
                 "Employee",
                 filters={
-                    "status": "Active",
+                    "status": ["in", ["Active", "Suspended"]],
                     "date_of_joining":["<=", att_date],
                     "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",
                     "name": ["not in", ceo_employees]
@@ -5551,15 +5605,17 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
             employees = frappe.get_all(
                 "Employee",
                 filters={
-                    "status": "Active",
+                    "status": ["in", ["Active", "Suspended"]],
                     "date_of_joining":["<=", att_date],
                     "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",            
                 },
                 pluck="name",
             )
     else:
-        filters = {"status": "Active", "date_of_joining":["<=", att_date]}
-        
+        filters = {
+            "status": ["in", ["Active", "Suspended"]],
+            "date_of_joining": ["<=", att_date]
+        }        
         if branch:
             filters["branch"] = branch
 
@@ -5573,7 +5629,87 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
     # ==============================
     for emp in employees:
         try:
+            # =====================================================
+            # 🔥 STEP 1: SUSPENSION FIRST (HIGHEST PRIORITY)
+            # =====================================================
+            suspended = frappe.db.sql("""
+                SELECT name FROM `tabSuspended Employee Log`
+                WHERE employee=%s
+                AND from_date <= %s
+                AND (to_date IS NULL OR to_date >= %s)
+                LIMIT 1
+            """, (emp, att_date, att_date), as_dict=True)
+
+            if suspended:
+
+                # 🔴 CHECK EXISTING
+                existing = frappe.db.exists("Attendance", {
+                    "employee": emp,
+                    "attendance_date": att_date,
+                    "docstatus": ["!=", 2]
+                })
+
+                if existing:
+                    att_name = existing
+
+                    # FORCE UPDATE
+                    frappe.db.set_value(
+                        "Attendance",
+                        att_name,
+                        {
+                            "status": "Suspended",
+                            "working_hours": 0,
+                            "in_time": None,
+                            "out_time": None
+                        },
+                        update_modified=False
+                    )
+
+                else:
+                    # CREATE DIRECTLY
+                    emp_details = frappe.db.get_value(
+                        "Employee",
+                        emp,
+                        ["employee_name", "department", "company", "branch"],
+                        as_dict=True
+                    )
+
+                    att = frappe.get_doc({
+                        "doctype": "Attendance",
+                        "employee": emp,
+                        "employee_name": emp_details.employee_name,
+                        "department": emp_details.department,
+                        "company": emp_details.company,
+                        "attendance_date": att_date,
+                        "status": "Suspended",
+                        "custom_branch": emp_details.branch,
+                        "custom_is_penalize": 0
+                    })
+
+                    att.insert(ignore_permissions=True)
+                    att.submit()
+
+                    att_name = att.name
+
+                # =====================================================
+                # 🔥 APPLY LEAVE (THIS CREATES LEDGER)
+                # =====================================================
+                revert_penalty_leave(att_name)
+
+                deduct_leave_by_priority(
+                    employee=emp,
+                    date=att_date,
+                    status="Suspended",
+                    attendance=att_name,
+                    force_lwp=True
+                )
+
+                # ❗ VERY IMPORTANT
+                continue
+            
+            
             mark_attendance(emp, att_date)
+            
             # if has_approved_leave(emp, att_date):
             #     continue
 
@@ -5803,6 +5939,11 @@ def mark_attendance(emp, att_date):
     
     if has_approved_leave(emp, att_date):
                 return
+    
+    # ------- Sandwich Rule start-----------
+    if apply_sandwich_rule(emp,att_date):
+        return
+    # ------- Sandwich Rule End-----------
 
     shift_type = get_employee_shift(emp, att_date)
 
@@ -7283,6 +7424,11 @@ def create_or_update_attendance(
                 if status == "Partially":
                     revert_penalty_leave(att_name)
                     deduct_leave_by_priority(employee, date, status, att_name, force_lwp=True)
+                
+                elif status == "Suspended":
+                    revert_penalty_leave(att_name)
+                    deduct_leave_by_priority(employee, date, status, att_name, force_lwp=True)
+                
                 elif status == "Absent" and no_checkin_found:
                     revert_penalty_leave(att_name)                    
                     deduct_leave_by_priority(employee, date, status, att_name, force_lwp=True)
@@ -9868,3 +10014,189 @@ def get_holiday_type(employee, date):
         return "Restricted Holiday"
     else:
         return "Holiday"
+
+    
+
+# --------------------------------- Sandwich Leave Logic ---------------------------------
+
+def get_approved_leave_on_date(employee, date):
+    """
+    Returns True if employee has a fully approved non-half-day
+    leave application covering the given date.
+    """
+    return frappe.db.exists(
+        "Leave Application",
+        {
+            "employee": employee,
+            "status": "Approved",
+            "docstatus": 1,
+            "from_date": ("<=", date),
+            "to_date": (">=", date),
+            "half_day": 0
+        }
+    )
+
+
+def apply_sandwich_rule(employee, att_date):
+    """
+    Sandwich Rule:
+    If att_date is a Holiday / Weekly Off / Restricted Holiday,
+    AND the previous day AND the next day both have approved leave,
+    then att_date is also marked as 'On Leave' with LWP deducted.
+
+    Returns True if sandwich rule was applied.
+    """
+    # 1. Must be a holiday/weekoff
+    holiday_type = get_holiday_type(employee, att_date)
+    if not holiday_type:
+        return False
+
+    # 2. Both neighbours must be on approved leave
+    prev_date = add_days(att_date, -1)
+    next_date = add_days(att_date, 1)
+
+    if not get_approved_leave_on_date(employee, prev_date):
+        return False
+
+    if not get_approved_leave_on_date(employee, next_date):
+        return False
+
+    frappe.log_error(
+        "sandwich_rule_triggered",
+        f"Employee: {employee}, Date: {att_date}, Holiday: {holiday_type}"
+    )
+
+    # 3. Get shift
+    shift_type = get_employee_shift(employee, att_date)
+    if not shift_type:
+        frappe.log_error(
+            "sandwich_rule_no_shift",
+            f"Employee: {employee}, Date: {att_date} — shift not found, skipping."
+        )
+        return False
+
+    # 4. Get employee details
+    employee_details = frappe.db.get_value(
+        "Employee",
+        employee,
+        ["employee_name", "department", "company", "branch"],
+        as_dict=True
+    )
+
+    # 5. Check if attendance already exists
+    attendance_name = frappe.db.exists(
+        "Attendance",
+        {
+            "employee": employee,
+            "attendance_date": att_date,
+            "docstatus": ["!=", 2]
+        }
+    )
+
+    if attendance_name:
+        att_name = attendance_name
+        # Revert any existing penalty first (idempotent)
+        revert_penalty_leave(att_name)
+        frappe.db.set_value(
+            "Attendance",
+            att_name,
+            {
+                "shift": shift_type,
+                "status": "On Leave",
+                "in_time": None,
+                "out_time": None,
+                "working_hours": 0,
+                "late_entry": 0,
+                "early_exit": 0,
+                "custom_branch": employee_details.branch,
+            },
+            update_modified=False
+        )
+    else:
+        att_name = frappe.generate_hash(length=12)
+        frappe.db.sql("""
+            INSERT INTO `tabAttendance`
+            (name, employee, employee_name, department, company,
+             attendance_date, shift, in_time, out_time,
+             working_hours, status, late_entry, early_exit, custom_branch,
+             docstatus, creation, modified, owner, modified_by)
+            VALUES (%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,
+                    1, NOW(), NOW(), %s, %s)
+        """, (
+            att_name,
+            employee,
+            employee_details.employee_name,
+            employee_details.department,
+            employee_details.company,
+            att_date,
+            shift_type,
+            None, None, 0,
+            "On Leave",
+            0, 0,
+            employee_details.branch,
+            frappe.session.user,
+            frappe.session.user,
+        ))
+        frappe.db.commit()
+
+    # 6. Always deduct LWP for sandwiched day
+    deduct_leave_by_priority(
+        employee=employee,
+        date=att_date,
+        status="Absent",   # full day = 1 day deduction
+        attendance=att_name,
+        force_lwp=True     # sandwiched holiday always = LWP
+    )
+
+    frappe.log_error(
+        "sandwich_rule_applied",
+        f"Employee: {employee}, Date: {att_date}, Att: {att_name}"
+    )
+    return True
+
+
+def on_leave_application_approved(doc, method):
+    """
+    Fired on Leave Application on_submit / on_update_after_submit.
+    Retroactively applies sandwich rule if this new leave
+    completes a sandwich around an already-processed holiday.
+    """
+    if doc.status != "Approved":
+        return
+
+    if doc.half_day:
+        return  # Half day leaves cannot create a sandwich
+
+    # The two candidate dates that could now be sandwiched:
+    # 1. The day just BEFORE this leave starts
+    #    (holiday sitting between an older leave and this new one)
+    # 2. The day just AFTER this leave ends
+    #    (holiday sitting between this new leave and an older one)
+    candidates = [
+        add_days(getdate(doc.from_date), -1),
+        add_days(getdate(doc.to_date), 1)
+    ]
+
+    for candidate_date in candidates:
+        try:
+            holiday_type = get_holiday_type(doc.employee, candidate_date)
+            if not holiday_type:
+                continue  # Not a holiday, skip
+
+            sandwiched = apply_sandwich_rule(doc.employee, candidate_date)
+
+            if sandwiched:
+                frappe.log_error(
+                    "sandwich_rule_retro_applied",
+                    f"Employee: {doc.employee}, "
+                    f"Sandwiched date: {candidate_date}, "
+                    f"Triggered by Leave: {doc.name}"
+                )
+
+        except Exception:
+            frappe.log_error(
+                f"sandwich_retro_error_{doc.employee}_{candidate_date}",
+                frappe.get_traceback()
+            )

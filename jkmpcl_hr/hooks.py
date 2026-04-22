@@ -169,16 +169,35 @@ doc_events = {
         "validate": "jkmpcl_hr.py.employee.validate"
     },
     "Leave Application": {
-        "validate": "jkmpcl_hr.py.leave_application.validate",
-        "on_submit": "jkmpcl_hr.py.leave_application.on_submit",
+        "validate": [
+           "jkmpcl_hr.py.leave_application.validate",
+           "jkmpcl_hr.py.api.block_suspended_employee",
+        ],
+        "on_submit" : [
+            "jkmpcl_hr.py.leave_application.on_submit",
+            "jkmpcl_hr.py.scheduler_method.on_leave_application_approved",
+        ],
         "before_submit":"jkmpcl_hr.py.leave_application.before_submit",
-        "on_update":"jkmpcl_hr.py.leave_application.on_update"
+        "on_update":"jkmpcl_hr.py.leave_application.on_update",
+        "on_update_after_submit": "jkmpcl_hr.py.scheduler_method.on_leave_application_approved",
     },
     "Holiday List": {
         "validate": "jkmpcl_hr.py.holiday_list.validate_weekly_off"
     },
     "Employee Transfer": {
         "on_submit":"jkmpcl_hr.py.employee_transfer.on_submit"
+    },
+    "Attendance Request": {
+        "validate": "jkmpcl_hr.py.api.block_suspended_employee"
+    },
+    "Off-Day Work Request": {
+        "validate": "jkmpcl_hr.py.api.block_suspended_employee"
+    },
+    "Shift Assignment": {
+        "validate": "jkmpcl_hr.py.api.block_suspended_employee"
+    },
+    "Holiday List Assignment": {
+        "validate": "jkmpcl_hr.py.api.block_suspended_employee"
     }
 
 # 	"*": {

@@ -222,3 +222,71 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
         frappe.log_error(f"error_determine_shift_types", frappe.get_traceback())
         frappe.throw(e)
         
+
+# =====================================================
+# 🔹 CORE CHECK FUNCTION
+# =====================================================
+def is_employee_suspended(employee, check_date=None):
+
+    if not employee:
+        return False
+
+    if not check_date:
+        check_date = getdate(today())
+    else:
+        check_date = getdate(check_date)
+
+    emp = frappe.db.get_value(
+        "Employee",
+        employee,
+        ["custom_suspended_from_date", "custom_suspended_to_date"],
+        as_dict=True
+    )
+
+    if not emp or not emp.custom_suspended_from_date:
+        return False
+
+    from_date = getdate(emp.custom_suspended_from_date)
+    to_date = emp.custom_suspended_to_date and getdate(emp.custom_suspended_to_date)
+
+    # -------------------------------
+    # ✅ STATUS LOGIC
+    # -------------------------------
+    if check_date < from_date:
+        return False
+
+    if not to_date:
+        return True   # 🔥 suspended indefinitely
+
+    if from_date <= check_date <= to_date:
+        return True
+
+    return False
+
+
+# =====================================================
+# 🔹 GLOBAL VALIDATION FUNCTION
+# =====================================================
+def block_suspended_employee(doc, method=None):
+
+    employee = getattr(doc, "employee", None)
+
+    if not employee:
+        return
+
+    # ----------------------------------------
+    # 🔥 Pick correct date field dynamically
+    # ----------------------------------------
+    check_date = (
+        getattr(doc, "from_date", None)
+        or getattr(doc, "attendance_date", None)
+        or getattr(doc, "start_date", None)
+        or getattr(doc, "posting_date", None)
+        or today()
+    )
+
+    if is_employee_suspended(employee, check_date):
+
+        frappe.throw(
+            f"Employee {employee} is Suspended. Action not allowed on {check_date}."
+        )
