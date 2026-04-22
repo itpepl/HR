@@ -95,8 +95,10 @@ status_map = {
 	"Half Day/Other Half Absent": "HD/A",
 	"Half Day/Other Half Present": "HD/P",
 	"Partially": "PR",
+	"Suspended":"SUSP",
 	# "Work From Home": "WFH",
 	# "Half Day": "HD",
+	"Suspended":"SUSP",
 	"On Leave": "L",
 	"Holiday": "H",
 	"Weekly Off": "WO",
@@ -157,6 +159,7 @@ def get_message() -> str:
     "orange",
     "#914EE3",
     "#3187D8",
+	"#555555",
     "#3187D8",
     "#878787",
     "#878787",
@@ -173,7 +176,7 @@ def get_message() -> str:
 			"""
 			count += 1
 
-	return message
+    return message
 
 
 def get_columns(filters: Filters) -> list[dict]:
@@ -1200,6 +1203,10 @@ def merge_shift_attendance_for_day(entries: list[dict]) -> str | None:
 	if "Partially" in statuses:
 			return f"<span style='color:#3187D8'>PR</span>"
 
+	# ✅ Suspended (ADD HERE)
+	if "Suspended" in statuses:
+		return "<span style='color:#555555'>SUSP</span>"
+	
 	if "On Leave" in statuses:
 		return "On Leave"
 
@@ -1355,6 +1362,7 @@ def get_additional_summary_columns():
         {"label": "CO", "fieldname": "comp_off", "fieldtype": "Float", "width": 80},
         {"label": "Leave", "fieldname": "paid_leave", "fieldtype": "Float", "width": 100},
         {"label": "Leave Penalty", "fieldname": "leave_penalty", "fieldtype": "Float", "width": 140},
+		{"label": "SUSP Penalty", "fieldname": "susp_penalty", "fieldtype": "Float", "width": 140},
         {"label": "PR", "fieldname": "partial", "fieldtype": "Float", "width": 80},
         {"label": "UAB", "fieldname": "uab", "fieldtype": "Float", "width": 100},
         {"label": "LWP", "fieldname": "lwp", "fieldtype": "Float", "width": 80},
@@ -1597,6 +1605,7 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
         "uab": 0,
         "lwp": 0,
         "lwp_penalty": 0,
+		"susp_penalty":0,
     }
 
     dates = get_dates_in_period(filters)
@@ -1646,7 +1655,10 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
         if raw_status == "Weekly Off":
             metrics["weekly_off"] += 1
             continue
-
+	   # ── Suspended ────────────────────────────────────────────────
+        if raw_status == "Suspended":
+            metrics["susp_penalty"] += 1
+            continue
         # ── Holiday ───────────────────────────────────────────────────
         if raw_status == "Holiday":
             metrics["holiday"] += 1
