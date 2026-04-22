@@ -223,11 +223,6 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
         frappe.throw(e)
         
 
-
-import frappe
-from frappe.utils import getdate, today
-
-
 # =====================================================
 # 🔹 CORE CHECK FUNCTION
 # =====================================================

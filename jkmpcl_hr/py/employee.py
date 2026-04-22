@@ -18,6 +18,110 @@ def on_update(doc, event):
 
 def validate(doc, event):
     set_approvers(doc)
+
+    current_date = getdate(today())
+
+    from_date = doc.custom_suspended_from_date
+    to_date = doc.custom_suspended_to_date
+
+    # -------------------------------------------------
+    # STATUS LOGIC
+    # -------------------------------------------------
+    if from_date:
+        from_date = getdate(from_date)
+        to_date = to_date and getdate(to_date)
+
+        if current_date < from_date:
+            doc.status = "Active"
+        else:
+            if not to_date:
+                doc.status = "Suspended"
+            elif current_date <= to_date:
+                doc.status = "Suspended"
+            else:
+                doc.status = "Active"
+
+    # -------------------------------------------------
+    # HANDLE LOG
+    # -------------------------------------------------
+    if doc.custom_suspended_from_date:
+        handle_suspension_log(doc)
+
+
+# =====================================================
+# HANDLE SUSPENSION LOG
+# =====================================================
+def handle_suspension_log(doc):
+
+    if not doc.custom_suspended_from_date:
+        return
+
+    from_date = doc.custom_suspended_from_date
+    to_date = doc.custom_suspended_to_date
+    remark = doc.custom_suspended_remark
+
+    # ---------------- CHILD TABLE ----------------
+    existing_row = None
+
+    for row in doc.custom_employee_suspension_history:
+        if str(row.from_date) == str(from_date):
+            existing_row = row
+            break
+
+    if existing_row:
+        if to_date:
+            existing_row.to_date = to_date
+            existing_row.remark = remark
+    else:
+        doc.append("custom_employee_suspension_history", {
+            "from_date": from_date,
+            "to_date": to_date,
+            "remark": remark
+        })
+
+    # ---------------- DB LOG ----------------
+    existing_log = frappe.db.get_value(
+        "Suspended Employee Log",
+        {
+            "employee": doc.name,
+            "from_date": from_date
+        },
+        ["name", "to_date"],
+        as_dict=True
+    )
+
+    if existing_log:
+
+        if not existing_log.to_date and to_date:
+            frappe.db.set_value(
+                "Suspended Employee Log",
+                existing_log.name,
+                "to_date",
+                to_date
+            )
+
+        elif existing_log.to_date:
+            create_new_log(doc)
+
+    else:
+        create_new_log(doc)
+
+
+# =====================================================
+# CREATE NEW LOG
+# ==========================jkmpcl_hr/py/scheduler_method.py===========================
+def create_new_log(doc):
+
+    log = frappe.new_doc("Suspended Employee Log")
+
+    log.employee = doc.name
+    log.posting_date = today()
+    log.from_date = doc.custom_suspended_from_date
+    log.to_date = doc.custom_suspended_to_date
+
+    log.insert(ignore_permissions=True)
+
+
 def set_approvers(doc):
     try:
         # if doc.name:
@@ -25,7 +129,7 @@ def set_approvers(doc):
         #     if actual_emp_rm:
         #         emp_rm_emp = frappe.db.get_value("Employee", {"user_id": actual_emp_rm}, "name") if actual_emp_rm else None
         #         if doc.shift_request_approver != actual_emp_rm:
-        #             frappe.db.set_value("Employee", doc.name, "shift_request_approver", actual_emp_rm)
+        #             frappejkmpcl_hr/py/scheduler_method.py.db.set_value("Employee", doc.name, "shift_request_approver", actual_emp_rm)
         #         if doc.leave_approver != actual_emp_rm:
         #             frappe.db.set_value("Employee", doc.name, "leave_approver", actual_emp_rm)
         #         if emp_rm_emp and doc.reports_to != emp_rm_emp:
@@ -45,7 +149,7 @@ def set_approvers(doc):
                         
             if doc.reports_to != current_rm:
                 doc.reports_to = current_rm
-            
+            jkmpcl_hr/py/scheduler_method.py
             current_rm_user = frappe.db.get_value("Employee", current_rm, "user_id") or ''
             if current_rm_user:
                 if doc.shift_request_approver != current_rm_user:
@@ -105,7 +209,7 @@ def create_shift_assignment_for_srinagar(today_date, emp_id, default_shift_type_
     assign_both = False
     assign_seven_hours = False
 
-    eight_hours_shift_id = ""
+    eight_hours_shift_id = "jkmpcl_hr/py/scheduler_method.py"
     seven_hours_shift_id = ""
 
     emp_default_shift_details = frappe.db.get_values("Shift Type", default_shift_type_id, ["custom_shift_type", "custom_hours", "custom_branch"], as_dict=True)

@@ -30,7 +30,7 @@ frappe.listview_settings["Attendance"] = {
 			else if (doc.status == "Restricted Holiday") {
 				return [__(doc.status), "yellow", "status,=," + doc.status];
 		}
-		else if (doc.status == "Suspended") {
+			else if (doc.status == "Suspended") {
 				return [__(doc.status), "darkgrey", "status,=," + doc.status];
 		}
 	},

@@ -98,6 +98,7 @@ status_map = {
 	"Suspended":"SUSP",
 	# "Work From Home": "WFH",
 	# "Half Day": "HD",
+	"Suspended":"SUSP",
 	"On Leave": "L",
 	"Holiday": "H",
 	"Weekly Off": "WO",
@@ -151,29 +152,29 @@ def execute(filters: Filters | None = None) -> tuple:
 
 
 def get_message() -> str:
-    message = ""
+	message = ""
+	colors = [
+    "green",
+    "red",
+    "orange",
+    "#914EE3",
+    "#3187D8",
+	"#555555",
+    "#3187D8",
+    "#878787",
+    "#878787",
+    "#FF8800",  # NEW
+]
 
-    color_map = {
-        "Present": "green",
-        "Absent": "red",
-        "Half Day/Other Half Absent": "orange",
-        "Half Day/Other Half Present": "#914EE3",
-        "Partially": "#3187D8",
-        "Suspended": "#555555",   # ✅ DARK GREY
-        "On Leave": "#3187D8",
-        "Holiday": "#878787",
-        "Weekly Off": "#FF8800",
-        "Restricted Holiday": "#000000",
-    }
-
-    for status, abbr in status_map.items():
-        color = color_map.get(status, "#000000")
-
-        message += f"""
-            <span style='border-left: 2px solid {color}; padding-right: 12px; padding-left: 5px; margin-right: 3px;'>
-                {_(status)} - {abbr}
-            </span>
-        """
+	count = 0
+	for status, abbr in status_map.items():
+		# if not status == "Half Day":
+			message += f"""
+				<span style='border-left: 2px solid {colors[count]}; padding-right: 12px; padding-left: 5px; margin-right: 3px;'>
+					{_(status)} - {abbr}
+				</span>
+			"""
+			count += 1
 
     return message
 
@@ -1604,7 +1605,7 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
         "uab": 0,
         "lwp": 0,
         "lwp_penalty": 0,
-	   "susp_penalty":0,
+		"susp_penalty":0,
     }
 
     dates = get_dates_in_period(filters)
@@ -1654,12 +1655,10 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
         if raw_status == "Weekly Off":
             metrics["weekly_off"] += 1
             continue
-
 	   # ── Suspended ────────────────────────────────────────────────
         if raw_status == "Suspended":
             metrics["susp_penalty"] += 1
             continue
-
         # ── Holiday ───────────────────────────────────────────────────
         if raw_status == "Holiday":
             metrics["holiday"] += 1

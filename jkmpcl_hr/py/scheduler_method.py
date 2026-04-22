@@ -5514,8 +5514,8 @@ def run_attendance_for_my_branch(att_date):
 
 #     frappe.db.commit()
 
-import frappe
-from frappe.utils import today, getdate
+
+
 
 def update_employee_status():
 
@@ -5572,25 +5572,50 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
     update_employee_status()
     frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")
 
+
+    ceo_employees = get_ceo_employees()
+    
     if not att_date:
         att_date = add_days(getdate(), -1)
     else:
         att_date = getdate(att_date)
 
-    # =========================================================
-    # FETCH EMPLOYEES
-    # =========================================================
+
+    # if not regularize_attendance:
+    # ==============================
+    # Fetch Employees
+    # ==============================
+    
+    
+    
     if only_for_jammu:
-        employees = frappe.get_all(
-            "Employee",
-            filters={
-                "status": ["in", ["Active", "Suspended"]],
-                "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",
-            },
-            pluck="name",
-        )
+        if ceo_employees:
+            
+            employees = frappe.get_all(
+                "Employee",
+                filters={
+                    "status": ["in", ["Active", "Suspended"]],
+                    "date_of_joining":["<=", att_date],
+                    "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",
+                    "name": ["not in", ceo_employees]
+                },
+                pluck="name",
+            )
+        else:
+            employees = frappe.get_all(
+                "Employee",
+                filters={
+                    "status": ["in", ["Active", "Suspended"]],
+                    "date_of_joining":["<=", att_date],
+                    "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",            
+                },
+                pluck="name",
+            )
     else:
-        filters = {"status": ["in", ["Active", "Suspended"]]}
+        filters = {
+            "status": ["in", ["Active", "Suspended"]],
+            "date_of_joining": ["<=", att_date]
+        }        
         if branch:
             filters["branch"] = branch
 
@@ -5601,7 +5626,6 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
     # =========================================================
     for emp in employees:
         try:
-
             # =====================================================
             # 🔥 STEP 1: SUSPENSION FIRST (HIGHEST PRIORITY)
             # =====================================================
@@ -5621,6 +5645,84 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
                     "attendance_date": att_date,
                     "docstatus": ["!=", 2]
                 })
+
+                if existing:
+                    att_name = existing
+
+                    # FORCE UPDATE
+                    frappe.db.set_value(
+                        "Attendance",
+                        att_name,
+                        {
+                            "status": "Suspended",
+                            "working_hours": 0,
+                            "in_time": None,
+                            "out_time": None
+                        },
+                        update_modified=False
+                    )
+
+                else:
+                    # CREATE DIRECTLY
+                    emp_details = frappe.db.get_value(
+                        "Employee",
+                        emp,
+                        ["employee_name", "department", "company", "branch"],
+                        as_dict=True
+                    )
+
+                    att = frappe.get_doc({
+                        "doctype": "Attendance",
+                        "employee": emp,
+                        "employee_name": emp_details.employee_name,
+                        "department": emp_details.department,
+                        "company": emp_details.company,
+                        "attendance_date": att_date,
+                        "status": "Suspended",
+                        "custom_branch": emp_details.branch,
+                        "custom_is_penalize": 0
+                    })
+
+                    att.insert(ignore_permissions=True)
+                    att.submit()
+
+                    att_name = att.name
+
+                # =====================================================
+                # 🔥 APPLY LEAVE (THIS CREATES LEDGER)
+                # =====================================================
+                revert_penalty_leave(att_name)
+
+                deduct_leave_by_priority(
+                    employee=emp,
+                    date=att_date,
+                    status="Suspended",
+                    attendance=att_name,
+                    force_lwp=True
+                )
+
+                # ❗ VERY IMPORTANT
+                continue
+            
+            
+            mark_attendance(emp, att_date)
+            
+            # if has_approved_leave(emp, att_date):
+            #     continue
+
+            # shift_type = get_employee_shift(emp, att_date)
+
+            # if not shift_type:
+            #     log_attendance_error(emp, att_date, "Shift not assigned")
+            #     continue
+
+            # shift_custom_type = frappe.db.get_value(
+            #     "Shift Type", shift_type, "custom_shift_type"
+            # )
+
+            # is_holiday = is_holiday_or_weekoff(emp, att_date)
+            # off_day_approved = has_approved_off_day_work(emp, att_date)
+            # is_holiday_work = False
 
                 if existing:
                     att_name = existing
@@ -7288,11 +7390,11 @@ def create_or_update_attendance(
                 if status == "Partially":
                     revert_penalty_leave(att_name)
                     deduct_leave_by_priority(employee, date, status, att_name, force_lwp=True)
-
+                
                 elif status == "Suspended":
                     revert_penalty_leave(att_name)
                     deduct_leave_by_priority(employee, date, status, att_name, force_lwp=True)
-
+                
                 elif status == "Absent" and no_checkin_found:
                     revert_penalty_leave(att_name)                    
                     deduct_leave_by_priority(employee, date, status, att_name, force_lwp=True)
@@ -9879,13 +9981,7 @@ def get_holiday_type(employee, date):
     else:
         return "Holiday"
 
-
-
-
-
-
-
-
+    
 
 # --------------------------------- Sandwich Leave Logic ---------------------------------
 
