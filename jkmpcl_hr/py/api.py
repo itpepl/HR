@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import cint, getdate, today
+from frappe.utils import cint, getdate, today,add_days
 from frappe.query_builder import DocType
 
 from jkmpcl_hr.py.utils import get_roles_from_hr_settings_by_module
@@ -223,6 +223,74 @@ def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
         frappe.throw(e)
         
 
+# # =====================================================
+# # 🔹 CORE CHECK FUNCTION
+# # =====================================================
+# def is_employee_suspended(employee, check_date=None):
+
+#     if not employee:
+#         return False
+
+#     if not check_date:
+#         check_date = getdate(today())
+#     else:
+#         check_date = getdate(check_date)
+
+#     emp = frappe.db.get_value(
+#         "Employee",
+#         employee,
+#         ["custom_suspended_from_date", "custom_suspended_to_date"],
+#         as_dict=True
+#     )
+
+#     if not emp or not emp.custom_suspended_from_date:
+#         return False
+
+#     from_date = getdate(emp.custom_suspended_from_date)
+#     to_date = emp.custom_suspended_to_date and getdate(emp.custom_suspended_to_date)
+
+#     # -------------------------------
+#     # ✅ STATUS LOGIC
+#     # -------------------------------
+#     if check_date < from_date:
+#         return False
+
+#     if not to_date:
+#         return True   # 🔥 suspended indefinitely
+
+#     if from_date <= check_date <= to_date:
+#         return True
+
+#     return False
+
+
+# =====================================================
+# 🔹 GLOBAL VALIDATION FUNCTION
+# =====================================================
+# def block_suspended_employee(doc, method=None):
+
+#     employee = getattr(doc, "employee", None)
+
+#     if not employee:
+#         return
+
+#     # ----------------------------------------
+#     # 🔥 Pick correct date field dynamically
+#     # ----------------------------------------
+#     check_date = (
+#         getattr(doc, "from_date", None)
+#         or getattr(doc, "attendance_date", None)
+#         or getattr(doc, "start_date", None)
+#         or getattr(doc, "posting_date", None)
+#         or today()
+#     )
+
+#     if is_employee_suspended(employee, check_date):
+
+#         frappe.throw(
+#             f"Employee {employee} is Suspended. Action not allowed on {check_date}."
+#         )
+
 # =====================================================
 # 🔹 CORE CHECK FUNCTION
 # =====================================================
@@ -231,10 +299,7 @@ def is_employee_suspended(employee, check_date=None):
     if not employee:
         return False
 
-    if not check_date:
-        check_date = getdate(today())
-    else:
-        check_date = getdate(check_date)
+    check_date = getdate(check_date or today())
 
     emp = frappe.db.get_value(
         "Employee",
@@ -258,10 +323,20 @@ def is_employee_suspended(employee, check_date=None):
     if not to_date:
         return True   # 🔥 suspended indefinitely
 
-    if from_date <= check_date <= to_date:
-        return True
+    return from_date <= check_date <= to_date
 
-    return False
+
+# =====================================================
+# 🔹 GET SUSPENSION DETAILS
+# =====================================================
+def get_suspension_dates(employee):
+
+    return frappe.db.get_value(
+        "Employee",
+        employee,
+        ["custom_suspended_from_date", "custom_suspended_to_date"],
+        as_dict=True
+    )
 
 
 # =====================================================
@@ -274,19 +349,56 @@ def block_suspended_employee(doc, method=None):
     if not employee:
         return
 
-    # ----------------------------------------
-    # 🔥 Pick correct date field dynamically
-    # ----------------------------------------
-    check_date = (
-        getattr(doc, "from_date", None)
-        or getattr(doc, "attendance_date", None)
-        or getattr(doc, "start_date", None)
-        or getattr(doc, "posting_date", None)
-        or today()
-    )
+    from_date = getattr(doc, "from_date", None)
+    to_date = getattr(doc, "to_date", None)
 
-    if is_employee_suspended(employee, check_date):
+    emp = get_suspension_dates(employee)
 
-        frappe.throw(
-            f"Employee {employee} is Suspended. Action not allowed on {check_date}."
+    # If no suspension → allow
+    if not emp or not emp.custom_suspended_from_date:
+        return
+
+    suspend_from = getdate(emp.custom_suspended_from_date)
+    suspend_to = emp.custom_suspended_to_date and getdate(emp.custom_suspended_to_date)
+
+    # =====================================================
+    # ✅ CASE 1: DATE RANGE (Shift Request, etc.)
+    # =====================================================
+    if from_date:
+
+        from_date = getdate(from_date)
+        to_date = getdate(to_date) if to_date else from_date
+
+        # 🔥 Check overlap (NO LOOP - OPTIMIZED)
+        overlap = False
+
+        if not suspend_to:
+            # indefinite suspension
+            overlap = to_date >= suspend_from
+        else:
+            overlap = not (to_date < suspend_from or from_date > suspend_to)
+
+        if overlap:
+            frappe.throw(
+                f"Employee {employee} is Suspended from {suspend_from} "
+                f"to {suspend_to or 'Indefinite'}. "
+                f"Shift Request cannot be created."
+            )
+
+    # =====================================================
+    # ✅ CASE 2: SINGLE DATE (Attendance, etc.)
+    # =====================================================
+    else:
+
+        check_date = (
+            getattr(doc, "attendance_date", None)
+            or getattr(doc, "start_date", None)
+            or getattr(doc, "posting_date", None)
+            or today()
         )
+
+        if is_employee_suspended(employee, check_date):
+            frappe.throw(
+                f"Employee {employee} is Suspended. "
+                f"Action not allowed."
+            )

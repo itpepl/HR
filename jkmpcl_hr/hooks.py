@@ -198,6 +198,10 @@ doc_events = {
     },
     "Holiday List Assignment": {
         "validate": "jkmpcl_hr.py.api.block_suspended_employee"
+    },
+    "Shift Request": {
+        "validate": "jkmpcl_hr.py.api.block_suspended_employee",
+        "before_submit": "jkmpcl_hr.py.api.block_suspended_employee"
     }
 
 # 	"*": {
