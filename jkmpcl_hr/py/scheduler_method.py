@@ -5902,7 +5902,7 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
 
 
 def mark_attendance(emp, att_date):
-    
+
     if has_approved_leave(emp, att_date):
                 return
     
@@ -10016,19 +10016,16 @@ def calculate_attendance_result(
 #     else:
 #         return "Holiday"
 
-    
 def get_holiday_type(employee, date):
 
-    # ============================
-    # 🔹 DOJ FILTER
-    # ============================
     doj = frappe.db.get_value("Employee", employee, "date_of_joining")
 
-    if doj and getdate(date) < getdate(doj):
-        return None
+    if doj:
+        doj = getdate(doj)
+        date = getdate(date)
 
     # ============================
-    # 🔹 HOLIDAY LIST
+    # HOLIDAY LIST
     # ============================
     holiday_list = get_current_holiday_list(employee, date)
 
@@ -10039,7 +10036,7 @@ def get_holiday_type(employee, date):
         return None
 
     # ============================
-    # 🔹 FETCH HOLIDAY
+    # FETCH HOLIDAY
     # ============================
     holiday = frappe.db.get_value(
         "Holiday",
@@ -10047,7 +10044,11 @@ def get_holiday_type(employee, date):
             "parent": holiday_list,
             "holiday_date": date
         },
-        ["weekly_off", "custom_is_restricted_holiday"],
+        [
+            "weekly_off",
+            "custom_is_restricted_holiday",
+            "custom_restricted_holiday_date"
+        ],
         as_dict=True
     )
 
@@ -10055,17 +10056,32 @@ def get_holiday_type(employee, date):
         return None
 
     # ============================
-    # 🔥 FINAL LOGIC (IMPORTANT)
+    # WEEKLY OFF
     # ============================
     if holiday.weekly_off:
         return "Weekly Off"
 
-    elif holiday.custom_is_restricted_holiday:
-        return "Holiday"   # ✅ CONVERT HERE (MAIN FIX)
+    # ============================
+    # 🔥 RESTRICTED HOLIDAY LOGIC
+    # ============================
+    if holiday.custom_is_restricted_holiday:
 
-    else:
-        return "Holiday"
+        pair_date = holiday.custom_restricted_holiday_date
 
+        if doj and pair_date:
+            pair_date = getdate(pair_date)
+
+            # ✅ CONDITION: Pair crosses DOJ
+            if (pair_date < doj <= date) or (date < doj <= pair_date):
+                return "Holiday"
+
+        # ❌ OTHERWISE KEEP RH
+        return "Restricted Holiday"
+
+    # ============================
+    # NORMAL HOLIDAY
+    # ============================
+    return "Holiday"
 # --------------------------------- Sandwich Leave Logic ---------------------------------
 
 def get_approved_leave_on_date(employee, date):
