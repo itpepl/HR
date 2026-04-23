@@ -1,5 +1,10 @@
+stages:
+  - mirror
+
 mirror_to_github:
   stage: mirror
+  only:
+    - main
   script:
     - git config --global user.name "GitLab CI"
     - git config --global user.email "ci@gitlab.com"
