@@ -9,12 +9,121 @@ from jkmpcl_hr.py.utils import get_current_holiday_list, custom_create_additiona
 
 
 
+# @frappe.whitelist()
+# def process_pl_after_payroll(dt=None):
+# # def process_pl_after_payroll(payroll_entry, method=None):
+#     # start_date = payroll_entry.start_date
+#     # end_date = payroll_entry.end_date
+#     # fiscal_year = payroll_entry.fiscal_year
+
+#     if dt:
+#         today = getdate(dt)
+#     else:
+#         today = getdate(nowdate())
+
+#     if today.month == 1:
+#         prev_month_year = today.year - 1
+#         prev_month = 12
+#     else:
+#         prev_month_year = today.year
+#         prev_month = today.month - 1
+
+#     start_date = getdate(f"{prev_month_year}-{prev_month:02d}-01")
+
+#     last_day = calendar.monthrange(prev_month_year, prev_month)[1]
+#     end_date = getdate(f"{prev_month_year}-{prev_month:02d}-{last_day}")
+
+#     if start_date.month >= 4:
+#         year_start_date = getdate(f"{start_date.year}-04-01")
+#         year_end_date = getdate(f"{start_date.year + 1}-03-31")
+#     else:
+#         year_start_date = getdate(f"{start_date.year - 1}-04-01")
+#         year_end_date = getdate(f"{start_date.year}-03-31")
+
+#     leave_type = frappe.db.get_value(
+#         "Leave Type",
+#         {"custom_leave_type": "Privilege Leave"},
+#         ("name", "custom_monthly_allocation_rate", "max_leaves_allowed", "is_carry_forward", "allow_encashment"),
+#         as_dict=True
+#     )
+
+#     if not leave_type:
+#         frappe.log_error(
+#             title=f"Privilege Leave type",
+#             message="Privilege Leave type not found. PL Accrual process aborted."
+#         )
+#         return
+    
+#     employees = get_confirmed_employees()
+
+#     if not employees:
+#         frappe.log_error(
+#             title=f"Privilege Leave type",
+#             message="No confirmed employees found. PL Accrual process aborted."
+#         )
+#         return
+
+#     for emp in employees:
+#         try:
+#             if emp.final_confirmation_date and getdate(emp.final_confirmation_date) > getdate(end_date):
+#                 frappe.log_error(
+#                     title=f"Privilege Leave type",
+#                     message=f"Employee {emp.name}: confirmation date is not set or after the payroll end date. Skipping PL accrual."
+#                 )
+#                 continue
+            
+#             effective_start = max(getdate(start_date), getdate(emp.final_confirmation_date))
+
+#             eligible_days, total_days = get_eligible_days(
+#                 emp.name, effective_start, end_date
+#             )
+
+#             if emp.name == "20111: AJAY  KUMAR":
+#                 print(f"\n\n {eligible_days}  {total_days} {pl} \n\n")
+            
+#             pl = round((eligible_days / total_days) * leave_type.custom_monthly_allocation_rate, 2)
+#             # if emp.name == "20111: AJAY  KUMAR":
+#             #     return eligible_days, total_days , pl
+
+#             attendance_exists = frappe.db.exists(
+#                 "Attendance",
+#                 {
+#                     "employee": emp.name,
+#                     "status":["in", ["Present", "On Leave", "Half Day"]],
+#                     "attendance_date": ["between", [effective_start, end_date]]
+#                 }
+#             )        
+#             if not attendance_exists:
+#                 frappe.log_error(f"Skipping PL accrual for Employee {emp.name}", f"No attendance or leave records found between {effective_start} and {end_date}")
+#                 continue
+#             else:
+#                 if pl > 0:
+#                     allocate_pl(emp.name, leave_type.name, pl, year_start_date, year_end_date, leave_type.is_carry_forward, effective_start, end_date, eligible_days, today)
+#         except Exception as e:
+#             frappe.log_error(title=f"Error processing PL accrual for Employee {emp.name}", message=str(e))
+#             continue
+#     frappe.db.commit()
+
+
+# ---- NEW Schedular with Branch Filter START ----
+
 @frappe.whitelist()
-def process_pl_after_payroll(dt=None):
-# def process_pl_after_payroll(payroll_entry, method=None):
+def process_pl_after_payroll(dt=None, branch=None):
+    # def process_pl_after_payroll(payroll_entry, method=None):
     # start_date = payroll_entry.start_date
     # end_date = payroll_entry.end_date
     # fiscal_year = payroll_entry.fiscal_year
+
+    VALID_BRANCHES = [
+        "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar",
+        "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"
+    ]
+
+    if branch:
+        branch = branch.strip().strip('"').strip("'")
+
+        if branch not in VALID_BRANCHES:
+            frappe.throw(f"Invalid branch: {branch}")
 
     if dt:
         today = getdate(dt)
@@ -54,7 +163,7 @@ def process_pl_after_payroll(dt=None):
         )
         return
     
-    employees = get_confirmed_employees()
+    employees = get_confirmed_employees(branch)
 
     if not employees:
         frappe.log_error(
@@ -104,16 +213,42 @@ def process_pl_after_payroll(dt=None):
             continue
     frappe.db.commit()
 
-def get_confirmed_employees():
+# ---- NEW Schedular with Branch Filter END ----
+
+
+
+# def get_confirmed_employees():
+#     return frappe.get_all(
+#         "Employee",
+#         filters={
+#             "status": "Active",
+#             "employment_type": "Confirmed"
+#         },
+#         fields=["name", "final_confirmation_date"],
+#         order_by="name"
+#     )
+
+
+# ----- New Function with Branch Filter START -----
+
+def get_confirmed_employees(branch=None):
+    filters = {
+        "status": "Active",
+        "employment_type": "Confirmed"
+    }
+
+    if branch:
+        filters["branch"] = branch
+
     return frappe.get_all(
         "Employee",
-        filters={
-            "status": "Active",
-            "employment_type": "Confirmed"
-        },
-        fields=["name", "final_confirmation_date"],
+        filters=filters,
+        fields=["name", "final_confirmation_date", "branch"],
         order_by="name"
     )
+
+# ----- New Function with Branch Filter END-----
+
 
 from frappe.utils import getdate, get_last_day, add_days, flt
 import frappe
@@ -242,9 +377,9 @@ def get_eligible_days(employee, start_date, end_date):
             "Holiday",
             "Restricted Holiday",
         ]:
-            if status == "On Leave" and leave_type != "Leave Without Pay":
+            if status != "On Leave":
                 eligible_days += 1
-            else:
+            elif status == "On Leave" and leave_type != "Leave Without Pay":
                 eligible_days += 1
 
         # Absent = 0 (do nothing)

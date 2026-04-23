@@ -5243,13 +5243,13 @@ def run_attendance_for_my_branch(att_date):
 #         employees = frappe.get_all(
 #             "Employee",
 #             filters={
-#                 "status": "Active",
+#                 "status": ["in", ["Active", "Suspended"]],
 #                 "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",
 #             },
 #             pluck="name",
 #         )
 #     else:
-#         filters = {"status": "Active"}
+#         filters = {"status": ["in", ["Active", "Suspended"]]}
 
 #         if branch:
 #             filters["branch"] = branch
@@ -5514,8 +5514,62 @@ def run_attendance_for_my_branch(att_date):
 
 #     frappe.db.commit()
 
-def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
 
+
+
+def update_employee_status():
+
+    today_date = getdate(today())
+
+    employees = frappe.get_all("Employee", fields=[
+        "name",
+        "status",
+        "custom_suspended_from_date",
+        "custom_suspended_to_date"
+    ])
+
+    for emp in employees:
+
+        if not emp.custom_suspended_from_date:
+            continue
+
+        from_date = getdate(emp.custom_suspended_from_date)
+        to_date = emp.custom_suspended_to_date and getdate(emp.custom_suspended_to_date)
+
+        # -------------------------------
+        # ✅ STATUS LOGIC (FINAL)
+        # -------------------------------
+        if today_date < from_date:
+            new_status = "Active"
+
+        else:
+            # 🔥 MAIN RULE
+            if not to_date:
+                new_status = "Suspended"
+
+            elif today_date <= to_date:
+                new_status = "Suspended"
+
+            else:
+                new_status = "Active"
+
+        # -------------------------------
+        # ✅ UPDATE IF CHANGED
+        # -------------------------------
+        if emp.status != new_status:
+
+            frappe.db.set_value("Employee", emp.name, "status", new_status)
+
+            # create log when becomes suspended
+            if new_status == "Suspended":
+                emp_doc = frappe.get_doc("Employee", emp.name)
+                handle_suspension_log(emp_doc)
+
+    frappe.db.commit()
+
+
+def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
+    update_employee_status()
     frappe.log_error("start_run_daily_attendance", f"Scheduler Started FOR Date: {att_date}")
 
 
@@ -5540,7 +5594,7 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
             employees = frappe.get_all(
                 "Employee",
                 filters={
-                    "status": "Active",
+                    "status": ["in", ["Active", "Suspended"]],
                     "date_of_joining":["<=", att_date],
                     "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",
                     "name": ["not in", ceo_employees]
@@ -5551,29 +5605,108 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
             employees = frappe.get_all(
                 "Employee",
                 filters={
-                    "status": "Active",
+                    "status": ["in", ["Active", "Suspended"]],
                     "date_of_joining":["<=", att_date],
                     "branch": "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu",            
                 },
                 pluck="name",
             )
     else:
-        filters = {"status": "Active", "date_of_joining":["<=", att_date]}
-        
+        filters = {
+            "status": ["in", ["Active", "Suspended"]],
+            "date_of_joining": ["<=", att_date]
+        }        
         if branch:
             filters["branch"] = branch
 
-        if ceo_employees:
-            filters["name"]=["not in", ceo_employees]
-
         employees = frappe.get_all("Employee", filters=filters, pluck="name")
 
-    # ==============================
-    # Process Each Employee
-    # ==============================
+    # =========================================================
+    # LOOP
+    # =========================================================
     for emp in employees:
         try:
+            # =====================================================
+            # 🔥 STEP 1: SUSPENSION FIRST (HIGHEST PRIORITY)
+            # =====================================================
+            suspended = frappe.db.sql("""
+                SELECT name FROM `tabSuspended Employee Log`
+                WHERE employee=%s
+                AND from_date <= %s
+                AND (to_date IS NULL OR to_date >= %s)
+                LIMIT 1
+            """, (emp, att_date, att_date), as_dict=True)
+
+            if suspended:
+
+                # 🔴 CHECK EXISTING
+                existing = frappe.db.exists("Attendance", {
+                    "employee": emp,
+                    "attendance_date": att_date,
+                    "docstatus": ["!=", 2]
+                })
+
+                if existing:
+                    att_name = existing
+
+                    # FORCE UPDATE
+                    frappe.db.set_value(
+                        "Attendance",
+                        att_name,
+                        {
+                            "status": "Suspended",
+                            "working_hours": 0,
+                            "in_time": None,
+                            "out_time": None
+                        },
+                        update_modified=False
+                    )
+
+                else:
+                    # CREATE DIRECTLY
+                    emp_details = frappe.db.get_value(
+                        "Employee",
+                        emp,
+                        ["employee_name", "department", "company", "branch"],
+                        as_dict=True
+                    )
+
+                    att = frappe.get_doc({
+                        "doctype": "Attendance",
+                        "employee": emp,
+                        "employee_name": emp_details.employee_name,
+                        "department": emp_details.department,
+                        "company": emp_details.company,
+                        "attendance_date": att_date,
+                        "status": "Suspended",
+                        "custom_branch": emp_details.branch,
+                        "custom_is_penalize": 0
+                    })
+
+                    att.insert(ignore_permissions=True)
+                    att.submit()
+
+                    att_name = att.name
+
+                # =====================================================
+                # 🔥 APPLY LEAVE (THIS CREATES LEDGER)
+                # =====================================================
+                revert_penalty_leave(att_name)
+
+                deduct_leave_by_priority(
+                    employee=emp,
+                    date=att_date,
+                    status="Suspended",
+                    attendance=att_name,
+                    force_lwp=True
+                )
+
+                # ❗ VERY IMPORTANT
+                continue
+            
+            
             mark_attendance(emp, att_date)
+            
             # if has_approved_leave(emp, att_date):
             #     continue
 
@@ -5591,12 +5724,89 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
             # off_day_approved = has_approved_off_day_work(emp, att_date)
             # is_holiday_work = False
 
-            # # ==========================================================
-            # # 24 HOURS SHIFT
-            # # ==========================================================
+                # if existing:
+                #     att_name = existing
+
+                #     # FORCE UPDATE
+                #     frappe.db.set_value(
+                #         "Attendance",
+                #         att_name,
+                #         {
+                #             "status": "Suspended",
+                #             "working_hours": 0,
+                #             "in_time": None,
+                #             "out_time": None
+                #         },
+                #         update_modified=False
+                #     )
+
+                # else:
+                #     # CREATE DIRECTLY
+                #     emp_details = frappe.db.get_value(
+                #         "Employee",
+                #         emp,
+                #         ["employee_name", "department", "company", "branch"],
+                #         as_dict=True
+                #     )
+
+                #     att = frappe.get_doc({
+                #         "doctype": "Attendance",
+                #         "employee": emp,
+                #         "employee_name": emp_details.employee_name,
+                #         "department": emp_details.department,
+                #         "company": emp_details.company,
+                #         "attendance_date": att_date,
+                #         "status": "Suspended",
+                #         "custom_branch": emp_details.branch,
+                #         "custom_is_penalize": 0
+                #     })
+
+                #     att.insert(ignore_permissions=True)
+                #     att.submit()
+
+                #     att_name = att.name
+
+                # # =====================================================
+                # # 🔥 APPLY LEAVE (THIS CREATES LEDGER)
+                # # =====================================================
+                # revert_penalty_leave(att_name)
+
+                # deduct_leave_by_priority(
+                #     employee=emp,
+                #     date=att_date,
+                #     status="Suspended",
+                #     attendance=att_name,
+                #     force_lwp=True
+                # )
+
+                # # ❗ VERY IMPORTANT
+                # continue
+
+
+            # # =====================================================
+            # # 🔽 NORMAL FLOW
+            # # =====================================================
+            # if has_approved_leave(emp, att_date):
+            #     continue
+
+            # shift_type = get_employee_shift(emp, att_date)
+
+            # if not shift_type:
+            #     continue
+
+            # shift_custom_type = frappe.db.get_value(
+            #     "Shift Type", shift_type, "custom_shift_type"
+            # )
+
+            # is_holiday = is_holiday_or_weekoff(emp, att_date)
+            # is_holiday_work = False
+
+            # # =====================================================
+            # # 24 HOURS
+            # # =====================================================
             # if shift_custom_type == "24 hours":
 
-            #     first_in, last_out, first_checkin_id, last_checkin_id, working_hours, log_count = (
+            #     first_in, last_out, first_id, last_id, working_hours, log_count = (
             #         get_24_hour_working_hours(emp, att_date, shift_type)
             #     )
 
@@ -5604,38 +5814,24 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
             #         if is_holiday:
             #             continue
 
-            #         create_or_update_attendance(
-            #             emp, att_date, None, None, 0,
-            #             None, None,
-            #             skip_shift_time_rules=True,
-            #             is_holiday_work=False,
-            #         )
+            #         create_or_update_attendance(emp, att_date, None, None, 0)
             #         continue
 
             #     if is_holiday:
             #         is_holiday_work = True
 
-            #     if log_count == 1:
-            #         create_or_update_attendance(
-            #             emp, att_date, None, None, 0,
-            #             first_checkin_id, last_checkin_id,
-            #             skip_shift_time_rules=True,
-            #             is_holiday_work=is_holiday_work,
-            #         )
-            #         continue
-
             #     create_or_update_attendance(
             #         emp, att_date,
             #         first_in, last_out, working_hours,
-            #         first_checkin_id, last_checkin_id,
+            #         first_id, last_id,
             #         skip_shift_time_rules=True,
-            #         is_holiday_work=is_holiday_work,
+            #         is_holiday_work=is_holiday_work
             #     )
             #     continue
 
-            # # ==========================================================
+            # # =====================================================
             # # NIGHT SHIFT
-            # # ==========================================================
+            # # =====================================================
             # if shift_custom_type == "Night":
 
             #     in_time, out_time, first_id, last_id, working_hours, log_count = (
@@ -5646,84 +5842,31 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
             #         if is_holiday:
             #             continue
 
-            #         create_or_update_attendance(
-            #             emp, att_date, None, None, 0,
-            #             None, None,
-            #             skip_shift_time_rules=True,
-            #             is_holiday_work=False,
-            #         )
+            #         create_or_update_attendance(emp, att_date, None, None, 0)
             #         continue
 
             #     if is_holiday:
             #         is_holiday_work = True
-
-            #     if log_count == 1:
-            #         create_or_update_attendance(
-            #             emp, att_date, None, None, 0,
-            #             first_id, last_id,
-            #             skip_shift_time_rules=True,
-            #             is_holiday_work=is_holiday_work,
-            #         )
-            #         continue
 
             #     create_or_update_attendance(
             #         emp, att_date,
             #         in_time, out_time, working_hours,
             #         first_id, last_id,
             #         skip_shift_time_rules=True,
-            #         is_holiday_work=is_holiday_work,
+            #         is_holiday_work=is_holiday_work
             #     )
             #     continue
 
-            # # ==========================================================
-            # # NORMAL SHIFT LOGIC
-            # # ==========================================================
-
-            # logs = frappe.db.sql(
-            #     """
+            # # =====================================================
+            # # NORMAL SHIFT
+            # # =====================================================
+            # logs = frappe.db.sql("""
             #     SELECT name, time
             #     FROM `tabEmployee Checkin`
             #     WHERE employee=%s
             #     AND DATE(time)=%s
             #     ORDER BY time ASC
-            #     """,
-            #     (emp, att_date),
-            #     as_dict=True,
-            # )
-
-            # # ----------------------------------------------------------
-            # # NEW LOGIC:
-            # # If previous day was Night shift,
-            # # ignore logs before previous OUT time
-            # # ----------------------------------------------------------
-            # previous_date = add_days(att_date, -1)
-            # prev_shift = get_employee_shift(emp, previous_date)
-
-            # if prev_shift:
-            #     prev_shift_type = frappe.db.get_value(
-            #         "Shift Type", prev_shift, "custom_shift_type"
-            #     )
-
-            #     if prev_shift_type == "Night":
-            #         frappe.log_error("Night Shift Previous Day", f"Employee: {emp}, Previous Date: {previous_date}, Previous Shift: {prev_shift}")
-            #         prev_att = frappe.db.get_value(
-            #             "Attendance",
-            #             {
-            #                 "employee": emp,
-            #                 "attendance_date": previous_date,
-            #                 "docstatus": 1
-            #             },
-            #             ["out_time"],
-            #             as_dict=True
-            #         )
-            #         frappe.log_error("Previous Day Attendance", f"Employee: {emp}, Previous Date: {previous_date}, Previous Attendance: {prev_att} logs {logs}")
-            #         if prev_att and prev_att.out_time:
-            #             logs = [
-            #                 log for log in logs
-            #                 if normalize_to_minute(log["time"]) > normalize_to_minute(prev_att.out_time) and normalize_to_minute(log["time"]) != normalize_to_minute(prev_att.out_time)
-            #             ]
-            #         frappe.log_error("Filtered Logs After Night Shift Check", f"Employee: {emp}, Previous Date: {previous_date}, Logs: {logs}")
-            # # ----------------------------------------------------------
+            # """, (emp, att_date), as_dict=True)
 
             # logs = filter_close_checkins(logs, threshold_minutes=2)
 
@@ -5731,78 +5874,42 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
             #     if is_holiday:
             #         continue
 
-            #     create_or_update_attendance(
-            #         emp, att_date,
-            #         None, None, 0,
-            #         None, None,
-            #         skip_shift_time_rules=False,
-            #         is_holiday_work=False,
-            #     )
+            #     create_or_update_attendance(emp, att_date, None, None, 0)
             #     continue
 
             # if is_holiday:
             #     is_holiday_work = True
 
-            # if len(logs) < 2:
-            #     create_or_update_attendance(
-            #         emp, att_date,
-            #         None, None, 0,
-            #         logs[0]["name"], logs[-1]["name"],
-            #         skip_shift_time_rules=False,
-            #         is_holiday_work=is_holiday_work,
-            #     )
-            #     continue
-
             # in_time = normalize_to_minute(logs[0]["time"])
             # out_time = normalize_to_minute(logs[-1]["time"])
 
+            # working_hours = 0
             # if in_time and out_time and out_time > in_time:
-            #     working_seconds = (out_time - in_time).total_seconds()
-            #     working_hours = working_seconds / 3600
-            # else:
-            #     working_hours = 0
-
-            # if working_hours <= 0:
-            #     create_or_update_attendance(
-            #         emp, att_date,
-            #         None, None, 0,
-            #         logs[0]["name"], logs[-1]["name"],
-            #         skip_shift_time_rules=False,
-            #         is_holiday_work=is_holiday_work,
-            #     )
-            #     continue
+            #     working_hours = (out_time - in_time).total_seconds() / 3600
 
             # create_or_update_attendance(
             #     emp, att_date,
             #     in_time, out_time, working_hours,
             #     logs[0]["name"], logs[-1]["name"],
             #     skip_shift_time_rules=False,
-            #     is_holiday_work=is_holiday_work,
+            #     is_holiday_work=is_holiday_work
             # )
 
         except Exception as e:
-            log_attendance_error(emp, att_date, "Main Scheduler Failed", e)
-    # else:
-        
-    #     if not employee_id:
-    #         frappe.throw("Please Provide Employee ID")
-    #         frappe.log_error("run_daily_attendance", "No employee id found while regularizing attendance")
-        
-    #     att_id = mark_attendance(employee_id, att_date)
-    #     return att_id
-        
+            log_attendance_error(emp, att_date, "Scheduler Failed", e)
+
     frappe.db.commit()
 
 
-
-
-
-
-
 def mark_attendance(emp, att_date):
-    
+
     if has_approved_leave(emp, att_date):
                 return
+    
+    # ------- Sandwich Rule start-----------
+    if apply_sandwich_rule(emp,att_date):
+        return
+    # ------- Sandwich Rule End-----------
 
     shift_type = get_employee_shift(emp, att_date)
 
@@ -7283,6 +7390,11 @@ def create_or_update_attendance(
                 if status == "Partially":
                     revert_penalty_leave(att_name)
                     deduct_leave_by_priority(employee, date, status, att_name, force_lwp=True)
+                
+                elif status == "Suspended":
+                    revert_penalty_leave(att_name)
+                    deduct_leave_by_priority(employee, date, status, att_name, force_lwp=True)
+                
                 elif status == "Absent" and no_checkin_found:
                     revert_penalty_leave(att_name)                    
                     deduct_leave_by_priority(employee, date, status, att_name, force_lwp=True)
@@ -8800,23 +8912,60 @@ def get_attendance(employee, date):
 # =========================================================
 
 
+# def get_holiday_details(employee, date):
+#     holiday_list = frappe.db.get_value(
+#         "Employee",
+#         employee,
+#         "holiday_list"
+#     )
+    
+#     #* FOR SAFETY
+#     correct_holiday_list = None
+    
+#     current_holiday_list = get_current_holiday_list(employee, date)
+    
+#     if current_holiday_list:
+#         correct_holiday_list = current_holiday_list
+#     else:
+#         correct_holiday_list = holiday_list
+    
+#     if not correct_holiday_list:
+#         return None
+
+#     holiday = frappe.db.get_value(
+#         "Holiday",
+#         {
+#             "parent": correct_holiday_list,
+#             "holiday_date": date
+#         },
+#         [
+#             "weekly_off",
+#             "custom_is_restricted_holiday",
+#             "custom_restricted_holiday_date"
+#         ],
+#         as_dict=True
+#     )
+
+#     if not holiday:
+#         return None
+
+#     return {
+#         "is_wo": bool(holiday.weekly_off),
+#         "is_rh": bool(holiday.custom_is_restricted_holiday),
+#         "pair_date": holiday.custom_restricted_holiday_date
+#     }
+
 def get_holiday_details(employee, date):
-    holiday_list = frappe.db.get_value(
-        "Employee",
-        employee,
-        "holiday_list"
-    )
-    
-    #* FOR SAFETY
-    correct_holiday_list = None
-    
-    current_holiday_list = get_current_holiday_list(employee, date)
-    
-    if current_holiday_list:
-        correct_holiday_list = current_holiday_list
-    else:
-        correct_holiday_list = holiday_list
-    
+
+    doj = frappe.db.get_value("Employee", employee, "date_of_joining")
+
+    if doj and getdate(date) < getdate(doj):
+        return None
+
+    holiday_list = frappe.db.get_value("Employee", employee, "holiday_list")
+
+    correct_holiday_list = get_current_holiday_list(employee, date) or holiday_list
+
     if not correct_holiday_list:
         return None
 
@@ -8839,11 +8988,9 @@ def get_holiday_details(employee, date):
 
     return {
         "is_wo": bool(holiday.weekly_off),
-        "is_rh": bool(holiday.custom_is_restricted_holiday),
+        "is_rh": False,  # ✅ treat RH as normal holiday
         "pair_date": holiday.custom_restricted_holiday_date
     }
-
-
 # =========================================================
 # RH ONLY HANDLER
 # =========================================================
@@ -8997,10 +9144,112 @@ def handle_workflow_notification(req_name):
         frappe.log_error("error_handle_workflow_notification", frappe.get_traceback())
 
 
-# * METHOD TO ALLOCATE CASUAL LEAVE AND SICK LEAVE TO CONFIRMED EMPLOYEES
-# * THIS METHOD WILL RUN EVERY FIRST DAY OF THE FINANCIAL YEAR, I.E., 1ST APRIL
+# # * METHOD TO ALLOCATE CASUAL LEAVE AND SICK LEAVE TO CONFIRMED EMPLOYEES
+# # * THIS METHOD WILL RUN EVERY FIRST DAY OF THE FINANCIAL YEAR, I.E., 1ST APRIL
+# @frappe.whitelist()
+# def allocate_leaves_to_confirmed_employee(dt=None):
+#     try:
+#         frappe.log_error("Leave Allocation Job Started", "Allocating Casual Leave And Sick Leave")
+#         if dt:
+#             today_date = getdate(dt)
+#         else:
+#             today_date = getdate()
+#         financial_year_start = getdate(f"{today_date.year}-04-01")
+#         financial_year_end = getdate(f"{today_date.year + 1}-03-31")
+        
+#         if today_date == financial_year_start:
+            
+#             is_casual_leave_type = True if frappe.db.get_value("Leave Type", "Casual Leave", ["custom_leave_type"]) == "Casual Leave" else False
+            
+#             is_sick_leave_type = True if frappe.db.get_value("Leave Type", "Sick Leave", ["custom_leave_type"]) == "Sick Leave" else False
+            
+#             confirmed_employees = frappe.get_all("Employee", {"employment_type": "Confirmed", "status": "Active"}, ["name"])
+            
+#             if is_casual_leave_type or is_sick_leave_type:
+#             # if is_casual_leave_type:
+#                 for emp in confirmed_employees:
+                    
+#                     if is_casual_leave_type and not frappe.db.exists("Leave Allocation", {"employee": emp.name, "leave_type": "Casual Leave", "from_date":["<=", financial_year_start], "to_date": [">=", financial_year_end]}):
+#                     # if is_casual_leave_type:
+#                         try:                                                                                                                            
+#                             cl_leave_allocation = frappe.get_doc({
+#                                 "doctype": "Leave Allocation",
+#                                 "employee": emp.name,
+#                                 "leave_type": "Casual Leave",
+#                                 "from_date": financial_year_start,
+#                                 "to_date": financial_year_end,
+#                                 "new_leaves_allocated": 12,
+#                                 "custom_last_allocation_date": today_date
+#                             })
+#                             cl_leave_allocation.insert(ignore_permissions=True)
+#                             cl_leave_allocation.submit()
+#                         except Exception as e:
+#                             frappe.log_error(f"error_allocate_casual_leaves_{emp.name}", frappe.get_traceback())
+                            
+                            
+                    
+#                     if is_sick_leave_type and not frappe.db.exists("Leave Allocation", {"employee": emp.name, "leave_type": "Sick Leave", "from_date":["<=", financial_year_start], "to_date": [">=", financial_year_end]}):
+#                         try:
+                            
+#                             last_year_leave_balance = get_leave_balance_on(emp.name, "Sick Leave", getdate(f"{financial_year_start.year}-03-31"))
+                            
+#                             if last_year_leave_balance > flt(28, 2):
+#                                 sl_opening_balance = flt(28,2)
+#                                 extra_sl = flt(last_year_leave_balance - flt(28,2), 2)
+#                             else:
+#                                 sl_opening_balance = last_year_leave_balance
+#                                 extra_sl = 0                                         
+#                             sl_leave_allocation = frappe.get_doc({
+#                                 "doctype": "Leave Allocation",
+#                                 "employee": emp.name,
+#                                 "leave_type": "Sick Leave",
+#                                 "from_date": financial_year_start,
+#                                 "to_date": financial_year_end,
+#                                 "new_leaves_allocated": 7,
+#                                 "custom_opening_balance": sl_opening_balance,
+#                                 "custom_last_allocation_date": today_date,
+#                                 "custom_extra_sl_carry_forwarded_to_pl": extra_sl
+#                             })
+#                             sl_leave_allocation.insert(ignore_permissions=True)
+#                             sl_leave_allocation.submit()
+                            
+#                             if extra_sl > 0:
+#                                 extra_sl_allocation = frappe.get_doc({
+#                                     "doctype": "Leave Allocation",
+#                                     "employee": emp.name,
+#                                     "leave_type": "Privilege Leave",
+#                                     "from_date": financial_year_start,
+#                                     "to_date": financial_year_end,
+#                                     "new_leaves_allocated": extra_sl,
+#                                     "carry_forward": 1,
+#                                     "custom_extra_sl_carry_forwarded_to_pl": extra_sl,
+#                                     "custom_last_allocation_date": today_date
+#                                 })
+#                                 extra_sl_allocation.insert(ignore_permissions=True)
+#                                 extra_sl_allocation.submit()
+                            
+                            
+#                         except Exception as e:
+#                             frappe.log_error(f"error_allocate_sick_leaves_{emp.name}", frappe.get_traceback())
+                            
+#                 frappe.db.commit()                                
+#             frappe.log_error("Leave Allocation Job Completed", "Completed Allocating Casual Leave and Sick Leave")
+#     except Exception as e:
+#         frappe.log_error(f"error_allocate_leaves_main", frappe.get_traceback())
+
+
+
+
+
+# ----- Confirmed EMP. LEave Accrual with Branch Filter START -----
+
 @frappe.whitelist()
-def allocate_leaves_to_confirmed_employee(dt=None):
+def allocate_leaves_to_confirmed_employee(dt=None, branch=None):
+    if branch:
+        branch = branch.strip().strip('"').strip("'")
+
+        if not frappe.db.exists("Branch", branch):
+            frappe.throw(f"Invalid branch: {branch}")
     try:
         frappe.log_error("Leave Allocation Job Started", "Allocating Casual Leave And Sick Leave")
         if dt:
@@ -9016,7 +9265,19 @@ def allocate_leaves_to_confirmed_employee(dt=None):
             
             is_sick_leave_type = True if frappe.db.get_value("Leave Type", "Sick Leave", ["custom_leave_type"]) == "Sick Leave" else False
             
-            confirmed_employees = frappe.get_all("Employee", {"employment_type": "Confirmed", "status": "Active"}, ["name"])
+            filters = {
+                "employment_type": "Confirmed",
+                "status": "Active"
+            }
+
+            if branch:
+                filters["branch"] = branch
+
+            confirmed_employees = frappe.get_all(
+                "Employee",
+                filters,
+                ["name", "branch"]
+            )
             
             if is_casual_leave_type or is_sick_leave_type:
             # if is_casual_leave_type:
@@ -9090,10 +9351,130 @@ def allocate_leaves_to_confirmed_employee(dt=None):
     except Exception as e:
         frappe.log_error(f"error_allocate_leaves_main", frappe.get_traceback())
 
-# * METHOD TO ALLOCATE CASUAL LEAVE TO PROBATION AND CONTRACTUAL EMPLOYEES
-# * THIS METHOD WILL RUN EVERY FIRST DAY OF THE MONTH
+# ----- Confirmed EMP. LEave Accrual with Branch Filter END -----
+
+
+
+
+# # * METHOD TO ALLOCATE CASUAL LEAVE TO PROBATION AND CONTRACTUAL EMPLOYEES
+# # * THIS METHOD WILL RUN EVERY FIRST DAY OF THE MONTH
+# @frappe.whitelist()
+# def allocate_cl_to_probation_and_contract_employees(dt=None):
+#     try:
+#         frappe.log_error("CL Allocation to Probation and Contractual Employees Job Started", "CL Allocation to Probation and Contractual Employees rty")
+#         if dt:
+#             today_date = getdate(dt)
+#         else:
+#             today_date = getdate()
+            
+#         month_start_date = getdate(f"{today_date.year}-{today_date.month}-01")
+        
+#         if today_date == month_start_date:
+                
+        
+#             fy_start_date = getdate(f"{today_date.year - 1}-04-01") if today_date.month < 4 else getdate(f"{today_date.year}-04-01")
+#             fy_end_date   = getdate(f"{today_date.year}-03-31") if today_date.month < 4 else getdate(f"{today_date.year + 1}-03-31")
+#             # return f_year_end_date
+            
+#             cl_leave_type = "Casual Leave"
+            
+#             is_casual_leave = True if frappe.db.get_value("Leave Type", cl_leave_type, "custom_leave_type") == "Casual Leave" else False
+            
+#             if is_casual_leave:
+            
+#                 p_and_employees = frappe.db.get_all("Employee", {"employment_type": ["in", ["Probation", "Contractual"]], "status": "Active"},["name", "employment_type", "contract_end_date", "date_of_joining"])
+                            
+#                 for emp in p_and_employees:
+#                     try:                        
+#                         if emp.employment_type == "Contractual" and emp.contract_end_date and getdate(emp.contract_end_date) > month_start_date:
+#                             to_date = min(getdate(emp.contract_end_date), fy_end_date)
+#                         else:
+#                             to_date = fy_end_date
+
+#                         # from_date = max(fy_start_date, emp.date_of_joining)
+#                         allocation_det = frappe.db.get_all("Leave Allocation", {"employee": emp.name, "leave_type": cl_leave_type, "docstatus": 1, "from_date": ["<=", today_date], "to_date": [">=", today_date]}, "name", order_by="from_date desc", limit_page_length=1)
+                        
+#                         allocation_name = allocation_det[0].name if allocation_det else None
+                        
+#                         if allocation_name:
+#                             allocation = frappe.get_doc("Leave Allocation", allocation_name)
+                        
+                            
+#                             last_cl_allocation_date = getdate(allocation.custom_last_allocation_date)
+#                             if last_cl_allocation_date and (last_cl_allocation_date >= today_date or last_cl_allocation_date.month == today_date.month):
+#                                 frappe.log_error(f"last_allocation_date: {last_cl_allocation_date}", f"Employee: {emp.name} {last_cl_allocation_date.month} {today_date.month} 123")
+#                                 continue
+                            
+#                             new_allocation = flt(allocation.total_leaves_allocated) + flt(1)
+                            
+#                             if new_allocation != allocation.total_leaves_allocated:
+#                                 allocation.db_set("total_leaves_allocated", new_allocation, update_modified=False)
+
+#                                 date = today_date or frappe.flags.current_date or getdate()
+#                                 custom_create_additional_leave_ledger_entry(allocation, 1, date, is_accrual=1)
+                            
+#                                 frappe.get_doc({
+#                                     "doctype": "Leave Accrual",
+#                                     "parent": allocation.name,
+#                                     "parenttype": "Leave Allocation",
+#                                     "parentfield": "custom_leave_accrual",
+#                                     "from_date": month_start_date,
+#                                     "to_date": to_date,
+#                                     "leave_allocated": 1,
+#                                 }).insert(ignore_permissions=True)
+
+                                
+#                                 allocation.db_set(
+#                                     "custom_last_allocation_date",
+#                                     today_date,
+#                                     update_modified=False
+#                                 )
+#                             # allocation.new_leaves_allocated += 1
+#                             # allocation.custom_last_allocation_date = today_date
+#                             # allocation.save(ignore_permissions=True)
+                        
+#                         else:
+#                             allocation = frappe.get_doc({
+#                                 "doctype": "Leave Allocation",
+#                                 "employee": emp.name,
+#                                 "leave_type": cl_leave_type,
+#                                 "from_date": month_start_date,
+#                                 "to_date": to_date,
+#                                 "new_leaves_allocated": 1,
+#                                 "custom_last_allocation_date": today_date
+#                             })
+#                             allocation.insert(ignore_permissions=True)
+#                             allocation.submit()
+#                             frappe.get_doc({
+#                                     "doctype": "Leave Accrual",
+#                                     "parent": allocation.name,
+#                                     "parenttype": "Leave Allocation",
+#                                     "parentfield": "custom_leave_accrual",
+#                                     "from_date": month_start_date,
+#                                     "to_date": to_date,
+#                                     "leave_allocated": 1,
+#                             }).insert(ignore_permissions=True)
+                            
+#                     except Exception as e:
+#                         frappe.log_error(f"error_allocate_cl_to_probation_and_contract_employees_{emp.name}", f"{frappe.get_traceback()} \n \n {month_start_date} {to_date}")
+#                         continue
+#                 frappe.db.commit()
+#             frappe.log_error("CL Allocation to Probation and Contractual Employees Job Completed", "CL Allocated to Probation and Contractual Employees")
+        
+#     except Exception as e:
+#         frappe.log_error(f"error_main_allocate_cl_to_probation_and_contract_employees", frappe.get_traceback())
+
+
+# ------ NEW METHOD for Casual Leave Allocation to Probation and Contractual Employees with Branch Filter START -----
+
 @frappe.whitelist()
-def allocate_cl_to_probation_and_contract_employees(dt=None):
+def allocate_cl_to_probation_and_contract_employees(dt=None, branch=None):
+    if branch:
+        branch = branch.strip().strip('"').strip("'")
+
+        if not frappe.db.exists("Branch", branch):
+            frappe.throw(f"Invalid branch: {branch}")
+
     try:
         frappe.log_error("CL Allocation to Probation and Contractual Employees Job Started", "CL Allocation to Probation and Contractual Employees rty")
         if dt:
@@ -9116,7 +9497,19 @@ def allocate_cl_to_probation_and_contract_employees(dt=None):
             
             if is_casual_leave:
             
-                p_and_employees = frappe.db.get_all("Employee", {"employment_type": ["in", ["Probation", "Contractual"]], "status": "Active"},["name", "employment_type", "contract_end_date", "date_of_joining"])
+                filters = {
+                    "employment_type": ["in", ["Probation", "Contractual"]],
+                    "status": "Active"
+                }
+
+                if branch:
+                    filters["branch"] = branch
+
+                p_and_employees = frappe.db.get_all(
+                    "Employee",
+                    filters,
+                    ["name", "employment_type", "contract_end_date", "date_of_joining", "branch"]
+                )
                             
                 for emp in p_and_employees:
                     try:                        
@@ -9198,10 +9591,250 @@ def allocate_cl_to_probation_and_contract_employees(dt=None):
     except Exception as e:
         frappe.log_error(f"error_main_allocate_cl_to_probation_and_contract_employees", frappe.get_traceback())
 
-# * METHOD TO ALLOCATE SICK LEAVE TO PROBATION AND CONTRACTUAL EMPLOYEES
-# * THIS METHOD WILL RUN EVERY DAY
+# ------ NEW METHOD for Casual Leave Allocation to Probation and Contractual Employees with Branch Filter END -----
+
+
+# # * METHOD TO ALLOCATE SICK LEAVE TO PROBATION AND CONTRACTUAL EMPLOYEES
+# # * THIS METHOD WILL RUN EVERY DAY
+# @frappe.whitelist()
+# def allocate_sl_to_probation_and_contract_employees(dt=None):
+#     try:
+#         if dt:
+#             today_date = getdate(dt)
+#         else:
+#             today_date = getdate()
+            
+#         # today_date = getdate()
+#         monthly_sl = flt(0.58)
+#         frappe.log_error(f"monthly {monthly_sl}", f"{monthly_sl}")
+        
+#         sl_leave_type = "Sick Leave"
+
+#         month_end_date = getdate(get_last_day(today_date))
+#         month_start_date = getdate(get_first_day(today_date))
+        
+#         if today_date.month < 4:
+#             current_fy_start = getdate(f"{today_date.year - 1}-04-01")
+#             current_fy_end   = getdate(f"{today_date.year}-03-31")
+            
+#         else:
+#             current_fy_start = getdate(f"{today_date.year}-04-01")
+#             current_fy_end   = getdate(f"{today_date.year + 1}-03-31")
+            
+        
+        
+#         if today_date != month_end_date and today_date != current_fy_start:
+#             return
+#         new_financial_year = today_date == current_fy_start
+
+#         if frappe.db.get_value("Leave Type", sl_leave_type, "custom_leave_type") != "Sick Leave":
+#             return
+
+#         employees = frappe.db.get_all(
+#             "Employee",
+#             {
+#                 "employment_type": ["in", ["Probation", "Contractual"]],
+#                 "status": "Active",
+#                 "date_of_joining": ["<=", month_end_date]
+#             },
+#             ["name", "employment_type", "date_of_joining", "contract_end_date"],
+#         )
+
+#         frappe.log_error("sl eligible employee", f"{employees}")
+#         for emp in employees:
+#             try:
+#                 joining_date = getdate(emp.date_of_joining)
+
+#                 is_new_emp = True if month_start_date <= joining_date <= month_end_date else False
+                
+#                 if emp.employment_type == "Contractual" and emp.contract_end_date:
+#                     if today_date > getdate(emp.contract_end_date):
+#                         continue
+
+#                 effective_to_date = current_fy_end
+#                 if emp.employment_type == "Contractual" and emp.contract_end_date:
+#                     effective_to_date = min(getdate(emp.contract_end_date), current_fy_end)
+
+#                 current_alloc = frappe.db.get_all(
+#                     "Leave Allocation",
+#                     {
+#                         "employee": emp.name,
+#                         "leave_type": sl_leave_type,
+#                         "docstatus": 1,
+#                         "from_date": ["<=", today_date],
+#                         "to_date": [">=", today_date],
+#                     },
+#                     ["name", "custom_last_allocation_date"],
+#                     order_by="from_date desc",
+#                     limit_page_length=1,
+#                 )
+
+#                 last_alloc_date = None
+#                 if current_alloc and current_alloc[0]:
+#                     if not current_alloc[0].custom_last_allocation_date:
+#                         last_alloc_date = getdate(add_to_date(month_start_date, days=-1))
+#                     else:
+#                         last_alloc_date = getdate(current_alloc[0].custom_last_allocation_date)
+#                 else:
+#                     last_alloc_date = joining_date if month_start_date <= joining_date <= month_end_date else month_start_date
+                
+#                 if emp.name == "20135: KARAN KUMAR":
+#                         frappe.log_error(f"last_alloc{emp.name}", f"{last_alloc_date} - {joining_date} - {month_start_date} - {month_end_date}")
+                            
+#                 already_allocated_this_month = True if last_alloc_date and last_alloc_date.year == today_date.year and last_alloc_date.month == today_date.month and last_alloc_date != current_fy_start else False
+                
+#                 if emp.name == "001100: CL Test Eleven":
+#                     frappe.log_error("Already_allocated", f"{already_allocated_this_month} - last alloc date {last_alloc_date} - today date {today_date} - current fy start {current_fy_start}")
+#                 if not new_financial_year:
+#                     if current_alloc and not already_allocated_this_month:
+                        
+#                         alloc_doc = frappe.get_doc("Leave Allocation", current_alloc[0].name)
+#                         new_allocation = flt(alloc_doc.total_leaves_allocated) + flt(monthly_sl)
+                            
+#                         if new_allocation != alloc_doc.total_leaves_allocated:
+#                                 alloc_doc.db_set("total_leaves_allocated", new_allocation, update_modified=False)
+#                                 date = today_date or frappe.flags.current_date or getdate()
+#                                 if emp.name == "001100: CL Test Eleven":
+#                                     frappe.log_error("New Allocation", f"{date} New Allocation {monthly_sl}")
+#                                 custom_create_additional_leave_ledger_entry(alloc_doc, monthly_sl, date, is_accrual=1)
+                            
+#                                 frappe.get_doc({
+#                                     "doctype": "Leave Accrual",
+#                                     "parent": alloc_doc.name,
+#                                     "parenttype": "Leave Allocation",
+#                                     "parentfield": "custom_leave_accrual",
+#                                     "from_date": date,
+#                                     "to_date": effective_to_date,
+#                                     # "eligible_days": eligible_days,
+#                                     "leave_allocated": monthly_sl,
+#                                 }).insert(ignore_permissions=True)
+
+                                
+#                                 alloc_doc.db_set(
+#                                     "custom_last_allocation_date",
+#                                     today_date,
+#                                     update_modified=False
+#                                 )
+                        
+                        
+                        
+#                         # alloc_doc.new_leaves_allocated = flt(alloc_doc.new_leaves_allocated) + monthly_sl
+#                         # alloc_doc.custom_last_allocation_date = today_date
+#                         # alloc_doc.save(ignore_permissions=True)
+#                     elif not current_alloc:
+                        
+#                         if is_new_emp:
+#                             frappe.log_error("is_new_emp", f"{emp.name} is new employee")
+#                             total_days = month_end_date.day
+                                                        
+#                             remaining_days = total_days - joining_date.day + 1
+                            
+#                             c_monthly_sl = flt((remaining_days / total_days) * monthly_sl, 2)
+                                                    
+#                         else:
+#                             c_monthly_sl = monthly_sl
+                        
+                            
+#                         new_alloc = frappe.get_doc({ 
+#                             "doctype": "Leave Allocation",
+#                             "employee": emp.name,
+#                             "leave_type": sl_leave_type,
+#                             "from_date": today_date,
+#                             "to_date": effective_to_date,
+#                             "new_leaves_allocated": c_monthly_sl,
+#                             "custom_last_allocation_date": today_date,
+                            
+#                         })
+#                         new_alloc.insert(ignore_permissions=True)
+#                         new_alloc.submit()
+                        
+#                         frappe.get_doc({
+#                                     "doctype": "Leave Accrual",
+#                                     "parent": new_alloc.name,
+#                                     "parenttype": "Leave Allocation",
+#                                     "parentfield": "custom_leave_accrual",
+#                                     "from_date": today_date,
+#                                     "to_date": effective_to_date,
+#                                     # "eligible_days": eligible_days,
+#                                     "leave_allocated": monthly_sl,
+#                                 }).insert(ignore_permissions=True)
+                        
+                        
+#                 else:
+#                     prev_fy_end = getdate(f"{today_date.year}-03-31")
+#                     last_year_balance = get_leave_balance_on(
+#                         emp.name,
+#                         sl_leave_type,
+#                         prev_fy_end,
+#                     ) or 0
+                    
+#                     # prev_fy_alloc = frappe.db.get_all(
+#                     #     "Leave Allocation",
+#                     #     {
+#                     #         "employee": emp.name,
+#                     #         "leave_type": sl_leave_type,
+#                     #         "docstatus": 1,
+#                     #         "from_date": ["<=", prev_fy_end],
+#                     #         "to_date": [">=", prev_fy_end],
+#                     #     },
+#                     #     ["custom_last_allocation_date"],
+#                     #     order_by="from_date desc",
+#                     #     limit_page_length=1,
+#                     # )
+
+#                     # if prev_fy_alloc and prev_fy_alloc[0].custom_last_allocation_date:
+#                     #     last_alloc_date = getdate(prev_fy_alloc[0].custom_last_allocation_date)
+#                     # else:
+#                     #     last_alloc_date = joining_date
+                
+#                     # if date_diff(today_date, last_alloc_date) >= allocate_after_days:
+#                     #     new_leaves = 1
+#                     # else:
+
+#                     fy_alloc = frappe.get_doc({
+#                         "doctype": "Leave Allocation",
+#                         "employee": emp.name,
+#                         "leave_type": sl_leave_type,
+#                         "from_date": current_fy_start,
+#                         "to_date": effective_to_date,
+#                         "custom_opening_balance": last_year_balance,
+#                         "new_leaves_allocated": 0,
+#                         "custom_last_allocation_date": current_fy_start,
+#                     })
+#                     fy_alloc.insert(ignore_permissions=True)
+#                     fy_alloc.submit()
+
+#             except Exception:
+#                 frappe.log_error(
+#                     f"error_allocate_sl_{emp.name}",
+#                     frappe.get_traceback(),
+#                 )
+#                 continue
+
+#         frappe.db.commit()
+#         frappe.log_error(
+#             "SL Allocation Job Completed",
+#             f"Scheduler run completed on {today_date}",
+#         )
+
+#     except Exception:
+#         frappe.log_error(
+#             "error_allocate_sl_main",
+#             frappe.get_traceback(),
+#         )
+
+
+
+
+# --- NEW METHOD for Sick Leave Allocation to Probation and Contractual Employees with Branch Filter START -----
+
 @frappe.whitelist()
-def allocate_sl_to_probation_and_contract_employees(dt=None):
+def allocate_sl_to_probation_and_contract_employees(dt=None, branch=None):
+    if branch:
+        branch = branch.strip().strip('"').strip("'")
+
+        if not frappe.db.exists("Branch", branch):
+            frappe.throw(f"Invalid branch: {branch}")
     try:
         if dt:
             today_date = getdate(dt)
@@ -9234,14 +9867,19 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
         if frappe.db.get_value("Leave Type", sl_leave_type, "custom_leave_type") != "Sick Leave":
             return
 
+        filters = {
+            "employment_type": ["in", ["Probation", "Contractual"]],
+            "status": "Active",
+            "date_of_joining": ["<=", month_end_date]
+        }
+
+        if branch:
+            filters["branch"] = branch
+
         employees = frappe.db.get_all(
             "Employee",
-            {
-                "employment_type": ["in", ["Probation", "Contractual"]],
-                "status": "Active",
-                "date_of_joining": ["<=", month_end_date]
-            },
-            ["name", "employment_type", "date_of_joining", "contract_end_date"],
+            filters,
+            ["name", "employment_type", "date_of_joining", "contract_end_date", "branch"],
         )
 
         frappe.log_error("sl eligible employee", f"{employees}")
@@ -9427,7 +10065,7 @@ def allocate_sl_to_probation_and_contract_employees(dt=None):
             frappe.get_traceback(),
         )
 
-    
+# --- NEW METHOD for Sick Leave Allocation to Probation and Contractual Employees with Branch Filter END -----
 
 
 
@@ -9839,8 +10477,47 @@ def calculate_attendance_result(
     return result
 
 
+# def get_holiday_type(employee, date):
+
+#     holiday_list = get_current_holiday_list(employee, date)
+
+#     if not holiday_list:
+#         holiday_list = frappe.db.get_value("Employee", employee, "holiday_list")
+
+#     if not holiday_list:
+#         return None
+
+#     holiday = frappe.db.get_value(
+#         "Holiday",
+#         {
+#             "parent": holiday_list,
+#             "holiday_date": date
+#         },
+#         ["weekly_off", "custom_is_restricted_holiday"],
+#         as_dict=True
+#     )
+
+#     if not holiday:
+#         return None
+
+#     if holiday.weekly_off:
+#         return "Weekly Off"
+#     elif holiday.custom_is_restricted_holiday:
+#         return "Restricted Holiday"
+#     else:
+#         return "Holiday"
+
 def get_holiday_type(employee, date):
 
+    doj = frappe.db.get_value("Employee", employee, "date_of_joining")
+
+    if doj:
+        doj = getdate(doj)
+        date = getdate(date)
+
+    # ============================
+    # HOLIDAY LIST
+    # ============================
     holiday_list = get_current_holiday_list(employee, date)
 
     if not holiday_list:
@@ -9849,22 +10526,233 @@ def get_holiday_type(employee, date):
     if not holiday_list:
         return None
 
+    # ============================
+    # FETCH HOLIDAY
+    # ============================
     holiday = frappe.db.get_value(
         "Holiday",
         {
             "parent": holiday_list,
             "holiday_date": date
         },
-        ["weekly_off", "custom_is_restricted_holiday"],
+        [
+            "weekly_off",
+            "custom_is_restricted_holiday",
+            "custom_restricted_holiday_date"
+        ],
         as_dict=True
     )
 
     if not holiday:
         return None
 
+    # ============================
+    # WEEKLY OFF
+    # ============================
     if holiday.weekly_off:
         return "Weekly Off"
-    elif holiday.custom_is_restricted_holiday:
+
+    # ============================
+    # 🔥 RESTRICTED HOLIDAY LOGIC
+    # ============================
+    if holiday.custom_is_restricted_holiday:
+
+        pair_date = holiday.custom_restricted_holiday_date
+
+        if doj and pair_date:
+            pair_date = getdate(pair_date)
+
+            # ✅ CONDITION: Pair crosses DOJ
+            if (pair_date < doj <= date) or (date < doj <= pair_date):
+                return "Holiday"
+
+        # ❌ OTHERWISE KEEP RH
         return "Restricted Holiday"
+
+    # ============================
+    # NORMAL HOLIDAY
+    # ============================
+    return "Holiday"
+# --------------------------------- Sandwich Leave Logic ---------------------------------
+
+def get_approved_leave_on_date(employee, date):
+    """
+    Returns True if employee has a fully approved non-half-day
+    leave application covering the given date.
+    """
+    return frappe.db.exists(
+        "Leave Application",
+        {
+            "employee": employee,
+            "status": "Approved",
+            "docstatus": 1,
+            "from_date": ("<=", date),
+            "to_date": (">=", date),
+            "half_day": 0
+        }
+    )
+
+
+def apply_sandwich_rule(employee, att_date):
+    """
+    Sandwich Rule:
+    If att_date is a Holiday / Weekly Off / Restricted Holiday,
+    AND the previous day AND the next day both have approved leave,
+    then att_date is also marked as 'On Leave' with LWP deducted.
+
+    Returns True if sandwich rule was applied.
+    """
+    # 1. Must be a holiday/weekoff
+    holiday_type = get_holiday_type(employee, att_date)
+    if not holiday_type:
+        return False
+
+    # 2. Both neighbours must be on approved leave
+    prev_date = add_days(att_date, -1)
+    next_date = add_days(att_date, 1)
+
+    if not get_approved_leave_on_date(employee, prev_date):
+        return False
+
+    if not get_approved_leave_on_date(employee, next_date):
+        return False
+
+    frappe.log_error(
+        "sandwich_rule_triggered",
+        f"Employee: {employee}, Date: {att_date}, Holiday: {holiday_type}"
+    )
+
+    # 3. Get shift
+    shift_type = get_employee_shift(employee, att_date)
+    if not shift_type:
+        frappe.log_error(
+            "sandwich_rule_no_shift",
+            f"Employee: {employee}, Date: {att_date} — shift not found, skipping."
+        )
+        return False
+
+    # 4. Get employee details
+    employee_details = frappe.db.get_value(
+        "Employee",
+        employee,
+        ["employee_name", "department", "company", "branch"],
+        as_dict=True
+    )
+
+    # 5. Check if attendance already exists
+    attendance_name = frappe.db.exists(
+        "Attendance",
+        {
+            "employee": employee,
+            "attendance_date": att_date,
+            "docstatus": ["!=", 2]
+        }
+    )
+
+    if attendance_name:
+        att_name = attendance_name
+        # Revert any existing penalty first (idempotent)
+        revert_penalty_leave(att_name)
+        frappe.db.set_value(
+            "Attendance",
+            att_name,
+            {
+                "shift": shift_type,
+                "status": "On Leave",
+                "in_time": None,
+                "out_time": None,
+                "working_hours": 0,
+                "late_entry": 0,
+                "early_exit": 0,
+                "custom_branch": employee_details.branch,
+            },
+            update_modified=False
+        )
     else:
-        return "Holiday"
+        att_name = frappe.generate_hash(length=12)
+        frappe.db.sql("""
+            INSERT INTO `tabAttendance`
+            (name, employee, employee_name, department, company,
+             attendance_date, shift, in_time, out_time,
+             working_hours, status, late_entry, early_exit, custom_branch,
+             docstatus, creation, modified, owner, modified_by)
+            VALUES (%s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,%s,
+                    %s,%s,%s,%s,
+                    1, NOW(), NOW(), %s, %s)
+        """, (
+            att_name,
+            employee,
+            employee_details.employee_name,
+            employee_details.department,
+            employee_details.company,
+            att_date,
+            shift_type,
+            None, None, 0,
+            "On Leave",
+            0, 0,
+            employee_details.branch,
+            frappe.session.user,
+            frappe.session.user,
+        ))
+        frappe.db.commit()
+
+    # 6. Always deduct LWP for sandwiched day
+    deduct_leave_by_priority(
+        employee=employee,
+        date=att_date,
+        status="Absent",   # full day = 1 day deduction
+        attendance=att_name,
+        force_lwp=True     # sandwiched holiday always = LWP
+    )
+
+    frappe.log_error(
+        "sandwich_rule_applied",
+        f"Employee: {employee}, Date: {att_date}, Att: {att_name}"
+    )
+    return True
+
+
+def on_leave_application_approved(doc, method):
+    """
+    Fired on Leave Application on_submit / on_update_after_submit.
+    Retroactively applies sandwich rule if this new leave
+    completes a sandwich around an already-processed holiday.
+    """
+    if doc.status != "Approved":
+        return
+
+    if doc.half_day:
+        return  # Half day leaves cannot create a sandwich
+
+    # The two candidate dates that could now be sandwiched:
+    # 1. The day just BEFORE this leave starts
+    #    (holiday sitting between an older leave and this new one)
+    # 2. The day just AFTER this leave ends
+    #    (holiday sitting between this new leave and an older one)
+    candidates = [
+        add_days(getdate(doc.from_date), -1),
+        add_days(getdate(doc.to_date), 1)
+    ]
+
+    for candidate_date in candidates:
+        try:
+            holiday_type = get_holiday_type(doc.employee, candidate_date)
+            if not holiday_type:
+                continue  # Not a holiday, skip
+
+            sandwiched = apply_sandwich_rule(doc.employee, candidate_date)
+
+            if sandwiched:
+                frappe.log_error(
+                    "sandwich_rule_retro_applied",
+                    f"Employee: {doc.employee}, "
+                    f"Sandwiched date: {candidate_date}, "
+                    f"Triggered by Leave: {doc.name}"
+                )
+
+        except Exception:
+            frappe.log_error(
+                f"sandwich_retro_error_{doc.employee}_{candidate_date}",
+                frappe.get_traceback()
+            )

@@ -492,29 +492,6 @@ def custom_get_holidays(employee, from_date, to_date, holiday_list=None):
 
             if pair_doc:
                 pair_holiday_map[p_date] = pair_doc
-        
-        
-        # pair_holiday_list = frappe.db.get_value(
-        #     "Holiday List Assignment",
-        #     {
-        #         "employee": employee,
-        #         "from_date": ["<=", ],
-        #         "docstatus": 1,
-        #     },
-        #     "holiday_list",
-        # )
-        
-        
-        
-        
-        # pair_holidays = frappe.db.get_all(
-        #     "Holiday",
-        #     filters={"parent": holiday_list, "holiday_date": ["in", pair_dates]},
-        #     fields=["holiday_date", "weekly_off"],
-        # )
-
-        
-        # pair_holiday_map = {p.get("holiday_date"): p for p in pair_holidays}
 
     for hd in holiday_records:
 
@@ -549,12 +526,13 @@ def custom_get_holidays(employee, from_date, to_date, holiday_list=None):
             {
                 "employee": employee,
                 "attendance_date": pair_date,
-                "status": "Present"
+                "status": ["in", ["Present", "Half Day", "On Leave", "Weekly Off"]],
             },
+            
+            'status'
         ):
             
             valid_holidays.append(holiday_date)
-    
     return len(valid_holidays)
 # @frappe.whitelist()
 # def custom_get_holidays(employee, from_date, to_date, holiday_list=None):
