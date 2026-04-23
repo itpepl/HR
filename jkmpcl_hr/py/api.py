@@ -377,12 +377,10 @@ def block_suspended_employee(doc, method=None):
             overlap = to_date >= suspend_from
         else:
             overlap = not (to_date < suspend_from or from_date > suspend_to)
-
         if overlap:
             frappe.throw(
                 f"Employee {employee} is Suspended from {suspend_from} "
                 f"to {suspend_to or 'Indefinite'}. "
-                f"Shift Request cannot be created."
             )
 
     # =====================================================
