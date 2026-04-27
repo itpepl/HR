@@ -148,7 +148,8 @@ override_doctype_class = {
     "Leave Allocation": "jkmpcl_hr.overrides.leave_allocation.CustomLeaveAllocation",
     "Attendance": "jkmpcl_hr.overrides.attendance.Attendance",
     "Salary Slip": "jkmpcl_hr.overrides.salary_slip_override.CustomSalarySlip",
-    "Leave Application": "jkmpcl_hr.overrides.leave_application_override.CustomLeaveApplication"
+    "Leave Application": "jkmpcl_hr.overrides.leave_application_override.CustomLeaveApplication",
+    "Shift Assignment": "jkmpcl_hr.overrides.shift_assignment_override.CustomShiftAssignment"
 }
 
 # Document Events
@@ -218,7 +219,8 @@ scheduler_events = {
     "cron":{
         "0 0 1 4 *": [
             "jkmpcl_hr.py.scheduler_method.create_shift_assignments",
-            "jkmpcl_hr.py.scheduler_method.allocate_leaves_to_confirmed_employee"
+            "jkmpcl_hr.py.scheduler_method.allocate_leaves_to_confirmed_employee",
+            "jkmpcl_hr.py.pl_accrual.carry_forward_pl_new_fy"
         ],
          "0 9 * * *": [
             "jkmpcl_hr.py.scheduler_method.run_daily_attendance"
