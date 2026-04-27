@@ -643,3 +643,146 @@ def allocate_pl(employee, leave_type, pl_days, year_start_date, year_end_date, i
 #             encash.encashment_amount = 500
 #             encash.insert(ignore_permissions=True)
 #             encash.submit()
+
+
+
+
+
+
+
+
+
+# ------- PL Carryforward Logic (24-04-2026) -------
+
+# import frappe
+# from frappe.utils import getdate
+# from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
+
+
+@frappe.whitelist()
+def carry_forward_pl_new_fy(dt=None, branch=None):
+    """
+    Scheduled from hooks on every 1-Apr.
+    Supports manual execution with dt for testing.
+    """
+
+    # -------------------------------
+    # Branch Validation
+    # -------------------------------
+    if branch:
+        branch = branch.strip().strip('"').strip("'")
+        if not frappe.db.exists("Branch", branch):
+            frappe.throw(f"Invalid branch: {branch}")
+
+    try:
+        today_date = getdate(dt) if dt else getdate()
+
+        current_fy_start = getdate(f"{today_date.year}-04-01")
+        current_fy_end   = getdate(f"{today_date.year+1}-03-31")
+        prev_fy_end      = getdate(f"{today_date.year}-03-31")
+
+        # -------------------------------
+        # Privilege Leave Type
+        # -------------------------------
+        leave_type = frappe.db.get_value(
+            "Leave Type",
+            {"custom_leave_type": "Privilege Leave"},
+            ["name", "is_carry_forward", "custom_maximum_leave_balance"],
+            as_dict=True
+        )
+
+        if not leave_type:
+            frappe.log_error("PL Carry Forward", "Privilege Leave type not found")
+            return
+
+        if not leave_type.is_carry_forward:
+            frappe.log_error("PL Carry Forward", "Carry forward is disabled for Privilege Leave")
+            return
+
+        # -------------------------------
+        # Fetch Employees
+        # -------------------------------
+        employees = get_confirmed_employees(branch)
+
+        frappe.log_error("PL Carry Forward Employees", str(employees))
+
+        if not employees:
+            frappe.log_error("PL Carry Forward", f"No employees found for branch: {branch}")
+            return
+
+        # -------------------------------
+        # Process Employees
+        # -------------------------------
+        for emp in employees:
+            try:
+                # ✅ Calculate FIRST, before it's referenced anywhere
+                last_year_balance = flt(
+                    get_leave_balance_on(emp.name, leave_type.name, prev_fy_end) or 0
+                )
+
+                existing_alloc = frappe.db.exists(
+                    "Leave Allocation",
+                    {
+                        "employee": emp.name,
+                        "leave_type": leave_type.name,
+                        "from_date": current_fy_start,
+                        "to_date": current_fy_end,
+                        "docstatus": 1
+                    }
+                )
+
+                if existing_alloc:
+                    # ✅ Now last_year_balance is available here
+                    alloc = frappe.get_doc("Leave Allocation", existing_alloc)
+                    current_opening = flt(alloc.custom_opening_balance or 0)
+
+                    if current_opening == 0 and last_year_balance > 0:
+                        alloc.db_set(
+                            "custom_opening_balance",
+                            last_year_balance,
+                            update_modified=False
+                        )
+                        frappe.log_error(
+                            "PL Carry Forward Updated",
+                            f"{emp.name} updated opening balance to {last_year_balance}"
+                        )
+                    continue
+
+                # Skip if no balance to carry
+                if last_year_balance <= 0:
+                    continue
+
+                # -------------------------------
+                # Create New Leave Allocation
+                # -------------------------------
+                fy_alloc = frappe.get_doc({
+                    "doctype": "Leave Allocation",
+                    "employee": emp.name,
+                    "leave_type": leave_type.name,
+                    "from_date": current_fy_start,
+                    "to_date": current_fy_end,
+                    "custom_opening_balance": last_year_balance,
+                    "new_leaves_allocated": 0,
+                    "custom_last_allocation_date": current_fy_start
+                })
+
+                fy_alloc.insert(ignore_permissions=True)
+                fy_alloc.submit()
+
+                frappe.log_error(
+                    "PL Carry Forward Success",
+                    f"{emp.name} carried {last_year_balance}"
+                )
+
+            except Exception:
+                frappe.log_error(
+                    f"PL Carry Forward Employee Error {emp.name}",
+                    frappe.get_traceback()
+                )
+                continue
+
+        frappe.db.commit()
+        frappe.log_error("PL Carry Forward Completed", f"Completed on {today_date}")
+
+    except Exception:
+        frappe.log_error("PL Carry Forward Main Error", frappe.get_traceback())

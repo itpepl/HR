@@ -5515,6 +5515,64 @@ def run_attendance_for_my_branch(att_date):
 #     frappe.db.commit()
 
 
+# =====================================================
+# HANDLE SUSPENSION LOG
+# =====================================================
+def handle_suspension_log(doc):
+
+    if not doc.custom_suspended_from_date:
+        return
+
+    from_date = doc.custom_suspended_from_date
+    to_date = doc.custom_suspended_to_date
+    remark = doc.custom_suspended_remark
+
+    # ---------------- CHILD TABLE ----------------
+    existing_row = None
+
+    for row in doc.custom_employee_suspension_history:
+        if str(row.from_date) == str(from_date):
+            existing_row = row
+            break
+
+    if existing_row:
+        if to_date:
+            existing_row.to_date = to_date
+            existing_row.remark = remark
+    else:
+        doc.append("custom_employee_suspension_history", {
+            "from_date": from_date,
+            "to_date": to_date,
+            "remark": remark
+        })
+
+    # ---------------- DB LOG ----------------
+    existing_log = frappe.db.get_value(
+        "Suspended Employee Log",
+        {
+            "employee": doc.name,
+            "from_date": from_date
+        },
+        ["name", "to_date"],
+        as_dict=True
+    )
+
+    if existing_log:
+
+        if not existing_log.to_date and to_date:
+            frappe.db.set_value(
+                "Suspended Employee Log",
+                existing_log.name,
+                "to_date",
+                to_date
+            )
+
+    #     elif existing_log.to_date:
+    #         create_new_log(doc)
+
+    # else:
+    #     create_new_log(doc)
+
 
 
 def update_employee_status():
