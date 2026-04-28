@@ -9393,7 +9393,8 @@ def allocate_leaves_to_confirmed_employee(dt=None, branch=None):
                                     "from_date": financial_year_start,
                                     "to_date": financial_year_end,
                                     "new_leaves_allocated": extra_sl,
-                                    "carry_forward": 1,
+                                    # "carry_forward": 1,
+                                    "carry_forward": 0, # PL cary forward Bug resolution
                                     "custom_extra_sl_carry_forwarded_to_pl": extra_sl,
                                     "custom_last_allocation_date": today_date
                                 })
