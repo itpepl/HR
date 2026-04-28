@@ -695,9 +695,9 @@ def carry_forward_pl_new_fy(dt=None, branch=None):
             frappe.log_error("PL Carry Forward", "Privilege Leave type not found")
             return
 
-        if not leave_type.is_carry_forward:
-            frappe.log_error("PL Carry Forward", "Carry forward is disabled for Privilege Leave")
-            return
+        # if not leave_type.is_carry_forward:
+        #     frappe.log_error("PL Carry Forward", "Carry forward is disabled for Privilege Leave")
+        #     return
 
         # -------------------------------
         # Fetch Employees
@@ -731,20 +731,62 @@ def carry_forward_pl_new_fy(dt=None, branch=None):
                     }
                 )
 
+                # if existing_alloc:
+                #     # ✅ Now last_year_balance is available here
+                #     alloc = frappe.get_doc("Leave Allocation", existing_alloc)
+                #     current_opening = flt(alloc.custom_opening_balance or 0)
+
+                #     if current_opening == 0 and last_year_balance > 0:
+                #         alloc.db_set(
+                #             "custom_opening_balance",
+                #             last_year_balance,
+                #             update_modified=False
+                #         )
+                #         frappe.log_error(
+                #             "PL Carry Forward Updated",
+                #             f"{emp.name} updated opening balance to {last_year_balance}"
+                #         )
+                #     continue
+
                 if existing_alloc:
-                    # ✅ Now last_year_balance is available here
                     alloc = frappe.get_doc("Leave Allocation", existing_alloc)
                     current_opening = flt(alloc.custom_opening_balance or 0)
 
                     if current_opening == 0 and last_year_balance > 0:
-                        alloc.db_set(
-                            "custom_opening_balance",
-                            last_year_balance,
-                            update_modified=False
-                        )
+                        # current total is just extra_sl (set by SL scheduler)
+                        current_total = flt(alloc.total_leaves_allocated or 0)
+                        new_total = current_total + last_year_balance
+
+                        # Step 1: Update the allocation fields directly
+                        alloc.db_set({
+                            "custom_opening_balance": last_year_balance,
+                            "total_leaves_allocated": new_total,
+                        }, update_modified=False)
+
+                        # Step 2: Insert a new ledger entry for the difference (last_year_balance)
+                        # so that get_leave_balance_on returns correct value
+                        ledger_entry = frappe.get_doc({
+                            "doctype": "Leave Ledger Entry",
+                            "employee": emp.name,
+                            "leave_type": leave_type.name,
+                            "transaction_type": "Leave Allocation",
+                            "transaction_name": alloc.name,
+                            "from_date": current_fy_start,
+                            "to_date": current_fy_end,
+                            "leaves": last_year_balance,        # positive = credited
+                            "is_carry_forward": 1,              # it IS carry forward
+                            "is_expired": 0,
+                            "is_lwp": 0,
+                            "holiday_list": frappe.db.get_value(
+                                "Employee", emp.name, "holiday_list"
+                            ) or "",
+                        })
+                        ledger_entry.insert(ignore_permissions=True)
+                        ledger_entry.submit()
+
                         frappe.log_error(
                             "PL Carry Forward Updated",
-                            f"{emp.name} updated opening balance to {last_year_balance}"
+                            f"{emp.name} | opening balance: {last_year_balance} | new total: {new_total} | ledger entry created"
                         )
                     continue
 
