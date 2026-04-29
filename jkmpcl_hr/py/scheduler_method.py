@@ -8463,29 +8463,30 @@ def deduct_leave_by_priority(employee, date, status, attendance, force_lwp = Fal
 
             return 
 
-    lwp_type = frappe.db.get_value(
-        "Leave Type", {"is_lwp": 1}, "name"
-    )
-
-    if lwp_type:
-        att.db_set({
-            "custom_penalty_leave_type": lwp_type,
-            "custom_penalty_leave_count": -remaining_days,
-            "custom_is_penalize": 1
-        })
-
-        create_leave_ledger(
-            employee=employee,
-            leave_type=lwp_type,
-            date=date,
-            status=status,
-            attendance=attendance,
-            leave_days=remaining_days,
-            is_lwp=1
+    if att.status not in ["Weekly Off", "Holiday", "Restricted Holiday"]:
+        lwp_type = frappe.db.get_value(
+            "Leave Type", {"is_lwp": 1}, "name"
         )
-    else:
-        frappe.log_error("error_deduct_leave_by_priority", f"NO lWP LEAVE TYPE FOUND")
-    return
+
+        if lwp_type:
+            att.db_set({
+                "custom_penalty_leave_type": lwp_type,
+                "custom_penalty_leave_count": -remaining_days,
+                "custom_is_penalize": 1
+            })
+
+            create_leave_ledger(
+                employee=employee,
+                leave_type=lwp_type,
+                date=date,
+                status=status,
+                attendance=attendance,
+                leave_days=remaining_days,
+                is_lwp=1
+            )
+        else:
+            frappe.log_error("error_deduct_leave_by_priority", f"NO lWP LEAVE TYPE FOUND")
+        return
 
 def get_leave_allocation(employee, leave_type, date):
     allocation = frappe.db.sql("""
@@ -10644,6 +10645,7 @@ def get_approved_leave_on_date(employee, date):
         {
             "employee": employee,
             "status": "Approved",
+            "leave_type": "Leave Without Pay",
             "docstatus": 1,
             "from_date": ("<=", date),
             "to_date": (">=", date),
