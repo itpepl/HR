@@ -1732,9 +1732,19 @@ def calculate_attendance_metrics(employee, filters, employee_attendance, rh_map,
                 _add_penalty(metrics, penalty_type, penalty_days)
             continue
 
-        # ── On Leave (full day) ───────────────────────────────────────
+        # # ── On Leave (full day) ───────────────────────────────────────
+        # if raw_status == "On Leave":
+        #     _add_leave(metrics, leave_type, 1)
+        #     continue
+				
+
+		# ── On Leave (full day) ───────────────────────────────────────────
         if raw_status == "On Leave":
-            _add_leave(metrics, leave_type, 1)
+            if is_penalize:
+                # Sandwich rule: leave day penalized → goes to penalty bucket, not leave
+                _add_penalty(metrics, penalty_type, penalty_days)
+            else:
+                _add_leave(metrics, leave_type, 1)
             continue
 
         # ── Absent (full day) ─────────────────────────────────────────
