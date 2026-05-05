@@ -10626,6 +10626,28 @@ def get_holiday_type(employee, date):
             if (pair_date < doj <= date) or (date < doj <= pair_date):
                 return "Holiday"
 
+        if pair_date:
+            pair_date_obj = getdate(pair_date)
+
+            # Only apply this rule when the pair date is BEFORE current date
+            # (i.e., the first RH already passed and employee was absent on it)
+            if pair_date_obj < date:
+                pair_att_status = frappe.db.get_value(
+                    "Attendance",
+                    {
+                        "employee": employee,
+                        "attendance_date": pair_date_obj,
+                        "docstatus": ["!=", 2]
+                    },
+                    "status"
+                )
+
+                # If the paired RH attendance exists and was "Restricted Holiday"
+                # (meaning employee was absent on that first RH),
+                # then this second RH should become a plain Absent
+                if pair_att_status == "Restricted Holiday":
+                    return None  # None → caller treats as non-holiday → Absent + LWP
+
         # ❌ OTHERWISE KEEP RH
         return "Restricted Holiday"
 
