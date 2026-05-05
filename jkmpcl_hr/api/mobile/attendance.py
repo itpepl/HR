@@ -1,8 +1,31 @@
 import frappe
-from frappe.utils import getdate, nowdate
+from frappe.utils import getdate, nowdate,formatdate
 from datetime import timedelta  
 from datetime import datetime, date as sys_date
 import frappe,uuid, os, mimetypes, calendar, re
+
+
+def check_attendance_lock(date):
+    lock_name = frappe.db.get_value(
+        "Attendance Lock",
+        {
+            "from_date": ["<=", date],
+            "to_date": [">=", date],
+        },
+        "name",
+        order_by="creation desc"
+    )
+
+    if lock_name:
+        month = frappe.db.get_value("Attendance Lock", lock_name, "month")
+
+        if not month:
+            month = formatdate(date, "MMMM yyyy")
+
+        return month
+
+    return None
+
 
 @frappe.whitelist()
 def get_attendance(
@@ -61,7 +84,15 @@ def get_attendance(
             "shift",
             "half_day_status"
         ]
+        # 🔒 Attendance Lock Check
+        lock_month = check_attendance_lock(start_date)
 
+        if lock_month:
+            return {
+                "success": False,
+                "message": f"Attendance is locked for {lock_month}",
+                "data": None
+            }
         # ✅ Total records (without limit)
         total_records = frappe.db.count(
             "Attendance",
@@ -576,7 +607,16 @@ def get_attendance_calendar(employeeId, date):
                 day_data["status"] = "A"
 
             month_data.append(day_data)
+            # 🔒 Attendance Lock Check
+            lock_month = check_attendance_lock(specific_date)
 
+            if lock_month:
+                return {
+                    "success": False,
+                    "message": f"Attendance is locked for {lock_month}",
+                    "attendance": []
+                }
+                
         return {
             "success": True,
             "month": f"{current_year}-{current_month:02d}",

@@ -6,12 +6,29 @@ from frappe import _
 from frappe.model.document import Document, getdate
 from jkmpcl_hr.py.utils import send_notification_email, get_current_holiday_list
 from frappe.model.workflow import apply_workflow
+from frappe.utils import add_days, date_diff,formatdate
+from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
 
 
 class OffDayWorkRequest(Document):
     def validate(self):
         self.validate_working_day()
         self.validate_duplicate_request()
+        if self.date:
+            lock_name = AttendanceLock.is_attendance_locked(self.date)
+
+            if lock_name:
+                # ✅ Permission-safe fetch
+                month = frappe.db.get_value("Attendance Lock", lock_name, "month")
+
+                # ✅ fallback if month is empty
+                if not month:
+                    month = formatdate(self.date, "MMMM yyyy")
+
+                frappe.throw(
+                    f"Attendance is locked for {month}. Cannot apply Off Day Request.",
+                    title="Attendance Lock"
+                )
 
     def after_insert(self):
         approver = frappe.db.get_list(

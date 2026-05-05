@@ -114,6 +114,29 @@ def create_manual_punch(data):
                 "message": "Employee, Date, Request Type and Remarks are required"
             }
 
+        # ✅ define from_date & to_date BEFORE using
+        from_date = date
+        to_date = date
+
+        # -----------------------------
+        # 🔒 Attendance Lock Check
+        # -----------------------------
+        lock = frappe.db.get_value(
+            "Attendance Lock",
+            {
+                "from_date": ["<=", to_date],
+                "to_date": [">=", from_date],
+                "docstatus": ["in", [0, 1]]
+            },
+            ["name", "month"],
+            as_dict=True
+        )
+
+        if lock:
+            from frappe.utils import formatdate
+            month = lock.month or formatdate(from_date, "MMMM yyyy")
+            frappe.throw(f"Attendance is locked for {month}", title="Attendance Lock")
+
         # -----------------------------
         # WARNING LOGIC
         # -----------------------------

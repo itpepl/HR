@@ -610,7 +610,7 @@ def create(**args):
         import uuid
         import shutil
         import re
-        from frappe.utils import getdate, today
+        from frappe.utils import getdate, today, formatdate
 
         mandatory_fields = {
             "employee": "Employee",
@@ -627,11 +627,42 @@ def create(**args):
 
         employee = args.get("employee")
 
+        # -----------------------------
+        # DATE CONVERSION
+        # -----------------------------
+        from_date = getdate(args.get("from_date"))
+        to_date = getdate(args.get("to_date"))
+
+        args["from_date"] = from_date
+        args["to_date"] = to_date
+        args["posting_date"] = getdate(args.get("posting_date"))
+
+        # -----------------------------
+        # 🔒 ATTENDANCE LOCK CHECK (INLINE)
+        # -----------------------------
+        lock = frappe.db.get_value(
+            "Attendance Lock",
+            {
+                "from_date": ["<=", to_date],
+                "to_date": [">=", from_date],
+                "docstatus": ["in", [0, 1]]   # Ignore cancelled
+            },
+            ["name", "month"],
+            as_dict=True
+        )
+
+        if lock:
+            month = lock.month or formatdate(from_date, "MMMM yyyy")
+            frappe.throw(f"Attendance is locked for {month}", title="Attendance Lock")
+
+        # -----------------------------
+        # APPROVER LOGIC
+        # -----------------------------
         if not args.get("leave_approver"):
 
             leave_approver = get_emp_reporting_manager(
                 employee,
-                args.get("from_date") or today(),
+                from_date or today(),
             )
 
             if not leave_approver:
@@ -650,70 +681,41 @@ def create(**args):
             args["leave_approver"] = leave_approver
             args["leave_approver_name"] = leave_approver_name
 
-        args["from_date"] = getdate(args.get("from_date"))
-        args["to_date"] = getdate(args.get("to_date"))
-        args["posting_date"] = getdate(args.get("posting_date"))
-
+        # -----------------------------
+        # OPTIONAL FIELDS
+        # -----------------------------
         if args.get("custom_off_day_date"):
-            args["custom_off_day_date"] = getdate(
-                args.get("custom_off_day_date")
-            )
+            args["custom_off_day_date"] = getdate(args.get("custom_off_day_date"))
 
         if args.get("half_day") in ("1", "true", "True"):
-
             if not args.get("half_day_date"):
                 frappe.throw("Half Day Date is required")
-
-            args["half_day_date"] = getdate(
-                args.get("half_day_date")
-            )
-
+            args["half_day_date"] = getdate(args.get("half_day_date"))
 
         if args.get("custom_maternity_leave_type"):
-            args["custom_maternity_leave_type"] = str(
-                args.get("custom_maternity_leave_type")
-            )
+            args["custom_maternity_leave_type"] = str(args.get("custom_maternity_leave_type"))
 
         if args.get("custom_no_of_surviving_children"):
-            args["custom_no_of_surviving_children"] = int(
-                args.get("custom_no_of_surviving_children")
-            )
+            args["custom_no_of_surviving_children"] = int(args.get("custom_no_of_surviving_children"))
 
         if args.get("custom_adopting_child_age"):
-            args["custom_adopting_child_age"] = float(
-                args.get("custom_adopting_child_age")
-            )
+            args["custom_adopting_child_age"] = float(args.get("custom_adopting_child_age"))
 
         if args.get("custom_email_cc"):
-            args["custom_email_cc"] = frappe.parse_json(
-                args.get("custom_email_cc")
-            )
+            args["custom_email_cc"] = frappe.parse_json(args.get("custom_email_cc"))
 
-        leave_details = frappe.get_doc(
-            "Leave Type",
-            args.get("leave_type"),
-        )
-
-        from_date = args.get("from_date")
-        to_date = args.get("to_date")
-
-        ml_type = args.get("custom_maternity_leave_type")
-        children = args.get("custom_no_of_surviving_children")
-        adopting_age = args.get("custom_adopting_child_age")
-
+        # -----------------------------
+        # LEAVE VALIDATION (UNCHANGED)
+        # -----------------------------
+        leave_details = frappe.get_doc("Leave Type", args.get("leave_type"))
 
         if leave_details.is_compensatory:
-
             if from_date != to_date:
                 return {
                     "success": False,
-                    "message": (
-                        "For Compensatory Off, "
-                        "From Date and To Date must be the same."
-                    ),
+                    "message": "For Compensatory Off, From Date and To Date must be the same.",
                     "data": None,
                 }
-
 
         if leave_details.custom_leave_type in [
             "Maternity Leave",
@@ -721,67 +723,53 @@ def create(**args):
             "Special Maternity Leave",
         ]:
 
+            children = args.get("custom_no_of_surviving_children")
+            adopting_age = args.get("custom_adopting_child_age")
+
             if int(children or 0) > 2:
                 return {
                     "success": False,
-                    "message": (
-                        f"You are not eligible for "
-                        f"{leave_details.custom_leave_type}. "
-                        "Please choose another Leave Type."
-                    ),
+                    "message": f"You are not eligible for {leave_details.custom_leave_type}. Please choose another Leave Type.",
                     "data": None,
                 }
 
             if (
-                leave_details.custom_leave_type
-                == "Child Adoption Leave"
+                leave_details.custom_leave_type == "Child Adoption Leave"
                 and not (adopting_age and float(adopting_age) <= 1)
             ):
                 return {
                     "success": False,
-                    "message": (
-                        f"You are not eligible for "
-                        f"{leave_details.custom_leave_type}. "
-                        "Please choose another Leave Type."
-                    ),
+                    "message": f"You are not eligible for {leave_details.custom_leave_type}. Please choose another Leave Type.",
                     "data": None,
                 }
 
-        leave_doc = frappe.get_doc(
-            {
-                "doctype": "Leave Application",
-                **args,
-            }
-        )
+        # -----------------------------
+        # CREATE DOCUMENT
+        # -----------------------------
+        leave_doc = frappe.get_doc({
+            "doctype": "Leave Application",
+            **args,
+        })
 
         leave_doc.insert(ignore_permissions=True)
+
+        # -----------------------------
+        # FILE UPLOAD (UNCHANGED)
+        # -----------------------------
         temp_files = []
         uploaded_files = frappe.request.files.getlist("file")
 
         if uploaded_files:
-
-            temp_dir = frappe.get_site_path(
-                "private",
-                "leave_temp",
-            )
-
+            temp_dir = frappe.get_site_path("private", "leave_temp")
             os.makedirs(temp_dir, exist_ok=True)
 
             for f in uploaded_files:
-
                 ext = os.path.splitext(f.filename)[1]
                 temp_name = f"{uuid.uuid4().hex}{ext}"
-
-                temp_path = os.path.join(
-                    temp_dir,
-                    temp_name,
-                )
+                temp_path = os.path.join(temp_dir, temp_name)
 
                 with open(temp_path, "wb") as tmp:
-                    shutil.copyfileobj(
-                        f.stream,
-                        tmp,
-                    )
+                    shutil.copyfileobj(f.stream, tmp)
 
                 temp_files.append(temp_path)
 
@@ -795,9 +783,7 @@ def create(**args):
         return {
             "success": True,
             "message": "Leave Application Created",
-            "data": {
-                "leave_application": leave_doc.name,
-            },
+            "data": {"leave_application": leave_doc.name},
         }
 
     except Exception as e:
@@ -805,20 +791,13 @@ def create(**args):
 
         error_message = None
 
-        # If frappe.throw was used
         if frappe.local.message_log:
             log = frappe.local.message_log[0]
+            error_message = log.get("message") if isinstance(log, dict) else str(log)
 
-            if isinstance(log, dict):
-                error_message = log.get("message")
-            else:
-                error_message = str(log)
-
-        # Fallback to exception message
         if not error_message:
             error_message = str(e)
 
-        # Ensure it's string before strip_html
         error_message = strip_html(str(error_message))
 
         frappe.log_error(

@@ -2,12 +2,13 @@ import frappe
 import  calendar
 from frappe import _
 from math import floor
-from frappe.utils import getdate, add_years, date_diff, add_days, flt, cint
+from frappe.utils import getdate, add_years, date_diff, add_days, flt, cint,formatdate
 from jkmpcl_hr.overrides.attendance_request import revert_penalty_leave
 from jkmpcl_hr.py.utils import send_notification_email, get_emp_hr_manager, get_ceo_user, get_emp_review_manager
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on, get_leave_allocation_records, get_leaves_for_period, get_leave_approver, get_leaves_pending_approval_for_period
 from frappe.query_builder.functions import Sum
 from jkmpcl_hr.overrides.leave_application_override import custom_get_leave_balance_on
+from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
 
 def validate(doc, method):
     leave_details = get_leave_type(doc.leave_type)
@@ -34,7 +35,34 @@ def validate(doc, method):
         
         if leave_details.custom_leave_type == "Child Adoption Leave" and not doc.custom_adopting_child_age <= 1:
             frappe.throw(_(f"You are not eligible for {leave_details.custom_leave_type}. Please Choose another Leave Type."))
+            
 
+    # 🔒 Attendance Lock Validation
+    for i in range(date_diff(doc.to_date, doc.from_date) + 1):
+        d = add_days(doc.from_date, i)
+
+        lock_name = AttendanceLock.is_attendance_locked(d)
+
+        if lock_name:
+            # ✅ Fetch only required field (no permission issue)
+            month = frappe.db.get_value("Attendance Lock", lock_name, "month")
+
+            # fallback if empty
+            if not month:
+                from frappe.utils import formatdate
+                month = formatdate(d, "MMMM yyyy")
+
+            # ✅ Scheduler safe
+            if frappe.flags.in_scheduler or frappe.flags.in_background:
+                frappe.logger().info(
+                    f"Skipped Leave due to Attendance Lock: {month}"
+                )
+                continue
+
+            frappe.throw(
+                f"Attendance is locked for {month}. Cannot apply leave.",
+                title="Attendance Lock"
+            )
 
 def on_update(doc, method):
     handle_workflow_notification(doc)
