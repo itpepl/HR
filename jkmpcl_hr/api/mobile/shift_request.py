@@ -190,8 +190,9 @@ def create_shift_request(data):
         to_date = data.get("to_date")
         remarks = data.get("remarks")
         approver = data.get("approver")
-        status = data.get("status")  # Approved / Rejected / None
-        name = data.get("name")  # Required if updating existing request
+        status = data.get("status")
+        name = data.get("name")
+
         if not employee:
             return {
                 "success": False,
@@ -199,6 +200,28 @@ def create_shift_request(data):
                 "data": None
             }
 
+        # -----------------------------
+        # 🔒 Attendance Lock Check (ADDED)
+        # -----------------------------
+        lock = frappe.db.get_value(
+            "Attendance Lock",
+            {
+                "from_date": ["<=", to_date],
+                "to_date": [">=", from_date],
+                "docstatus": ["in", [0, 1]]
+            },
+            ["name", "month"],
+            as_dict=True
+        )
+
+        if lock:
+            from frappe.utils import formatdate
+            month = lock.month or formatdate(from_date, "MMMM yyyy")
+            frappe.throw(f"Attendance is locked for {month}", title="Attendance Lock")
+
+        # -----------------------------
+        # UPDATE FLOW
+        # -----------------------------
         if status and name:
 
             shift_request = frappe.get_doc("Shift Request", name)
@@ -215,6 +238,7 @@ def create_shift_request(data):
 
             shift_request.flags.skip_approver_validation = True
             shift_request.save(ignore_permissions=True)
+
             if shift_request.docstatus == 0:
                 shift_request.submit()
 
@@ -227,7 +251,12 @@ def create_shift_request(data):
                     "docstatus": shift_request.docstatus
                 }
             }
+
+        # -----------------------------
+        # CREATE FLOW
+        # -----------------------------
         else:
+
             if not shift_type or not from_date or not to_date:
                 return {
                     "success": False,
