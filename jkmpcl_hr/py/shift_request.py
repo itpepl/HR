@@ -1,5 +1,6 @@
 import frappe
-from frappe.utils import getdate, today
+from frappe.utils import getdate, today, add_days, date_diff,formatdate
+from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
 
 def get_required_shift_hours(dt, branch, is_female):
     dt = getdate(dt)
@@ -29,6 +30,37 @@ def validate(doc, event):
     
     validate_shift_hours(doc)
 
+
+    # 🔒 Attendance Lock Validation
+
+    if not doc.from_date:
+        return
+
+    from_date = getdate(doc.from_date)
+
+    # ✅ If to_date not set → use from_date
+    to_date = getdate(doc.to_date) if doc.to_date else from_date
+
+    # 🔥 ensure at least one iteration
+    total_days = date_diff(to_date, from_date) + 1
+
+    for i in range(total_days):
+        d = add_days(from_date, i)
+
+        lock_name = AttendanceLock.is_attendance_locked(d)
+
+        if lock_name:
+            # ✅ Permission-safe month fetch
+            month = frappe.db.get_value("Attendance Lock", lock_name, "month")
+
+            # ✅ fallback if month not set
+            if not month:
+                month = formatdate(d, "MMMM yyyy")
+
+            frappe.throw(
+                f"Attendance is locked for {month}. Cannot assign Shift.",
+                title="Attendance Lock"
+            )
 
 def on_submit(doc, event):
     

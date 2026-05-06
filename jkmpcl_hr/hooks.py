@@ -160,10 +160,10 @@ doc_events = {
     "Department": {
         "on_update": "jkmpcl_hr.py.department.on_update"
     },
-    "Shift Request": {
-        "validate": "jkmpcl_hr.py.shift_request.validate",
-        "on_submit": "jkmpcl_hr.py.shift_request.on_submit"
-    },
+    # "Shift Request": {
+    #     "validate": "jkmpcl_hr.py.shift_request.validate",
+    #     "on_submit": "jkmpcl_hr.py.shift_request.on_submit"
+    # },
     "Employee": {
         "after_insert": "jkmpcl_hr.py.employee.after_insert",
         "on_update": "jkmpcl_hr.py.employee.on_update",
@@ -201,7 +201,11 @@ doc_events = {
         "validate": "jkmpcl_hr.py.api.block_suspended_employee"
     },
     "Shift Request": {
-        "validate": "jkmpcl_hr.py.api.block_suspended_employee",
+        "validate": [
+            "jkmpcl_hr.py.shift_request.validate",
+            "jkmpcl_hr.py.api.block_suspended_employee"
+        ],
+        "on_submit": "jkmpcl_hr.py.shift_request.on_submit",
         "before_submit": "jkmpcl_hr.py.api.block_suspended_employee"
     }
 
@@ -229,13 +233,13 @@ scheduler_events = {
             "jkmpcl_hr.py.scheduler_method.process_comp_off_scheduler"
         ],
         "0 2 5 * *": [
+            "jkmpcl_hr.py.scheduler_method.allocate_sl_to_probation_and_contract_employees",
             "jkmpcl_hr.py.pl_accrual.process_pl_after_payroll"
         ],
         "0 0 1 * *": [
             "jkmpcl_hr.py.scheduler_method.allocate_cl_to_probation_and_contract_employees"
         ],
         "0 0 * * *":[
-            "jkmpcl_hr.py.scheduler_method.allocate_sl_to_probation_and_contract_employees",
             "jkmpcl_hr.py.scheduler_method.set_approvers_in_employee"
         ]
         

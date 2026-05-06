@@ -302,6 +302,10 @@ def custom_create_or_update_attendance(self, attendance_name, date):
         "Special Maternity Leave",
         "Child Adoption Leave",
         "Medical Emergency Leave",
+        "Casual Leave",
+        "Sick Leave",
+        "Privilege Leave",
+        "Compensatory Off"
     ]
 
     leave_type_name = frappe.db.get_value("Leave Type", self.leave_type, "custom_leave_type")

@@ -9014,6 +9014,49 @@ def get_attendance(employee, date):
 #         "pair_date": holiday.custom_restricted_holiday_date
 #     }
 
+# def get_holiday_details(employee, date):
+
+#     doj = frappe.db.get_value("Employee", employee, "date_of_joining")
+
+#     if doj and getdate(date) < getdate(doj):
+#         return None
+
+#     holiday_list = frappe.db.get_value("Employee", employee, "holiday_list")
+
+#     correct_holiday_list = get_current_holiday_list(employee, date) or holiday_list
+
+#     if not correct_holiday_list:
+#         return None
+
+#     holiday = frappe.db.get_value(
+#         "Holiday",
+#         {
+#             "parent": correct_holiday_list,
+#             "holiday_date": date
+#         },
+#         [
+#             "weekly_off",
+#             "custom_is_restricted_holiday",
+#             "custom_restricted_holiday_date"
+#         ],
+#         as_dict=True
+#     )
+
+#     if not holiday:
+#         return None
+
+#     return {
+#         "is_wo": bool(holiday.weekly_off),
+#         "is_rh": False,  # ✅ treat RH as normal holiday
+#         "pair_date": holiday.custom_restricted_holiday_date
+#     }
+
+
+
+
+
+# ---- get_holiday_details with RH treated as normal holiday (no pairing) START ----
+
 def get_holiday_details(employee, date):
 
     doj = frappe.db.get_value("Employee", employee, "date_of_joining")
@@ -9022,7 +9065,6 @@ def get_holiday_details(employee, date):
         return None
 
     holiday_list = frappe.db.get_value("Employee", employee, "holiday_list")
-
     correct_holiday_list = get_current_holiday_list(employee, date) or holiday_list
 
     if not correct_holiday_list:
@@ -9045,15 +9087,88 @@ def get_holiday_details(employee, date):
     if not holiday:
         return None
 
+    # Determine is_rh with DOJ edge case handled
+    is_rh = bool(holiday.custom_is_restricted_holiday)
+    pair_date = holiday.custom_restricted_holiday_date
+
+    if is_rh and pair_date and doj:
+        doj_date = getdate(doj)
+        pair_date_obj = getdate(pair_date)
+        current_date_obj = getdate(date)
+
+        # Employee joined between the two RH dates → treat as normal Holiday
+        # Case 1: pair is earlier, employee joined after pair but before/on current date
+        # Case 2: pair is later, employee joined after current date but before/on pair date
+        if (pair_date_obj < doj_date <= current_date_obj) or (current_date_obj < doj_date <= pair_date_obj):
+            is_rh = False
+
     return {
         "is_wo": bool(holiday.weekly_off),
-        "is_rh": False,  # ✅ treat RH as normal holiday
-        "pair_date": holiday.custom_restricted_holiday_date
+        "is_rh": is_rh,
+        "pair_date": pair_date
     }
+
+# ---- get_holiday_details with RH treated as normal holiday (no pairing) END ----
+
+
+
+
+
 # =========================================================
 # RH ONLY HANDLER
 # =========================================================
 
+
+# def handle_rh_only(req, attendance, holiday):
+
+#     pair_date = holiday.get("pair_date")
+#     if not pair_date:
+#         return
+
+#     pair_holiday = get_holiday_details(req["employee"], pair_date)
+
+#     # RH + WO (past or future) → immediate
+#     if pair_holiday and pair_holiday["is_wo"]:
+#         allocation = create_comp_off(req["employee"], req["date"])
+
+#         # Update Request
+#         frappe.db.set_value(
+#             "Off-Day Work Request",
+#             req["name"],
+#             {
+#                 "attendance": attendance,
+#                 "leave_allocation": allocation.get("name"),
+#                 "comp_off_created": 1
+#             }
+#         )
+#         handle_workflow_notification(req["name"])
+#         return
+
+#     # Pair is future RH-only → skip
+#     if pair_date > req["date"]:
+#         return
+
+#     # Pair is past RH-only → both must be present
+#     pair_attendance = get_attendance(req["employee"], pair_date)
+#     if pair_attendance:
+#         allocation = create_comp_off(req["employee"], req["date"])
+
+#         # Update Request
+#         frappe.db.set_value(
+#             "Off-Day Work Request",
+#             req["name"],
+#             {
+#                 "attendance": attendance,
+#                 "leave_allocation": allocation.get("name"),
+#                 "comp_off_created": 1
+#             }
+#         )
+#         handle_workflow_notification(req["name"])
+
+
+
+
+# ------ RH ONLY HANDLER with RH treated as normal holiday (no pairing) START ------
 
 def handle_rh_only(req, attendance, holiday):
 
@@ -9063,11 +9178,9 @@ def handle_rh_only(req, attendance, holiday):
 
     pair_holiday = get_holiday_details(req["employee"], pair_date)
 
-    # RH + WO (past or future) → immediate
+    # RH + WO (past or future) → immediate comp-off
     if pair_holiday and pair_holiday["is_wo"]:
         allocation = create_comp_off(req["employee"], req["date"])
-
-        # Update Request
         frappe.db.set_value(
             "Off-Day Work Request",
             req["name"],
@@ -9080,26 +9193,36 @@ def handle_rh_only(req, attendance, holiday):
         handle_workflow_notification(req["name"])
         return
 
-    # Pair is future RH-only → skip
+    # Pair is future RH-only → skip, will be re-evaluated when that date is processed
     if pair_date > req["date"]:
         return
 
-    # Pair is past RH-only → both must be present
+    # Pair is past RH-only → employee MUST have been Present on that day too
     pair_attendance = get_attendance(req["employee"], pair_date)
-    if pair_attendance:
-        allocation = create_comp_off(req["employee"], req["date"])
-
-        # Update Request
-        frappe.db.set_value(
-            "Off-Day Work Request",
-            req["name"],
-            {
-                "attendance": attendance,
-                "leave_allocation": allocation.get("name"),
-                "comp_off_created": 1
-            }
+    if not pair_attendance:
+        # Employee was absent/on Restricted Holiday on the paired RH date → no comp-off
+        frappe.log_error(
+            "handle_rh_only_skipped",
+            f"No 'Present' attendance on paired RH date {pair_date} "
+            f"for {req['employee']}. Skipping comp-off for {req['date']}."
         )
-        handle_workflow_notification(req["name"])
+        return
+
+    # Both RH dates have Present attendance → grant comp-off
+    allocation = create_comp_off(req["employee"], req["date"])
+    frappe.db.set_value(
+        "Off-Day Work Request",
+        req["name"],
+        {
+            "attendance": attendance,
+            "leave_allocation": allocation.get("name"),
+            "comp_off_created": 1
+        }
+    )
+    handle_workflow_notification(req["name"])
+
+# ------ RH ONLY HANDLER with RH treated as normal holiday (no pairing) END ------
+
 
 
 # =========================================================
@@ -10625,6 +10748,28 @@ def get_holiday_type(employee, date):
             # ✅ CONDITION: Pair crosses DOJ
             if (pair_date < doj <= date) or (date < doj <= pair_date):
                 return "Holiday"
+
+        if pair_date:
+            pair_date_obj = getdate(pair_date)
+
+            # Only apply this rule when the pair date is BEFORE current date
+            # (i.e., the first RH already passed and employee was absent on it)
+            if pair_date_obj < date:
+                pair_att_status = frappe.db.get_value(
+                    "Attendance",
+                    {
+                        "employee": employee,
+                        "attendance_date": pair_date_obj,
+                        "docstatus": ["!=", 2]
+                    },
+                    "status"
+                )
+
+                # If the paired RH attendance exists and was "Restricted Holiday"
+                # (meaning employee was absent on that first RH),
+                # then this second RH should become a plain Absent
+                if pair_att_status == "Restricted Holiday":
+                    return None  # None → caller treats as non-holiday → Absent + LWP
 
         # ❌ OTHERWISE KEEP RH
         return "Restricted Holiday"

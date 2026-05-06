@@ -1,6 +1,6 @@
 import frappe
 from frappe import _, cint
-from frappe.utils import getdate, get_link_to_form, nowdate, get_datetime, add_days  # ✅ NEW IMPORT
+from frappe.utils import getdate, get_link_to_form, nowdate, get_datetime, add_days, date_diff, formatdate # ✅ NEW IMPORT
 from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequest as HRMSAttendanceRequest, OverlappingAttendanceRequestError
 from datetime import datetime, date,timedelta, time
 from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority ,get_employee_leave_type, create_leave_ledger
@@ -8,7 +8,7 @@ from jkmpcl_hr.py.utils import send_notification_email
 from erpnext.setup.doctype.employee.employee import is_holiday
 from jkmpcl_hr.py.scheduler_method import get_employee_shift,create_or_update_attendance, get_holiday_type
 from jkmpcl_hr.py.utils import get_emp_hr_manager, get_ceo_user, get_current_holiday_list  # ✅ NEW IMPORT
-
+from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
 
 def _get_holiday_type_for_date(employee: str, date) -> str | None:
     """
@@ -52,6 +52,26 @@ class AttendanceRequest(HRMSAttendanceRequest):
 
         self.set_waiver_note() # Set note on validate so that it shows up in workflow emails before submission
 
+        from_date = getdate(self.from_date)
+        to_date = getdate(self.to_date)
+
+        for i in range(date_diff(to_date, from_date) + 1):
+            d = add_days(from_date, i)
+
+            lock_name = AttendanceLock.is_attendance_locked(d)
+
+            if lock_name:
+                # ✅ Get month safely (no permission issue)
+                month = frappe.db.get_value("Attendance Lock", lock_name, "month")
+
+                # ✅ fallback if month not set
+                if not month:
+                    month = formatdate(d, "MMMM yyyy")
+
+                frappe.throw(
+                    f"Attendance is locked for {month}. Cannot create Attendance Request.",
+                    title="Attendance Lock"
+                )
     def on_update(self):
         self.set_waiver_note()   # ✅ FIRST
         self.handle_workflow_notification()
