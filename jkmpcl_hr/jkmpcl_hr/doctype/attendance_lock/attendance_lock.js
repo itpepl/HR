@@ -1,6 +1,6 @@
 frappe.ui.form.on("Attendance Lock", {
 
-    setup(frm) {
+    refresh(frm) {
 
         // =========================================
         // YEAR OPTIONS
@@ -13,26 +13,20 @@ frappe.ui.form.on("Attendance Lock", {
             current_year - 2
         ];
 
-        // =========================================
-        // SET YEAR OPTIONS
-        // =========================================
         frm.set_df_property(
             "year",
             "options",
             years.join("\n")
         );
-    },
-
-    refresh(frm) {
 
         // =========================================
-        // AUTO SET CURRENT YEAR
+        // ONLY FOR NEW DOC
         // =========================================
-        if (!frm.doc.year) {
-            frm.set_value(
-                "year",
-                new Date().getFullYear()
-            );
+        if (frm.is_new() && !frm.doc.year) {
+
+            frm.doc.year = current_year;
+
+            frm.refresh_field("year");
         }
     },
 
@@ -83,9 +77,6 @@ function set_month_dates(frm) {
         // =========================================
         let last_date = new Date(year, month + 1, 0);
 
-        // =========================================
-        // FORMAT DATE
-        // =========================================
         let from_date = frappe.datetime.obj_to_str(first_date);
         let to_date = frappe.datetime.obj_to_str(last_date);
 
