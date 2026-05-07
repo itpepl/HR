@@ -2,7 +2,8 @@ import frappe
 from frappe.utils import getdate
 from frappe.utils import now, add_to_date
 from frappe.utils import strip_html
-from frappe.utils import cint
+from frappe.utils import cint, getdate
+
 
 # from jkmpcl_hr.py.api import determine_shift_types
 # @frappe.whitelist()
@@ -217,7 +218,10 @@ def create_shift_request(data):
         if lock:
             from frappe.utils import formatdate
             month = lock.month or formatdate(from_date, "MMMM yyyy")
-            frappe.throw(f"Attendance is locked for {month}", title="Attendance Lock")
+            frappe.throw(
+                f"Attendance is locked for {month}. Shift Request cannot be created.",
+                title="Attendance Locked"
+            )
 
         # -----------------------------
         # UPDATE FLOW
@@ -287,19 +291,24 @@ def create_shift_request(data):
                 }
             }
 
-    except Exception as e:
-        error_message = f"Error in Shift Request API: {str(e)}"
-        frappe.log_error(error_message, "Shift Request API Error")
-
+    except frappe.ValidationError as e:
+        frappe.clear_messages()
         return {
             "success": False,
-            "message": error_message,
+            "message": str(e),
             "data": None
         }
-        
-        
-import frappe
-from frappe.utils import getdate
+    except Exception as e:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Shift Request API Error"
+        )
+        return {
+            "success": False,
+            "message": "Unable to process Shift Request. Please contact Administrator.",
+            "data": None
+        }
+
 
 
 # @frappe.whitelist()
