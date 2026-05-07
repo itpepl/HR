@@ -7,11 +7,11 @@
  "engine": "InnoDB",
  "field_order": [
   "company",
+  "month",
+  "year",
   "from_date",
   "to_date",
-  "month",
   "column_break_k3l6",
-  "year",
   "status",
   "branch",
   "section_break_35k4",
@@ -41,13 +41,15 @@
    "fieldname": "from_date",
    "fieldtype": "Date",
    "in_list_view": 1,
-   "label": "From Date"
+   "label": "From Date",
+   "read_only": 1
   },
   {
    "fieldname": "to_date",
    "fieldtype": "Date",
    "in_list_view": 1,
-   "label": "To Date"
+   "label": "To Date",
+   "read_only": 1
   },
   {
    "fieldname": "month",
@@ -59,7 +61,7 @@
   },
   {
    "fieldname": "year",
-   "fieldtype": "Int",
+   "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Year"
@@ -99,7 +101,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-04 15:35:35.206648",
+ "modified": "2026-05-07 11:16:23.007407",
  "modified_by": "Administrator",
  "module": "JKMPCL HR",
  "name": "Attendance Lock",
@@ -123,7 +125,6 @@
   {
    "cancel": 1,
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -137,7 +138,6 @@
   {
    "cancel": 1,
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -151,7 +151,6 @@
   {
    "cancel": 1,
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -167,5 +166,8 @@
  "rows_threshold_for_grid_search": 20,
  "sort_field": "creation",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1,
+ "track_seen": 1,
+ "track_views": 1
 }
