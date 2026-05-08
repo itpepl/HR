@@ -161,10 +161,15 @@ class AttendanceLock(Document):
         # SET VALUES
         # =================================================
         for row in self.attendance_lock_details:
+                
+            if not row.locked_on:
+                row.locked_on = now_datetime()
 
-            row.locked_on = now_datetime()
-            row.locked_by = frappe.session.user
-            row.user_name = full_name
+            if not row.locked_by:
+                row.locked_by = frappe.session.user
+
+            if not row.user_name:
+                row.user_name = full_name
         # =================================================
         # OVERLAP VALIDATION
         # =================================================
