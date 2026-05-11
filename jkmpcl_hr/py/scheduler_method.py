@@ -5959,8 +5959,100 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
     frappe.db.commit()
 
 
-def mark_attendance(emp, att_date):
+# =====================================================
+# CHECK APPROVED TRAVEL REQUEST
+# =====================================================
+def has_approved_travel_request(employee, att_date):
 
+    travel_exists = frappe.db.sql("""
+        SELECT tr.name
+        FROM `tabTravel Request` tr
+        INNER JOIN `tabTravel Itinerary` ti
+            ON ti.parent = tr.name
+        WHERE tr.employee = %s
+        AND tr.docstatus = 1
+        AND DATE(%s) BETWEEN DATE(ti.departure_date)
+        AND DATE(ti.arrival_date)
+        LIMIT 1
+    """, (employee, att_date), as_dict=True)
+
+    return bool(travel_exists)
+
+def mark_attendance(emp, att_date):
+    # =====================================================
+    # TRAVEL REQUEST LOGIC
+    # =====================================================
+    if has_approved_travel_request(emp, att_date):
+
+        existing_attendance = frappe.db.exists(
+            "Attendance",
+            {
+                "employee": emp,
+                "attendance_date": att_date,
+                "docstatus": ["=", 1]
+            }
+        )
+
+        employee_details = frappe.db.get_value(
+            "Employee",
+            emp,
+            ["employee_name", "department", "company", "branch"],
+            as_dict=True
+        )
+
+        shift_type = get_employee_shift(emp, att_date)
+
+        if existing_attendance:
+
+            frappe.db.set_value(
+                "Attendance",
+                existing_attendance,
+                {
+                    "status": "Present",
+                    "working_hours": 0,
+                    "in_time": None,
+                    "out_time": None,
+                    "shift": shift_type,
+                    "employee_name": employee_details.employee_name,
+                    "department": employee_details.department,
+                    "company": employee_details.company,
+                    "custom_branch": employee_details.branch,
+                    "custom_is_penalize": 0
+                },
+                update_modified=False
+            )
+
+            revert_penalty_leave(existing_attendance)
+
+            return existing_attendance
+
+        else:
+
+            att = frappe.get_doc({
+                "doctype": "Attendance",
+                "employee": emp,
+                "employee_name": employee_details.employee_name,
+                "department": employee_details.department,
+                "company": employee_details.company,
+                "attendance_date": att_date,
+                "status": "Present",
+                "working_hours": 0,
+                "shift": shift_type,
+                "custom_branch": employee_details.branch,
+                "custom_is_penalize": 0
+            })
+
+            att.insert(ignore_permissions=True)
+            att.submit()
+
+            revert_penalty_leave(att.name)
+
+            return att.name
+    
+    # Travel Request
+    if has_approved_travel_request(emp, att_date):
+        return
+    
     if has_approved_leave(emp, att_date):
                 return
     
@@ -6030,7 +6122,7 @@ def mark_attendance(emp, att_date):
     #     if log_count == 1:
     #         create_or_update_attendance(
     #             emp, att_date, None, None, 0,
-    #             first_checkin_id, last_checkin_id,
+    #             fNow in your mark_attendance() function add this:irst_checkin_id, last_checkin_id,
     #             skip_shift_time_rules=True,
     #             is_holiday_work=is_holiday_work,
     #         )
