@@ -373,6 +373,264 @@ def decimal_hours_to_hhmm(hours):
 
 # ------- UPDATED MOBILE API CODE FOR ATTENDANCE CALANDER VIEW START (29-04-2026)-------
 
+# @frappe.whitelist()
+# def get_attendance_calendar(employeeId, date):
+#     try:
+#         import calendar
+#         from datetime import datetime, date as sys_date
+
+#         # -----------------------------
+#         # VALIDATION
+#         # -----------------------------
+#         if not employeeId or not date:
+#             frappe.throw("Employee ID and Date are required")
+
+#         specific_date = datetime.strptime(date, "%Y-%m-%d").date()
+#         current_month = specific_date.month
+#         current_year = specific_date.year
+#         total_days = calendar.monthrange(current_year, current_month)[1]
+
+#         start_date = f"{current_year}-{current_month:02d}-01"
+#         end_date = f"{current_year}-{current_month:02d}-{total_days}"
+
+#         # -----------------------------
+#         # FETCH ATTENDANCE DATA
+#         # -----------------------------
+#         attendance_data = frappe.get_all(
+#             "Attendance",
+#             filters={
+#                 "employee": employeeId,
+#                 "attendance_date": ["between", [start_date, end_date]]
+#             },
+#             fields=[
+#                 "attendance_date",
+#                 "status",
+#                 "in_time",
+#                 "out_time",
+#                 "working_hours",
+#                 "leave_type",
+#                 "half_day_status",
+#                 "shift",
+#                 "leave_application"
+#             ]
+#         )
+
+#         attendance_map = {
+#             str(row.attendance_date): row
+#             for row in attendance_data
+#         }
+
+#         leave_map = {
+#             "Medical Emergency Leave": "MEL",
+#             "Special Maternity Leave": "SML",
+#             "Maternity Leave": "ML",
+#             "Leave Without Pay": "LWP",
+#             "Privilege Leave": "PL",
+#             "Sick Leave": "SL",
+#             "Compensatory Off": "CO",
+#             "Casual Leave": "CL",
+#         }
+
+#         # -----------------------------
+#         # FETCH EMPLOYEE (for fallback holiday list)
+#         # -----------------------------
+#         employee = frappe.get_doc("Employee", employeeId)
+#         default_holiday_list = employee.holiday_list  # fallback
+
+#         # -----------------------------
+#         # FETCH ALL HOLIDAY LIST ASSIGNMENTS for this employee
+#         # that are active on or before end_date, sorted desc
+#         # so we can pick the right one per date
+#         # -----------------------------
+#         all_assignments = frappe.db.get_all(
+#             "Holiday List Assignment",
+#             filters={
+#                 "assigned_to": employeeId,
+#                 "from_date": ["<=", end_date],
+#                 "docstatus": 1
+#             },
+#             fields=["holiday_list", "from_date"],
+#             order_by="from_date desc"
+#         )
+
+#         # -----------------------------
+#         # HELPER: Get holiday list name for a given date
+#         # Picks the assignment with the latest from_date <= given_date
+#         # Falls back to employee's default holiday list
+#         # -----------------------------
+#         def get_holiday_list_for_date(check_date):
+#             for assignment in all_assignments:
+#                 if getdate(assignment.from_date) <= check_date:
+#                     return assignment.holiday_list
+#             return default_holiday_list
+
+#         # -----------------------------
+#         # CACHE: Load holiday list docs to avoid repeated DB calls
+#         # -----------------------------
+#         holiday_list_cache = {}
+
+#         def get_holiday_map_and_rh(holiday_list_name):
+#             """
+#             Returns (holiday_map, rh_pair_map) for a given holiday list name.
+#             Cached to avoid redundant frappe.get_doc calls.
+#             """
+#             if holiday_list_name in holiday_list_cache:
+#                 return holiday_list_cache[holiday_list_name]
+
+#             holiday_map = {}
+#             rh_pair_map = {}
+
+#             if not holiday_list_name:
+#                 holiday_list_cache[holiday_list_name] = (holiday_map, rh_pair_map)
+#                 return holiday_map, rh_pair_map
+
+#             holiday_doc = frappe.get_doc("Holiday List", holiday_list_name)
+#             restricted_rows = {}
+
+#             for h in holiday_doc.holidays:
+#                 holiday_date_str = str(h.holiday_date)
+#                 holiday_map[holiday_date_str] = {
+#                     "weekly_off": h.weekly_off,
+#                     "description": h.description,
+#                     "is_half_day": h.is_half_day,
+#                     "restricted_holiday": getattr(h, "custom_is_restricted_holiday", 0)
+#                 }
+
+#                 if (
+#                     getattr(h, "custom_is_restricted_holiday", 0)
+#                     and getattr(h, "custom_restricted_holiday_date", None)
+#                 ):
+#                     restricted_rows[getdate(h.holiday_date)] = getdate(
+#                         h.custom_restricted_holiday_date
+#                     )
+
+#             # Build RH pair map
+#             visited = set()
+#             pair_counter = 1
+#             for holiday_date, pair_date in restricted_rows.items():
+#                 if holiday_date in visited:
+#                     continue
+#                 pair_label = f"RH{pair_counter}"
+#                 rh_pair_map[str(holiday_date)] = pair_label
+#                 rh_pair_map[str(pair_date)] = pair_label
+#                 visited.add(holiday_date)
+#                 visited.add(pair_date)
+#                 pair_counter += 1
+
+#             holiday_list_cache[holiday_list_name] = (holiday_map, rh_pair_map)
+#             return holiday_map, rh_pair_map
+
+#         # -----------------------------
+#         # LOOP THROUGH MONTH DAYS
+#         # -----------------------------
+#         today = sys_date.today()
+#         month_data = []
+
+#         for d in range(1, total_days + 1):
+#             date_obj = sys_date(current_year, current_month, d)
+#             date_str = str(date_obj)
+
+#             day_data = {
+#                 "date": date_str,
+#                 "status": "",
+#                 "in_time": None,
+#                 "out_time": None,
+#                 "working_hours": 0,
+#                 "other_half_status": None,
+#                 "shift": None
+#             }
+
+#             # -----------------------------
+#             # RESOLVE HOLIDAY LIST FOR THIS DATE
+#             # Priority: Holiday List Assignment > Employee default
+#             # -----------------------------
+#             resolved_holiday_list = get_holiday_list_for_date(date_obj)
+#             holiday_map, rh_pair_map = get_holiday_map_and_rh(resolved_holiday_list)
+
+#             # -----------------------------
+#             # HOLIDAY / WEEKLY OFF / RH
+#             # -----------------------------
+#             if date_str in holiday_map:
+#                 holiday = holiday_map[date_str]
+
+#                 if holiday["weekly_off"]:
+#                     day_data["status"] = "WO"
+
+#                 elif holiday.get("restricted_holiday"):
+#                     rh_label = rh_pair_map.get(date_str)
+#                     day_data["status"] = rh_label if rh_label else "RH"
+
+#                 else:
+#                     day_data["status"] = "H"
+
+#             # -----------------------------
+#             # ATTENDANCE OVERRIDES HOLIDAY
+#             # -----------------------------
+#             if date_str in attendance_map:
+#                 record = attendance_map[date_str]
+
+#                 if record.status == "Present":
+#                     day_data["status"] = "P"
+
+#                 elif record.status == "Half Day":
+#                     short_code = leave_map.get(record.leave_type) or "HD"
+#                     day_data["status"] = short_code
+#                     existing = day_data.get("other_half_status")
+#                     if existing in ["Present", "Absent"]:
+#                         day_data["other_half_status"] = existing
+#                     else:
+#                         day_data["other_half_status"] = "P"
+
+#                 elif record.status == "On Leave":
+#                     short_code = leave_map.get(record.leave_type) or "L"
+#                     day_data["status"] = short_code
+#                     if short_code == "CO":
+#                         day_data["working_date_co"] = frappe.get_value(
+#                             "Leave Application",
+#                             record.leave_application,
+#                             "custom_off_day_date"
+#                         )
+
+#                 elif record.status == "Absent":
+#                     day_data["status"] = "A"
+
+#                 elif record.status == "Partially":
+#                     day_data["status"] = "PR"
+
+#                 raw_hours = record.working_hours or 0
+#                 day_data["in_time"] = record.in_time
+#                 day_data["out_time"] = record.out_time
+#                 day_data["working_hours"] = decimal_hours_to_hhmm(raw_hours) or 0
+#                 day_data["shift"] = record.shift
+
+#             elif date_obj < today and not day_data["status"]:
+#                 day_data["status"] = "A"
+
+#             month_data.append(day_data)
+#             # 🔒 Attendance Lock Check
+#             lock_month = check_attendance_lock(specific_date)
+
+#             if lock_month:
+#                 return {
+#                     "success": False,
+#                     "message": f"Attendance is locked for {lock_month}",
+#                     "attendance": []
+#                 }
+                
+#         return {
+#             "success": True,
+#             "month": f"{current_year}-{current_month:02d}",
+#             "attendance": month_data
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Calendar Attendance API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
+
+# new code attendance show for lock month
 @frappe.whitelist()
 def get_attendance_calendar(employeeId, date):
     try:
@@ -385,13 +643,33 @@ def get_attendance_calendar(employeeId, date):
         if not employeeId or not date:
             frappe.throw("Employee ID and Date are required")
 
-        specific_date = datetime.strptime(date, "%Y-%m-%d").date()
+        specific_date = datetime.strptime(
+            date,
+            "%Y-%m-%d"
+        ).date()
+
         current_month = specific_date.month
         current_year = specific_date.year
-        total_days = calendar.monthrange(current_year, current_month)[1]
 
-        start_date = f"{current_year}-{current_month:02d}-01"
-        end_date = f"{current_year}-{current_month:02d}-{total_days}"
+        total_days = calendar.monthrange(
+            current_year,
+            current_month
+        )[1]
+
+        start_date = (
+            f"{current_year}-{current_month:02d}-01"
+        )
+
+        end_date = (
+            f"{current_year}-{current_month:02d}-{total_days}"
+        )
+
+        # -----------------------------
+        # 🔒 ATTENDANCE LOCK CHECK
+        # -----------------------------
+        lock_month = check_attendance_lock(
+            specific_date
+        )
 
         # -----------------------------
         # FETCH ATTENDANCE DATA
@@ -400,7 +678,10 @@ def get_attendance_calendar(employeeId, date):
             "Attendance",
             filters={
                 "employee": employeeId,
-                "attendance_date": ["between", [start_date, end_date]]
+                "attendance_date": [
+                    "between",
+                    [start_date, end_date]
+                ]
             },
             fields=[
                 "attendance_date",
@@ -420,6 +701,9 @@ def get_attendance_calendar(employeeId, date):
             for row in attendance_data
         }
 
+        # -----------------------------
+        # LEAVE SHORT CODES
+        # -----------------------------
         leave_map = {
             "Medical Emergency Leave": "MEL",
             "Special Maternity Leave": "SML",
@@ -432,15 +716,19 @@ def get_attendance_calendar(employeeId, date):
         }
 
         # -----------------------------
-        # FETCH EMPLOYEE (for fallback holiday list)
+        # FETCH EMPLOYEE
         # -----------------------------
-        employee = frappe.get_doc("Employee", employeeId)
-        default_holiday_list = employee.holiday_list  # fallback
+        employee = frappe.get_doc(
+            "Employee",
+            employeeId
+        )
+
+        default_holiday_list = (
+            employee.holiday_list
+        )
 
         # -----------------------------
-        # FETCH ALL HOLIDAY LIST ASSIGNMENTS for this employee
-        # that are active on or before end_date, sorted desc
-        # so we can pick the right one per date
+        # FETCH HOLIDAY ASSIGNMENTS
         # -----------------------------
         all_assignments = frappe.db.get_all(
             "Holiday List Assignment",
@@ -449,85 +737,175 @@ def get_attendance_calendar(employeeId, date):
                 "from_date": ["<=", end_date],
                 "docstatus": 1
             },
-            fields=["holiday_list", "from_date"],
+            fields=[
+                "holiday_list",
+                "from_date"
+            ],
             order_by="from_date desc"
         )
 
         # -----------------------------
-        # HELPER: Get holiday list name for a given date
-        # Picks the assignment with the latest from_date <= given_date
-        # Falls back to employee's default holiday list
+        # GET HOLIDAY LIST BY DATE
         # -----------------------------
-        def get_holiday_list_for_date(check_date):
+        def get_holiday_list_for_date(
+            check_date
+        ):
+
             for assignment in all_assignments:
-                if getdate(assignment.from_date) <= check_date:
+
+                if (
+                    getdate(
+                        assignment.from_date
+                    ) <= check_date
+                ):
+
                     return assignment.holiday_list
+
             return default_holiday_list
 
         # -----------------------------
-        # CACHE: Load holiday list docs to avoid repeated DB calls
+        # HOLIDAY CACHE
         # -----------------------------
         holiday_list_cache = {}
 
-        def get_holiday_map_and_rh(holiday_list_name):
-            """
-            Returns (holiday_map, rh_pair_map) for a given holiday list name.
-            Cached to avoid redundant frappe.get_doc calls.
-            """
-            if holiday_list_name in holiday_list_cache:
-                return holiday_list_cache[holiday_list_name]
+        def get_holiday_map_and_rh(
+            holiday_list_name
+        ):
+
+            if (
+                holiday_list_name
+                in holiday_list_cache
+            ):
+
+                return holiday_list_cache[
+                    holiday_list_name
+                ]
 
             holiday_map = {}
             rh_pair_map = {}
 
             if not holiday_list_name:
-                holiday_list_cache[holiday_list_name] = (holiday_map, rh_pair_map)
-                return holiday_map, rh_pair_map
 
-            holiday_doc = frappe.get_doc("Holiday List", holiday_list_name)
+                holiday_list_cache[
+                    holiday_list_name
+                ] = (
+                    holiday_map,
+                    rh_pair_map
+                )
+
+                return (
+                    holiday_map,
+                    rh_pair_map
+                )
+
+            holiday_doc = frappe.get_doc(
+                "Holiday List",
+                holiday_list_name
+            )
+
             restricted_rows = {}
 
             for h in holiday_doc.holidays:
-                holiday_date_str = str(h.holiday_date)
-                holiday_map[holiday_date_str] = {
+
+                holiday_date_str = str(
+                    h.holiday_date
+                )
+
+                holiday_map[
+                    holiday_date_str
+                ] = {
                     "weekly_off": h.weekly_off,
                     "description": h.description,
                     "is_half_day": h.is_half_day,
-                    "restricted_holiday": getattr(h, "custom_is_restricted_holiday", 0)
+                    "restricted_holiday": getattr(
+                        h,
+                        "custom_is_restricted_holiday",
+                        0
+                    )
                 }
 
+                # RH PAIR
                 if (
-                    getattr(h, "custom_is_restricted_holiday", 0)
-                    and getattr(h, "custom_restricted_holiday_date", None)
+                    getattr(
+                        h,
+                        "custom_is_restricted_holiday",
+                        0
+                    )
+                    and getattr(
+                        h,
+                        "custom_restricted_holiday_date",
+                        None
+                    )
                 ):
-                    restricted_rows[getdate(h.holiday_date)] = getdate(
+
+                    restricted_rows[
+                        getdate(h.holiday_date)
+                    ] = getdate(
                         h.custom_restricted_holiday_date
                     )
 
-            # Build RH pair map
+            # -----------------------------
+            # BUILD RH PAIR MAP
+            # -----------------------------
             visited = set()
+
             pair_counter = 1
-            for holiday_date, pair_date in restricted_rows.items():
+
+            for (
+                holiday_date,
+                pair_date
+            ) in restricted_rows.items():
+
                 if holiday_date in visited:
                     continue
-                pair_label = f"RH{pair_counter}"
-                rh_pair_map[str(holiday_date)] = pair_label
-                rh_pair_map[str(pair_date)] = pair_label
+
+                pair_label = (
+                    f"RH{pair_counter}"
+                )
+
+                rh_pair_map[
+                    str(holiday_date)
+                ] = pair_label
+
+                rh_pair_map[
+                    str(pair_date)
+                ] = pair_label
+
                 visited.add(holiday_date)
                 visited.add(pair_date)
+
                 pair_counter += 1
 
-            holiday_list_cache[holiday_list_name] = (holiday_map, rh_pair_map)
-            return holiday_map, rh_pair_map
+            holiday_list_cache[
+                holiday_list_name
+            ] = (
+                holiday_map,
+                rh_pair_map
+            )
+
+            return (
+                holiday_map,
+                rh_pair_map
+            )
 
         # -----------------------------
-        # LOOP THROUGH MONTH DAYS
+        # LOOP THROUGH MONTH
         # -----------------------------
         today = sys_date.today()
+
         month_data = []
 
-        for d in range(1, total_days + 1):
-            date_obj = sys_date(current_year, current_month, d)
+        for d in range(
+            1,
+            total_days + 1
+        ):
+
+            date_obj = sys_date(
+                current_year,
+                current_month,
+                d
+            )
+
             date_str = str(date_obj)
 
             day_data = {
@@ -535,96 +913,230 @@ def get_attendance_calendar(employeeId, date):
                 "status": "",
                 "in_time": None,
                 "out_time": None,
-                "working_hours": 0,
+                "working_hours": "00:00",
                 "other_half_status": None,
                 "shift": None
             }
 
             # -----------------------------
-            # RESOLVE HOLIDAY LIST FOR THIS DATE
-            # Priority: Holiday List Assignment > Employee default
+            # HOLIDAY LIST RESOLVE
             # -----------------------------
-            resolved_holiday_list = get_holiday_list_for_date(date_obj)
-            holiday_map, rh_pair_map = get_holiday_map_and_rh(resolved_holiday_list)
+            resolved_holiday_list = (
+                get_holiday_list_for_date(
+                    date_obj
+                )
+            )
+
+            holiday_map, rh_pair_map = (
+                get_holiday_map_and_rh(
+                    resolved_holiday_list
+                )
+            )
 
             # -----------------------------
             # HOLIDAY / WEEKLY OFF / RH
             # -----------------------------
             if date_str in holiday_map:
-                holiday = holiday_map[date_str]
 
+                holiday = holiday_map[
+                    date_str
+                ]
+
+                # WEEKLY OFF
                 if holiday["weekly_off"]:
+
                     day_data["status"] = "WO"
 
-                elif holiday.get("restricted_holiday"):
-                    rh_label = rh_pair_map.get(date_str)
-                    day_data["status"] = rh_label if rh_label else "RH"
+                # RESTRICTED HOLIDAY
+                elif holiday.get(
+                    "restricted_holiday"
+                ):
 
+                    rh_label = (
+                        rh_pair_map.get(
+                            date_str
+                        )
+                    )
+
+                    day_data["status"] = (
+                        rh_label
+                        if rh_label
+                        else "RH"
+                    )
+
+                # HOLIDAY
                 else:
+
                     day_data["status"] = "H"
 
             # -----------------------------
-            # ATTENDANCE OVERRIDES HOLIDAY
+            # ATTENDANCE OVERRIDES
             # -----------------------------
             if date_str in attendance_map:
-                record = attendance_map[date_str]
 
-                if record.status == "Present":
+                record = attendance_map[
+                    date_str
+                ]
+
+                # PRESENT
+                if (
+                    record.status
+                    == "Present"
+                ):
+
                     day_data["status"] = "P"
 
-                elif record.status == "Half Day":
-                    short_code = leave_map.get(record.leave_type) or "HD"
-                    day_data["status"] = short_code
-                    existing = day_data.get("other_half_status")
-                    if existing in ["Present", "Absent"]:
-                        day_data["other_half_status"] = existing
-                    else:
-                        day_data["other_half_status"] = "P"
+                # HALF DAY
+                elif (
+                    record.status
+                    == "Half Day"
+                ):
 
-                elif record.status == "On Leave":
-                    short_code = leave_map.get(record.leave_type) or "L"
-                    day_data["status"] = short_code
+                    short_code = (
+                        leave_map.get(
+                            record.leave_type
+                        )
+                        or "HD"
+                    )
+
+                    day_data["status"] = (
+                        short_code
+                    )
+
+                    existing = day_data.get(
+                        "other_half_status"
+                    )
+
+                    if existing in [
+                        "Present",
+                        "Absent"
+                    ]:
+
+                        day_data[
+                            "other_half_status"
+                        ] = existing
+
+                    else:
+
+                        day_data[
+                            "other_half_status"
+                        ] = "P"
+
+                # ON LEAVE
+                elif (
+                    record.status
+                    == "On Leave"
+                ):
+
+                    short_code = (
+                        leave_map.get(
+                            record.leave_type
+                        )
+                        or "L"
+                    )
+
+                    day_data["status"] = (
+                        short_code
+                    )
+
+                    # CO DATE
                     if short_code == "CO":
-                        day_data["working_date_co"] = frappe.get_value(
+
+                        day_data[
+                            "working_date_co"
+                        ] = frappe.get_value(
                             "Leave Application",
                             record.leave_application,
                             "custom_off_day_date"
                         )
 
-                elif record.status == "Absent":
+                # ABSENT
+                elif (
+                    record.status
+                    == "Absent"
+                ):
+
                     day_data["status"] = "A"
 
-                elif record.status == "Partially":
+                # PARTIALLY
+                elif (
+                    record.status
+                    == "Partially"
+                ):
+
                     day_data["status"] = "PR"
 
-                raw_hours = record.working_hours or 0
-                day_data["in_time"] = record.in_time
-                day_data["out_time"] = record.out_time
-                day_data["working_hours"] = decimal_hours_to_hhmm(raw_hours) or 0
-                day_data["shift"] = record.shift
+                # COMMON VALUES
+                raw_hours = (
+                    record.working_hours
+                    or 0
+                )
 
-            elif date_obj < today and not day_data["status"]:
+                day_data["in_time"] = (
+                    record.in_time
+                )
+
+                day_data["out_time"] = (
+                    record.out_time
+                )
+
+                day_data["working_hours"] = (
+                    decimal_hours_to_hhmm(
+                        raw_hours
+                    )
+                )
+
+                day_data["shift"] = (
+                    record.shift
+                )
+
+            # -----------------------------
+            # ABSENT FOR PAST DATE
+            # -----------------------------
+            elif (
+                date_obj < today
+                and not day_data["status"]
+            ):
+
                 day_data["status"] = "A"
 
             month_data.append(day_data)
-            # 🔒 Attendance Lock Check
-            lock_month = check_attendance_lock(specific_date)
 
-            if lock_month:
-                return {
-                    "success": False,
-                    "message": f"Attendance is locked for {lock_month}",
-                    "attendance": []
-                }
-                
+        # -----------------------------
+        # FINAL RESPONSE
+        # -----------------------------
         return {
+
             "success": True,
-            "month": f"{current_year}-{current_month:02d}",
+
+            "month": (
+                f"{current_year}-{current_month:02d}"
+            ),
+
+            # 🔒 LOCK STATUS
+            "is_locked": (
+                True
+                if lock_month
+                else False
+            ),
+
+            "lock_message": (
+                f"Attendance is locked for {lock_month}"
+                if lock_month
+                else ""
+            ),
+
+            # 📅 CALENDAR DATA
             "attendance": month_data
         }
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Calendar Attendance API Error")
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Calendar Attendance API Error"
+        )
+
         return {
             "success": False,
             "message": str(e)

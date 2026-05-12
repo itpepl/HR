@@ -5959,8 +5959,115 @@ def run_daily_attendance(att_date=None, only_for_jammu=False, branch=None):
     frappe.db.commit()
 
 
-def mark_attendance(emp, att_date):
+# =====================================================
+# CHECK APPROVED TRAVEL REQUEST
+# =====================================================
+def has_approved_travel_request(employee, att_date):
 
+    travel_exists = frappe.db.sql("""
+        SELECT tr.name
+        FROM `tabTravel Request` tr
+        INNER JOIN `tabTravel Itinerary` ti
+            ON ti.parent = tr.name
+        WHERE tr.employee = %s
+        AND tr.docstatus = 1
+        AND DATE(%s) BETWEEN DATE(ti.departure_date)
+        AND DATE(ti.arrival_date)
+        LIMIT 1
+    """, (employee, att_date), as_dict=True)
+
+    return bool(travel_exists)
+
+def mark_attendance(emp, att_date):
+    # =====================================================
+    # TRAVEL REQUEST LOGIC
+    # =====================================================
+    if has_approved_travel_request(emp, att_date):
+
+        existing_attendance = frappe.db.exists(
+            "Attendance",
+            {
+                "employee": emp,
+                "attendance_date": att_date,
+                "docstatus": 1
+            }
+        )
+
+        employee_details = frappe.db.get_value(
+            "Employee",
+            emp,
+            ["employee_name", "department", "company", "branch"],
+            as_dict=True
+        )
+
+        shift_type = get_employee_shift(emp, att_date)
+
+        # =====================================================
+        # UPDATE EXISTING ATTENDANCE
+        # =====================================================
+        if existing_attendance:
+
+            # ---------------------------------------------
+            # FIRST REMOVE PENALTY LEAVE
+            # ---------------------------------------------
+            revert_penalty_leave(existing_attendance)
+
+            # ---------------------------------------------
+            # UPDATE ATTENDANCE
+            # ---------------------------------------------
+            frappe.db.set_value(
+                "Attendance",
+                existing_attendance,
+                {
+                    "status": "Present",
+                    "shift": shift_type,
+                    "employee_name": employee_details.employee_name,
+                    "department": employee_details.department,
+                    "company": employee_details.company,
+                    "custom_branch": employee_details.branch,
+                    "custom_is_penalize": 0,
+                    "custom_penalty_leave_count": "",
+                    "custom_penalty_leave_type": "",
+                    "custom_remark":"On Tour"
+                },
+                update_modified=False
+            )
+ 
+            frappe.db.commit()
+
+            return existing_attendance
+
+        # =====================================================
+        # CREATE NEW ATTENDANCE
+        # =====================================================
+        else:
+
+            att = frappe.get_doc({
+                "doctype": "Attendance",
+                "employee": emp,
+                "employee_name": employee_details.employee_name,
+                "department": employee_details.department,
+                "company": employee_details.company,
+                "attendance_date": att_date,
+                "status": "Present",
+                "shift": shift_type,
+                "custom_branch": employee_details.branch,
+                "custom_is_penalize": 0,
+                "custom_penalty_leave_count": "",
+                "custom_penalty_leave_type": "",
+                "custom_remark":"On Tour"
+            })
+
+            att.insert(ignore_permissions=True)
+            att.submit()
+
+            frappe.db.commit()
+
+            return att.name
+    # Travel Request
+    if has_approved_travel_request(emp, att_date):
+        return
+    
     if has_approved_leave(emp, att_date):
                 return
     
@@ -6030,7 +6137,7 @@ def mark_attendance(emp, att_date):
     #     if log_count == 1:
     #         create_or_update_attendance(
     #             emp, att_date, None, None, 0,
-    #             first_checkin_id, last_checkin_id,
+    #             fNow in your mark_attendance() function add this:irst_checkin_id, last_checkin_id,
     #             skip_shift_time_rules=True,
     #             is_holiday_work=is_holiday_work,
     #         )
@@ -10458,38 +10565,156 @@ def process_employee_attendance(employee, att_date):
     except Exception as e:
         log_attendance_error(employee, att_date, "Process Attendance Failed", e)
 
+# def revert_penalty_leave(attendance_name):
+#     try:
+#         att = frappe.get_doc("Attendance", attendance_name)
+
+#         if not att.custom_is_penalize:
+#             return
+
+#         leave_type = att.custom_penalty_leave_type
+#         leave_count = att.custom_penalty_leave_count
+#         attendance_date = att.attendance_date
+
+#         frappe.db.delete(
+#             "Leave Ledger Entry",
+#             {
+#                 "employee": att.employee,
+#                 "leave_type": leave_type,
+#                 "from_date": attendance_date,
+#                 "custom_is_penalty": 1,              # ✅ recommended if you have this field
+#                 "custom_attendance":att.name,
+#             }
+#         )
+
+#         att.db_set({
+#             "custom_penalty_leave_type": None,
+#             "custom_penalty_leave_count": 0,
+#             "custom_is_penalize": 0
+#         })
+
+#         frappe.db.commit()
+#     except Exception as e:
+#         frappe.log_error("error_revert_penalty_leave", frappe.get_traceback())
+
 def revert_penalty_leave(attendance_name):
     try:
+
+        # frappe.log_error("START", attendance_name)
+
         att = frappe.get_doc("Attendance", attendance_name)
 
-        if not att.custom_is_penalize:
-            return
-
         leave_type = att.custom_penalty_leave_type
-        leave_count = att.custom_penalty_leave_count
         attendance_date = att.attendance_date
 
-        frappe.db.delete(
+        # frappe.log_error(
+        #     "DEBUG",
+        #     f"""
+        #     Employee: {att.employee}
+        #     Leave Type: {leave_type}
+        #     Date: {attendance_date}
+        #     Penalize: {att.custom_is_penalize}
+        #     """
+        # )
+
+        # =====================================================
+        # GET LEDGER ENTRIES
+        # =====================================================
+        ledger_entries = frappe.get_all(
             "Leave Ledger Entry",
-            {
+            filters={
                 "employee": att.employee,
                 "leave_type": leave_type,
                 "from_date": attendance_date,
-                "custom_is_penalty": 1,              # ✅ recommended if you have this field
-                "custom_attendance":att.name,
-            }
+                "custom_is_penalty": 1,
+                "custom_attendance": att.name
+            },
+            fields=["name", "docstatus", "is_expired"]
         )
 
-        att.db_set({
-            "custom_penalty_leave_type": None,
-            "custom_penalty_leave_count": 0,
-            "custom_is_penalize": 0
-        })
+        # frappe.log_error(
+        #     "LEDGER FOUND",
+        #     str(ledger_entries)
+        # )
+
+        # =====================================================
+        # REMOVE ENTRIES
+        # =====================================================
+        for row in ledger_entries:
+
+            ledger_doc = frappe.get_doc(
+                "Leave Ledger Entry",
+                row.name
+            )
+
+            frappe.log_error(
+                "PROCESSING",
+                ledger_doc.name
+            )
+
+            # SET EXPIRED
+            frappe.db.set_value(
+                "Leave Ledger Entry",
+                ledger_doc.name,
+                "is_expired",
+                1,
+                update_modified=False
+            )
+
+            frappe.db.commit()
+
+            ledger_doc.reload()
+
+            # frappe.log_error(
+            #     "AFTER UPDATE",
+            #     f"{ledger_doc.name} -> is_expired = {ledger_doc.is_expired}"
+            # )
+
+            # CANCEL
+            if ledger_doc.docstatus == 1:
+                ledger_doc.cancel()
+
+            # frappe.log_error(
+            #     "CANCELLED",
+            #     ledger_doc.name
+            # )
+
+            # DELETE
+            frappe.delete_doc(
+                "Leave Ledger Entry",
+                ledger_doc.name,
+                force=1,
+                ignore_permissions=True
+            )
+
+            # frappe.log_error(
+            #     "DELETED",
+            #     ledger_doc.name
+            # )
+
+        # =====================================================
+        # RESET ATTENDANCE
+        # =====================================================
+        frappe.db.set_value(
+            "Attendance",
+            att.name,
+            {
+                "custom_penalty_leave_type": None,
+                "custom_penalty_leave_count": 0,
+                "custom_is_penalize": 0
+            },
+            update_modified=False
+        )
 
         frappe.db.commit()
-    except Exception as e:
-        frappe.log_error("error_revert_penalty_leave", frappe.get_traceback())
 
+    except Exception:
+        frappe.db.rollback()
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            "error_revert_penalty_leave"
+        )
 def save_attendance_record(
     employee,
     date,
