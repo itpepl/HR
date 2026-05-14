@@ -15,7 +15,7 @@ class OffDayWorkRequest(Document):
         self.validate_working_day()
         self.validate_duplicate_request()
         if self.date:
-            lock_name = AttendanceLock.is_attendance_locked(self.date)
+            lock_name = AttendanceLock.is_attendance_locked(self.date,self.employee)
 
             if lock_name:
                 # ✅ Permission-safe fetch

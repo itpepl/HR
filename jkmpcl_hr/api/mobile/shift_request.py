@@ -3,7 +3,12 @@ from frappe.utils import getdate
 from frappe.utils import now, add_to_date
 from frappe.utils import strip_html
 from frappe.utils import cint, getdate
-
+from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
+from frappe.utils import (
+    add_days,
+    date_diff,
+    formatdate
+)
 
 # from jkmpcl_hr.py.api import determine_shift_types
 # @frappe.whitelist()
@@ -179,6 +184,7 @@ def get_shift_requests(
 #             "data": None
 #         }
 
+
 @frappe.whitelist()
 def create_shift_request(data):
     try:
@@ -202,26 +208,33 @@ def create_shift_request(data):
             }
 
         # -----------------------------
-        # 🔒 Attendance Lock Check (ADDED)
+        # Attendance Lock Check
         # -----------------------------
-        lock = frappe.db.get_value(
-            "Attendance Lock",
-            {
-                "from_date": ["<=", to_date],
-                "to_date": [">=", from_date],
-                "docstatus": ["in", [0, 1]]
-            },
-            ["name", "month"],
-            as_dict=True
-        )
+        for i in range(date_diff(to_date, from_date) + 1):
 
-        if lock:
-            from frappe.utils import formatdate
-            month = lock.month or formatdate(from_date, "MMMM yyyy")
-            frappe.throw(
-                f"Attendance is locked for {month}. Shift Request cannot be created.",
-                title="Attendance Locked"
+            d = add_days(from_date, i)
+
+            lock_name = AttendanceLock.is_attendance_locked(
+                d,
+                employee
             )
+
+            if lock_name:
+
+                month = frappe.db.get_value(
+                    "Attendance Lock",
+                    lock_name,
+                    "month"
+                )
+
+                if not month:
+                    month = formatdate(d, "MMMM yyyy")
+
+                frappe.throw(
+                    f"Attendance is locked for {month}. "
+                    f"Shift Request cannot be created.",
+                    title="Attendance Locked"
+                )
 
         # -----------------------------
         # UPDATE FLOW

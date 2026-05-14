@@ -58,7 +58,7 @@ class AttendanceRequest(HRMSAttendanceRequest):
         for i in range(date_diff(to_date, from_date) + 1):
             d = add_days(from_date, i)
 
-            lock_name = AttendanceLock.is_attendance_locked(d)
+            lock_name = AttendanceLock.is_attendance_locked(d,self.employee)
 
             if lock_name:
                 # ✅ Get month safely (no permission issue)
