@@ -8,6 +8,12 @@ import re
 from jkmpcl_hr.py.utils import get_other_department_emp
 from frappe import _
 import traceback
+from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
+from frappe.utils import (
+    add_days,
+    date_diff,
+    formatdate
+)
 
 @frappe.whitelist()
 def validate_leave_for_mobile(
@@ -638,22 +644,32 @@ def create(**args):
         args["posting_date"] = getdate(args.get("posting_date"))
 
         # -----------------------------
-        # 🔒 ATTENDANCE LOCK CHECK (INLINE)
+        # Attendance Lock Check
         # -----------------------------
-        lock = frappe.db.get_value(
-            "Attendance Lock",
-            {
-                "from_date": ["<=", to_date],
-                "to_date": [">=", from_date],
-                "docstatus": ["in", [0, 1]]   # Ignore cancelled
-            },
-            ["name", "month"],
-            as_dict=True
-        )
+        for i in range(date_diff(to_date, from_date) + 1):
 
-        if lock:
-            month = lock.month or formatdate(from_date, "MMMM yyyy")
-            frappe.throw(f"Attendance is locked for {month}", title="Attendance Lock")
+            d = add_days(from_date, i)
+
+            lock_name = AttendanceLock.is_attendance_locked(
+                d,
+                employee
+            )
+
+            if lock_name:
+
+                month = frappe.db.get_value(
+                    "Attendance Lock",
+                    lock_name,
+                    "month"
+                )
+
+                if not month:
+                    month = formatdate(d, "MMMM yyyy")
+
+                frappe.throw(
+                    f"Attendance is locked for {month}",
+                    title="Attendance Lock"
+                )
 
         # -----------------------------
         # APPROVER LOGIC

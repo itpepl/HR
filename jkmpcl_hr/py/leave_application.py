@@ -41,7 +41,7 @@ def validate(doc, method):
     for i in range(date_diff(doc.to_date, doc.from_date) + 1):
         d = add_days(doc.from_date, i)
 
-        lock_name = AttendanceLock.is_attendance_locked(d)
+        lock_name = AttendanceLock.is_attendance_locked(d,doc.employee)
 
         if lock_name:
             # ✅ Fetch only required field (no permission issue)

@@ -47,7 +47,7 @@ def validate(doc, event):
     for i in range(total_days):
         d = add_days(from_date, i)
 
-        lock_name = AttendanceLock.is_attendance_locked(d)
+        lock_name = AttendanceLock.is_attendance_locked(d,doc.employee)
 
         if lock_name:
             # ✅ Permission-safe month fetch

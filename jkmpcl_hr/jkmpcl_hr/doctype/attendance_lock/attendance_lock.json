@@ -12,7 +12,6 @@
   "from_date",
   "to_date",
   "column_break_k3l6",
-  "status",
   "branch",
   "section_break_35k4",
   "attendance_lock_details",
@@ -57,22 +56,16 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Month",
-   "options": "January\nFebruary\nMarch\nApril\nMay\nJune\nJuly\nAugust\nSeptember\nOctober\nNovember\nDecember"
+   "options": "January\nFebruary\nMarch\nApril\nMay\nJune\nJuly\nAugust\nSeptember\nOctober\nNovember\nDecember",
+   "reqd": 1
   },
   {
    "fieldname": "year",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Year"
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Status",
-   "options": "Draft\nLocked\nFinalized"
+   "label": "Year",
+   "reqd": 1
   },
   {
    "fieldname": "column_break_k3l6",
@@ -84,7 +77,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Branch",
-   "options": "Branch"
+   "options": "Branch",
+   "reqd": 1
   },
   {
    "fieldname": "section_break_35k4",
@@ -101,7 +95,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-07 11:16:23.007407",
+ "modified": "2026-05-14 16:35:13.882662",
  "modified_by": "Administrator",
  "module": "JKMPCL HR",
  "name": "Attendance Lock",

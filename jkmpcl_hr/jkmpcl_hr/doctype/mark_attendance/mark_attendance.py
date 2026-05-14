@@ -98,29 +98,29 @@ class MarkAttendance(Document):
         # ==============================
         # 🔒 Attendance Lock (MAIN CONTROL)
         # ==============================
-        if not self.attendance_date:
-            frappe.throw("Please select Attendance Date first")
-
-        lock_name = frappe.db.get_value(
-            "Attendance Lock",
-            {
-                "from_date": ["<=", self.attendance_date],
-                "to_date": [">=", self.attendance_date],
-            },
-            "name",
-            order_by="creation desc"
-        )
-
-        if lock_name:
-            month = frappe.db.get_value("Attendance Lock", lock_name, "month")
-
-            if not month:
-                month = formatdate(self.attendance_date, "MMMM yyyy")
-
-            frappe.throw(
-                f"Attendance is locked for {month}. Cannot process attendance.",
-                title="Attendance Lock"
+        # Skip lock check if user has permission
+        if not frappe.has_permission(
+            "Mark Attendance",
+            user=frappe.session.user
+        ):
+            lock_name = frappe.db.get_value(
+                "Attendance Lock",
+                {
+                    "from_date": ["<=", self.attendance_date],
+                    "to_date": [">=", self.attendance_date],
+                    "docstatus": ["!=", 2]
+                }
             )
+
+            if lock_name:
+                month_name = frappe.utils.formatdate(
+                    self.attendance_date,
+                    "MMMM"
+                )
+
+                frappe.throw(
+                    f"Attendance is locked for {month_name}. Cannot process attendance."
+                )
 
         # ==============================
         # ✅ NORMAL FLOW
