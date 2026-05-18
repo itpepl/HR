@@ -180,6 +180,7 @@ class AttendanceLock(Document):
                 "docstatus": ["!=", 2],
                 "from_date": ["<=", self.to_date],
                 "to_date": [">=", self.from_date],
+                "branch":["=", self.branch]
             }
         )
 
