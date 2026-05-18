@@ -230,14 +230,14 @@ class MarkAttendance(Document):
                     "to_date": [">=", self.attendance_date],
                     "docstatus": ["!=", 2]
                 },
-                ["name"],
+                ["name", "branch"],
                 as_dict=True
             )
 
             if lock:
 
                 # ==========================================
-                # User Roles
+                # Current User Roles
                 # ==========================================
                 user_roles = frappe.get_roles(
                     frappe.session.user
@@ -276,7 +276,7 @@ class MarkAttendance(Document):
                 )
 
                 # ==========================================
-                # Available roles
+                # Available Roles
                 # ==========================================
                 available_roles = [
                     role for role in user_mark_roles
@@ -284,12 +284,31 @@ class MarkAttendance(Document):
                 ]
 
                 # ==========================================
+                # Current User Employee Branch
+                # ==========================================
+                employee = frappe.db.get_value(
+                    "Employee",
+                    {
+                        "user_id": frappe.session.user
+                    },
+                    ["name", "branch"],
+                    as_dict=True
+                )
+
+                user_branch = employee.branch if employee else None
+
+                # ==========================================
                 # BLOCK CONDITION
                 # ==========================================
-                # If no available role remains
-                # then block attendance
+                # Block only when:
+                # 1. User has no available role
+                # 2. User branch matches lock branch
                 # ==========================================
-                if not available_roles:
+                if (
+                    not available_roles
+                    and lock.branch
+                    and user_branch == lock.branch
+                ):
 
                     month_name = formatdate(
                         self.attendance_date,
@@ -297,7 +316,7 @@ class MarkAttendance(Document):
                     )
 
                     frappe.throw(
-                        f"Attendance is locked for {month_name}. Cannot process attendance."
+                        f"Attendance is locked for branch {user_branch} in {month_name}. Cannot process attendance."
                     )
 
             # ==================================================
