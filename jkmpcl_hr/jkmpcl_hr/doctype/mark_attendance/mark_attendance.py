@@ -442,7 +442,7 @@ class MarkAttendance(Document):
                 try:
 
                     att.insert(ignore_permissions=True)
-                    att.submit(ignore_permissions=True)
+                    att.submit()
 
                 except Exception:
 
