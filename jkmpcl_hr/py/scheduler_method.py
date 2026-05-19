@@ -11024,123 +11024,294 @@ def get_approved_leave_on_date(employee, date):
     )
 
 
+# def apply_sandwich_rule(employee, att_date):
+#     """
+#     Sandwich Rule:
+#     If att_date is a Holiday / Weekly Off / Restricted Holiday,
+#     AND the previous day AND the next day both have approved leave,
+#     then att_date is also marked as 'On Leave' with LWP deducted.
+
+#     Returns True if sandwich rule was applied.
+#     """
+#     # 1. Must be a holiday/weekoff
+#     holiday_type = get_holiday_type(employee, att_date)
+#     if not holiday_type:
+#         return False
+
+#     # 2. Both neighbours must be on approved leave
+#     prev_date = add_days(att_date, -1)
+#     next_date = add_days(att_date, 1)
+
+#     if not get_approved_leave_on_date(employee, prev_date):
+#         return False
+
+#     if not get_approved_leave_on_date(employee, next_date):
+#         return False
+
+#     frappe.log_error(
+#         "sandwich_rule_triggered",
+#         f"Employee: {employee}, Date: {att_date}, Holiday: {holiday_type}"
+#     )
+
+#     # 3. Get shift
+#     shift_type = get_employee_shift(employee, att_date)
+#     if not shift_type:
+#         frappe.log_error(
+#             "sandwich_rule_no_shift",
+#             f"Employee: {employee}, Date: {att_date} — shift not found, skipping."
+#         )
+#         return False
+
+#     # 4. Get employee details
+#     employee_details = frappe.db.get_value(
+#         "Employee",
+#         employee,
+#         ["employee_name", "department", "company", "branch"],
+#         as_dict=True
+#     )
+
+#     # 5. Check if attendance already exists
+#     attendance_name = frappe.db.exists(
+#         "Attendance",
+#         {
+#             "employee": employee,
+#             "attendance_date": att_date,
+#             "docstatus": ["!=", 2]
+#         }
+#     )
+
+#     if attendance_name:
+#         att_name = attendance_name
+#         # Revert any existing penalty first (idempotent)
+#         revert_penalty_leave(att_name)
+#         frappe.db.set_value(
+#             "Attendance",
+#             att_name,
+#             {
+#                 "shift": shift_type,
+#                 "status": "On Leave",
+#                 "in_time": None,
+#                 "out_time": None,
+#                 "working_hours": 0,
+#                 "late_entry": 0,
+#                 "early_exit": 0,
+#                 "custom_branch": employee_details.branch,
+#                 "custom_remark": "Sandwich rule triggered - auto-marked as On Leave with LWP deduction",
+#             },
+#             update_modified=False
+#         )
+#     else:
+#         att_name = frappe.generate_hash(length=12)
+#         frappe.db.sql("""
+#             INSERT INTO `tabAttendance`
+#             (name, employee, employee_name, department, company,
+#              attendance_date, shift, in_time, out_time,
+#              working_hours, status, late_entry, early_exit, custom_branch,
+#              docstatus, creation, modified, owner, modified_by, custom_remark)
+#             VALUES (%s,%s,%s,%s,%s,
+#                     %s,%s,%s,%s,%s,
+#                     %s,%s,%s,%s,
+#                     1, NOW(), NOW(), %s, %s)
+#         """, (
+#             att_name,
+#             employee,
+#             employee_details.employee_name,
+#             employee_details.department,
+#             employee_details.company,
+#             att_date,
+#             shift_type,
+#             None, None, 0,
+#             "On Leave",
+#             0, 0,
+#             employee_details.branch,
+#             frappe.session.user,
+#             frappe.session.user,
+#             "Sandwich rule triggered - auto-marked as On Leave with LWP deduction"
+#         ))
+#         frappe.db.commit()
+
+#     # 6. Always deduct LWP for sandwiched day
+#     deduct_leave_by_priority(
+#         employee=employee,
+#         date=att_date,
+#         status="Absent",   # full day = 1 day deduction
+#         attendance=att_name,
+#         force_lwp=True     # sandwiched holiday always = LWP
+#     )
+
+#     frappe.log_error(
+#         "sandwich_rule_applied",
+#         f"Employee: {employee}, Date: {att_date}, Att: {att_name}"
+#     )
+#     return True
+
+
 def apply_sandwich_rule(employee, att_date):
     """
-    Sandwich Rule:
-    If att_date is a Holiday / Weekly Off / Restricted Holiday,
-    AND the previous day AND the next day both have approved leave,
-    then att_date is also marked as 'On Leave' with LWP deducted.
+    Extended Sandwich Rule:
 
-    Returns True if sandwich rule was applied.
+    If one or more consecutive Holiday / Weekly Off / Restricted Holiday
+    exist between two approved LWP leaves,
+    then all intermediate holidays become sandwich leave.
     """
-    # 1. Must be a holiday/weekoff
+
     holiday_type = get_holiday_type(employee, att_date)
+
     if not holiday_type:
         return False
 
-    # 2. Both neighbours must be on approved leave
-    prev_date = add_days(att_date, -1)
-    next_date = add_days(att_date, 1)
+    # ------------------------------------------------------------------
+    # Find LEFT boundary leave
+    # ------------------------------------------------------------------
 
-    if not get_approved_leave_on_date(employee, prev_date):
+    left_date = add_days(att_date, -1)
+
+    while get_holiday_type(employee, left_date):
+        left_date = add_days(left_date, -1)
+
+    left_leave = get_approved_leave_on_date(employee, left_date)
+
+    # ------------------------------------------------------------------
+    # Find RIGHT boundary leave
+    # ------------------------------------------------------------------
+
+    right_date = add_days(att_date, 1)
+
+    while get_holiday_type(employee, right_date):
+        right_date = add_days(right_date, 1)
+
+    right_leave = get_approved_leave_on_date(employee, right_date)
+
+    if not left_leave or not right_leave:
         return False
 
-    if not get_approved_leave_on_date(employee, next_date):
-        return False
+    # ------------------------------------------------------------------
+    # Mark ALL in-between holidays as sandwich leave
+    # ------------------------------------------------------------------
 
-    frappe.log_error(
-        "sandwich_rule_triggered",
-        f"Employee: {employee}, Date: {att_date}, Holiday: {holiday_type}"
-    )
+    current_date = left_date
 
-    # 3. Get shift
-    shift_type = get_employee_shift(employee, att_date)
-    if not shift_type:
-        frappe.log_error(
-            "sandwich_rule_no_shift",
-            f"Employee: {employee}, Date: {att_date} — shift not found, skipping."
-        )
-        return False
+    while current_date <= right_date:
 
-    # 4. Get employee details
-    employee_details = frappe.db.get_value(
-        "Employee",
-        employee,
-        ["employee_name", "department", "company", "branch"],
-        as_dict=True
-    )
+        if get_holiday_type(employee, current_date):
 
-    # 5. Check if attendance already exists
-    attendance_name = frappe.db.exists(
-        "Attendance",
-        {
-            "employee": employee,
-            "attendance_date": att_date,
-            "docstatus": ["!=", 2]
-        }
-    )
+            shift_type = get_employee_shift(employee, current_date)
 
-    if attendance_name:
-        att_name = attendance_name
-        # Revert any existing penalty first (idempotent)
-        revert_penalty_leave(att_name)
-        frappe.db.set_value(
-            "Attendance",
-            att_name,
-            {
-                "shift": shift_type,
-                "status": "On Leave",
-                "in_time": None,
-                "out_time": None,
-                "working_hours": 0,
-                "late_entry": 0,
-                "early_exit": 0,
-                "custom_branch": employee_details.branch,
-            },
-            update_modified=False
-        )
-    else:
-        att_name = frappe.generate_hash(length=12)
-        frappe.db.sql("""
-            INSERT INTO `tabAttendance`
-            (name, employee, employee_name, department, company,
-             attendance_date, shift, in_time, out_time,
-             working_hours, status, late_entry, early_exit, custom_branch,
-             docstatus, creation, modified, owner, modified_by)
-            VALUES (%s,%s,%s,%s,%s,
-                    %s,%s,%s,%s,%s,
-                    %s,%s,%s,%s,
-                    1, NOW(), NOW(), %s, %s)
-        """, (
-            att_name,
-            employee,
-            employee_details.employee_name,
-            employee_details.department,
-            employee_details.company,
-            att_date,
-            shift_type,
-            None, None, 0,
-            "On Leave",
-            0, 0,
-            employee_details.branch,
-            frappe.session.user,
-            frappe.session.user,
-        ))
-        frappe.db.commit()
+            if not shift_type:
+                current_date = add_days(current_date, 1)
+                continue
 
-    # 6. Always deduct LWP for sandwiched day
-    deduct_leave_by_priority(
-        employee=employee,
-        date=att_date,
-        status="Absent",   # full day = 1 day deduction
-        attendance=att_name,
-        force_lwp=True     # sandwiched holiday always = LWP
-    )
+            employee_details = frappe.db.get_value(
+                "Employee",
+                employee,
+                ["employee_name", "department", "company", "branch"],
+                as_dict=True
+            )
 
-    frappe.log_error(
-        "sandwich_rule_applied",
-        f"Employee: {employee}, Date: {att_date}, Att: {att_name}"
-    )
+            attendance_name = frappe.db.exists(
+                "Attendance",
+                {
+                    "employee": employee,
+                    "attendance_date": current_date,
+                    "docstatus": ["!=", 2]
+                }
+            )
+
+            if attendance_name:
+
+                revert_penalty_leave(attendance_name)
+
+                frappe.db.set_value(
+                    "Attendance",
+                    attendance_name,
+                    {
+                        "shift": shift_type,
+                        "status": "On Leave",
+                        "in_time": None,
+                        "out_time": None,
+                        "working_hours": 0,
+                        "late_entry": 0,
+                        "early_exit": 0,
+                        "custom_branch": employee_details.branch,
+                        "custom_remark": "Sandwich rule triggered - auto-marked as On Leave with LWP deduction",
+                    },
+                    update_modified=False
+                )
+
+                att_name = attendance_name
+
+            else:
+
+                att_name = frappe.generate_hash(length=12)
+
+                frappe.db.sql("""
+                    INSERT INTO `tabAttendance`
+                    (
+                        name,
+                        employee,
+                        employee_name,
+                        department,
+                        company,
+                        attendance_date,
+                        shift,
+                        in_time,
+                        out_time,
+                        working_hours,
+                        status,
+                        late_entry,
+                        early_exit,
+                        custom_branch,
+                        docstatus,
+                        creation,
+                        modified,
+                        owner,
+                        modified_by,
+                        custom_remark
+                    )
+                    VALUES
+                    (
+                        %s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,
+                        1,NOW(),NOW(),%s,%s,%s
+                    )
+                """, (
+                    att_name,
+                    employee,
+                    employee_details.employee_name,
+                    employee_details.department,
+                    employee_details.company,
+                    current_date,
+                    shift_type,
+                    None,
+                    None,
+                    0,
+                    "On Leave",
+                    0,
+                    0,
+                    employee_details.branch,
+                    frappe.session.user,
+                    frappe.session.user,
+                    "Sandwich rule triggered - auto-marked as On Leave with LWP deduction"
+                ))
+
+            deduct_leave_by_priority(
+                employee=employee,
+                date=current_date,
+                status="Absent",
+                attendance=att_name,
+                force_lwp=True
+            )
+
+            frappe.log_error(
+                "sandwich_rule_applied",
+                f"Employee: {employee}, Date: {current_date}"
+            )
+
+        current_date = add_days(current_date, 1)
+
+    frappe.db.commit()
+
     return True
 
 
