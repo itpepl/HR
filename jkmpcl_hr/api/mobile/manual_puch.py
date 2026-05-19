@@ -378,7 +378,7 @@ def get_manual_punch_note(employeeId, from_date, request_type=None, current_punc
             "message": ""
         }
 
-    if request_type == "Field Visit":
+    if request_type != "Miss Punch":
         return {
             "show_warning": False,
             "count": 0,

@@ -316,7 +316,7 @@ class MarkAttendance(Document):
                     )
 
                     frappe.throw(
-                        f"Attendance is locked for branch {user_branch} in {month_name}. Cannot process attendance."
+                        f"Attendance is locked for branch {user_branch} for {month_name}. Cannot process attendance."
                     )
 
             # ==================================================

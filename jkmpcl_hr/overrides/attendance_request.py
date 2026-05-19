@@ -102,6 +102,9 @@ class AttendanceRequest(HRMSAttendanceRequest):
 
 
     def set_waiver_note(self):
+        if self.reason  != "Miss Punch":
+            return
+        
         employee_msg, approver_msg = get_waiver_messages(
             employee=self.employee,
             from_date=self.from_date,
@@ -1384,7 +1387,10 @@ def get_employee_custom_shift_type(employee, date):
 
 # ----------------- UPDATED CODE (16-04-2026) -------------------
 
-def get_waiver_messages(employee, from_date, punch_type=None, docname=None, workflow_state=None):
+def get_waiver_messages(employee, from_date, punch_type=None, docname=None, workflow_state=None, reason=None):
+    if reason and reason != "Miss Punch":
+        return "", ""
+    
     data = get_manual_punch_note_html(employee, from_date, punch_type, docname)
 
     count = data.get("count", 0)
