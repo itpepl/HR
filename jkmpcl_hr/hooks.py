@@ -207,6 +207,9 @@ doc_events = {
         ],
         "on_submit": "jkmpcl_hr.py.shift_request.on_submit",
         "before_submit": "jkmpcl_hr.py.api.block_suspended_employee"
+    },
+    "Travel Request":{
+        "validate":"jkmpcl_hr.py.travel_request.validate"
     }
 
 # 	"*": {

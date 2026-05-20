@@ -3,21 +3,52 @@ from frappe.utils import getdate, nowdate,formatdate
 from datetime import timedelta  
 from datetime import datetime, date as sys_date
 import frappe,uuid, os, mimetypes, calendar, re
+from frappe.utils import formatdate
 
 
-def check_attendance_lock(date):
-    lock_name = frappe.db.get_value(
+def check_attendance_lock(date, employee=None):
+
+    # ============================================
+    # GET EMPLOYEE BRANCH
+    # ============================================
+    employee_branch = None
+
+    if employee:
+        employee_branch = frappe.db.get_value(
+            "Employee",
+            employee,
+            "branch"
+        )
+
+    # ============================================
+    # GET ATTENDANCE LOCKS
+    # ============================================
+    locks = frappe.get_all(
         "Attendance Lock",
-        {
+        filters={
             "from_date": ["<=", date],
             "to_date": [">=", date],
+            "docstatus": ["!=", 2]
         },
-        "name",
+        fields=[
+            "name",
+            "month",
+            "branch"
+        ],
         order_by="creation desc"
     )
 
-    if lock_name:
-        month = frappe.db.get_value("Attendance Lock", lock_name, "month")
+    for lock in locks:
+
+        # ============================================
+        # BRANCH CHECK
+        # ============================================
+        if lock.branch and employee_branch:
+
+            if lock.branch != employee_branch:
+                continue
+
+        month = lock.month
 
         if not month:
             month = formatdate(date, "MMMM yyyy")

@@ -58,7 +58,7 @@ class AttendanceRequest(HRMSAttendanceRequest):
         for i in range(date_diff(to_date, from_date) + 1):
             d = add_days(from_date, i)
 
-            lock_name = AttendanceLock.is_attendance_locked(d)
+            lock_name = AttendanceLock.is_attendance_locked(d,self.employee)
 
             if lock_name:
                 # ✅ Get month safely (no permission issue)
@@ -102,6 +102,9 @@ class AttendanceRequest(HRMSAttendanceRequest):
 
 
     def set_waiver_note(self):
+        if self.reason  != "Miss Punch":
+            return
+        
         employee_msg, approver_msg = get_waiver_messages(
             employee=self.employee,
             from_date=self.from_date,
@@ -1384,7 +1387,10 @@ def get_employee_custom_shift_type(employee, date):
 
 # ----------------- UPDATED CODE (16-04-2026) -------------------
 
-def get_waiver_messages(employee, from_date, punch_type=None, docname=None, workflow_state=None):
+def get_waiver_messages(employee, from_date, punch_type=None, docname=None, workflow_state=None, reason=None):
+    if reason and reason != "Miss Punch":
+        return "", ""
+    
     data = get_manual_punch_note_html(employee, from_date, punch_type, docname)
 
     count = data.get("count", 0)
@@ -1394,7 +1400,7 @@ def get_waiver_messages(employee, from_date, punch_type=None, docname=None, work
         return "", ""
 
     # ✅ Employee Message (STATIC)
-    employee_msg = """<div style="color:#fff;background-color:#e53935;
+    employee_msg = f"""<div style="color:#fff;background-color:#e53935;
     padding:10px;border-radius:5px;font-weight:600;">
     ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
     </div>"""

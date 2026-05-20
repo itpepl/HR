@@ -6,7 +6,12 @@ from frappe.utils import get_datetime
 
 from frappe.utils import cint
 from jkmpcl_hr.py.utils import get_emp_reporting_manager, get_emp_hr_manager, get_ceo_user
-
+from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
+from frappe.utils import (
+    add_days,
+    date_diff,
+    formatdate
+)
 @frappe.whitelist()
 def get_manual_punches(
     view_type="self",
@@ -119,23 +124,32 @@ def create_manual_punch(data):
         to_date = date
 
         # -----------------------------
-        # 🔒 Attendance Lock Check
+        # Attendance Lock Check
         # -----------------------------
-        lock = frappe.db.get_value(
-            "Attendance Lock",
-            {
-                "from_date": ["<=", to_date],
-                "to_date": [">=", from_date],
-                "docstatus": ["in", [0, 1]]
-            },
-            ["name", "month"],
-            as_dict=True
-        )
+        for i in range(date_diff(to_date, from_date) + 1):
 
-        if lock:
-            from frappe.utils import formatdate
-            month = lock.month or formatdate(from_date, "MMMM yyyy")
-            frappe.throw(f"Attendance is locked for {month}", title="Attendance Lock")
+            d = add_days(from_date, i)
+
+            lock_name = AttendanceLock.is_attendance_locked(
+                d,
+                employee
+            )
+
+            if lock_name:
+
+                month = frappe.db.get_value(
+                    "Attendance Lock",
+                    lock_name,
+                    "month"
+                )
+
+                if not month:
+                    month = formatdate(d, "MMMM yyyy")
+
+                frappe.throw(
+                    f"Attendance is locked for {month}",
+                    title="Attendance Lock"
+                )
 
         # -----------------------------
         # WARNING LOGIC
@@ -364,7 +378,7 @@ def get_manual_punch_note(employeeId, from_date, request_type=None, current_punc
             "message": ""
         }
 
-    if request_type == "Field Visit":
+    if request_type != "Miss Punch":
         return {
             "show_warning": False,
             "count": 0,

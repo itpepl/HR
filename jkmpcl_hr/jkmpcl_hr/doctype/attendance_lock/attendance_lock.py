@@ -180,6 +180,7 @@ class AttendanceLock(Document):
                 "docstatus": ["!=", 2],
                 "from_date": ["<=", self.to_date],
                 "to_date": [">=", self.from_date],
+                "branch":["=", self.branch]
             }
         )
 
@@ -193,10 +194,17 @@ class AttendanceLock(Document):
     # CHECK ATTENDANCE LOCK
     # =====================================================
     @staticmethod
-    def is_attendance_locked(date):
+    def is_attendance_locked(date,employee=None):
 
         date = getdate(date)
+        employee_branch = None
 
+        if employee:
+            employee_branch = frappe.db.get_value(
+                "Employee",
+                employee,
+                "branch"
+            )
         locks = frappe.get_all(
             "Attendance Lock",
             filters={
@@ -205,7 +213,8 @@ class AttendanceLock(Document):
             fields=[
                 "name",
                 "from_date",
-                "to_date"
+                "to_date",
+                "branch"
             ]
         )
 
@@ -219,7 +228,10 @@ class AttendanceLock(Document):
             # CHECK DATE RANGE
             if not (from_date <= date <= to_date):
                 continue
-
+            
+            if lock.branch and employee_branch:
+                if lock.branch != employee_branch:
+                    continue
             # GET ALLOWED ROLES
             allowed_roles = frappe.get_all(
                 "Attendance Lock Table",
