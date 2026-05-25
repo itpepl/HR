@@ -228,7 +228,24 @@ def get_upcoming_holidays(employeeId=None):
         end_of_year = today.replace(month=12, day=31)
 
         employee = frappe.get_doc("Employee", employeeId)
-        holiday_list_name = employee.holiday_list
+
+        # -------------------------------------------------
+        # First Check Holiday List Assignment
+        # -------------------------------------------------
+        holiday_list_name = frappe.db.get_value(
+            "Holiday List Assignment",
+            {
+                "assigned_to": employeeId
+            },
+            "holiday_list",
+            order_by="creation desc"
+        )
+
+        # -------------------------------------------------
+        # Fallback to Employee Holiday List
+        # -------------------------------------------------
+        if not holiday_list_name:
+            holiday_list_name = employee.holiday_list
 
         if not holiday_list_name:
             frappe.throw("Holiday list not found for this employee")
@@ -318,7 +335,12 @@ def get_upcoming_holidays(employeeId=None):
             })
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Error While Getting Year Holidays")
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Error While Getting Year Holidays"
+        )
+
         frappe.local.response["message"] = {
             "success": False,
             "message": str(e),
