@@ -2,19 +2,49 @@ import frappe
 from frappe.utils import getdate, today, add_days, date_diff,formatdate
 from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
 
+# def get_required_shift_hours(dt, branch, is_female):
+#     dt = getdate(dt)
+#     if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
+#         if 4 <= dt.month <= 9:
+#             return "8hours"
+#         return "7hours"
+#     elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
+#         if is_female:
+#             if (4 <= dt.month <= 11) or (2 <= dt.month <= 3):
+#                 return "8hours"
+#             return "7hours"
+#         else:
+#             return "8hours"
+
 def get_required_shift_hours(dt, branch, is_female):
-    dt = getdate(dt)
-    if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
-        if 4 <= dt.month <= 9:
-            return "8hours"
-        return "7hours"
-    elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
-        if is_female:
-            if (4 <= dt.month <= 11) or (2 <= dt.month <= 3):
-                return "8hours"
-            return "7hours"
+
+    dt = frappe.utils.getdate(dt)
+    current_month = dt.month
+
+    # Get Branch Document
+    branch_doc = frappe.get_doc("Branch", branch)
+
+    # Loop child table
+    for row in branch_doc.custom_branch_hours_setting:
+
+        # Gender Match
+        if row.gender == "All":
+            gender_match = True
+
+        elif row.gender == "Female" and is_female:
+            gender_match = True
+
+        elif row.gender == "Male" and not is_female:
+            gender_match = True
+
         else:
-            return "8hours"
+            gender_match = False
+
+        # Month Match
+        if (gender_match and row.from_month <= current_month <= row.to_month):
+            return row.hours
+
+    return None
 
 
 
@@ -124,14 +154,14 @@ def validate_shift_hours(doc):
                 "Please create separate Shift Requests for each period."
             )
         
-        from_date = getdate(doc.from_date)
-        to_date = getdate(doc.to_date)
-        if from_hours == to_hours:
-            if doc.custom_branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu" and (from_date <= getdate(f"{from_date.year}-12-01") and getdate(f"{from_date.year+1}-01-31") <= to_date):
-                frappe.throw(
-                    f" 7 Hours shift fall between the from date and to date "
-                    "Please create separate Shift Requests for each period."
-                )
+        # from_date = getdate(doc.from_date)
+        # to_date = getdate(doc.to_date)
+        # if from_hours == to_hours:
+        #     if doc.custom_branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu" and (from_date <= getdate(f"{from_date.year}-12-01") and getdate(f"{from_date.year+1}-01-31") <= to_date):
+        #         frappe.throw(
+        #             f" 7 Hours shift fall between the from date and to date "
+        #             "Please create separate Shift Requests for each period."
+        #         )
             
         shift_hours = frappe.db.get_value("Shift Type", doc.shift_type, "custom_hours")
 

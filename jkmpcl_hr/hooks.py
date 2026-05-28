@@ -165,7 +165,7 @@ doc_events = {
     #     "on_submit": "jkmpcl_hr.py.shift_request.on_submit"
     # },
     "Employee": {
-        "after_insert": "jkmpcl_hr.py.employee.after_insert",
+        # "after_insert": "jkmpcl_hr.py.employee.after_insert",
         "on_update": "jkmpcl_hr.py.employee.on_update",
         "validate": "jkmpcl_hr.py.employee.validate"
     },
@@ -225,7 +225,7 @@ doc_events = {
 scheduler_events = {
     "cron":{
         "0 0 1 4 *": [
-            "jkmpcl_hr.py.scheduler_method.create_shift_assignments",
+            # "jkmpcl_hr.py.scheduler_method.create_shift_assignments",
             "jkmpcl_hr.py.scheduler_method.allocate_leaves_to_confirmed_employee",
             "jkmpcl_hr.py.pl_accrual.carry_forward_pl_new_fy"
         ],
