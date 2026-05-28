@@ -225,7 +225,7 @@ doc_events = {
 scheduler_events = {
     "cron":{
         "0 0 1 4 *": [
-            "jkmpcl_hr.py.scheduler_method.create_shift_assignments",
+            # "jkmpcl_hr.py.scheduler_method.create_shift_assignments",
             "jkmpcl_hr.py.scheduler_method.allocate_leaves_to_confirmed_employee",
             "jkmpcl_hr.py.pl_accrual.carry_forward_pl_new_fy"
         ],

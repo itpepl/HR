@@ -174,7 +174,6 @@ def set_approvers(doc):
                         
             if doc.reports_to != current_rm:
                 doc.reports_to = current_rm
-            jkmpcl_hr/py/scheduler_method.py
             current_rm_user = frappe.db.get_value("Employee", current_rm, "user_id") or ''
             if current_rm_user:
                 if doc.shift_request_approver != current_rm_user:
@@ -193,192 +192,192 @@ def set_approvers(doc):
             
     
     
-def after_insert(doc, event):
+# def after_insert(doc, event):
     
-    allocate_cl_on_employee_creation(doc)
+#     allocate_cl_on_employee_creation(doc)
     
-    if not doc.default_shift:
-        return
+#     if not doc.default_shift:
+#         return
 
-    today_date = getdate(today())
-    branch = doc.branch
-    start_year = today_date.year if today_date.month >= 4 else today_date.year - 1
+#     today_date = getdate(today())
+#     branch = doc.branch
+#     start_year = today_date.year if today_date.month >= 4 else today_date.year - 1
 
     
-    if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
-        if doc.custom_attendance_source == "Field":
-            create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year, is_field=True)
-        elif doc.custom_attendance_source == "Punch":
-            create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year, is_punch=True)
-        else:
-            create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year)
+#     if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
+#         if doc.custom_attendance_source == "Field":
+#             create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year, is_field=True)
+#         elif doc.custom_attendance_source == "Punch":
+#             create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year, is_punch=True)
+#         else:
+#             create_shift_assignment_for_srinagar(today_date, doc.name, doc.default_shift, start_year)
 
-    elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
+#     elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
         
-        if doc.custom_attendance_source == "Field":
-            if doc.gender == "Female":
-                create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year, is_female=True, is_field=True)
-            else:
-                create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year, is_field=True)
+#         if doc.custom_attendance_source == "Field":
+#             if doc.gender == "Female":
+#                 create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year, is_female=True, is_field=True)
+#             else:
+#                 create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year, is_field=True)
             
-        else:
-            create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year)
+#         else:
+#             create_shift_assignment_for_jammu(today_date, doc.name, doc.default_shift, start_year)
 
             
     
-    employment_type = frappe.db.get_value("Employee", doc.name, "employment_type")
+#     employment_type = frappe.db.get_value("Employee", doc.name, "employment_type")
     
 
-def create_shift_assignment_for_srinagar(today_date, emp_id, default_shift_type_id, start_year, is_field = False, is_punch = False):
+# def create_shift_assignment_for_srinagar(today_date, emp_id, default_shift_type_id, start_year, is_field = False, is_punch = False):
     
-    assign_both = False
-    assign_seven_hours = False
+#     assign_both = False
+#     assign_seven_hours = False
 
-    eight_hours_shift_id = "jkmpcl_hr/py/scheduler_method.py"
-    seven_hours_shift_id = ""
+#     eight_hours_shift_id = "jkmpcl_hr/py/scheduler_method.py"
+#     seven_hours_shift_id = ""
 
-    emp_default_shift_details = frappe.db.get_values("Shift Type", default_shift_type_id, ["custom_shift_type", "custom_hours", "custom_branch"], as_dict=True)
+#     emp_default_shift_details = frappe.db.get_values("Shift Type", default_shift_type_id, ["custom_shift_type", "custom_hours", "custom_branch"], as_dict=True)
     
-    if emp_default_shift_details and emp_default_shift_details[0]:
-        default_shift_type = emp_default_shift_details[0].get("custom_shift_type")
-        default_shift_hours = emp_default_shift_details[0].get("custom_hours")
-        default_shift_branch = emp_default_shift_details[0].get("custom_branch")
+#     if emp_default_shift_details and emp_default_shift_details[0]:
+#         default_shift_type = emp_default_shift_details[0].get("custom_shift_type")
+#         default_shift_hours = emp_default_shift_details[0].get("custom_hours")
+#         default_shift_branch = emp_default_shift_details[0].get("custom_branch")
         
-        if default_shift_hours == "8hours":
+#         if default_shift_hours == "8hours":
             
-            if is_field and default_shift_type == "General":
-                eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name")
-                seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
-            elif is_punch and default_shift_type == "General":
-                eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Punch"}, "name")
-                seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Punch"}, "name")
-            else:
-                eight_hours_shift_id = default_shift_type_id
-                seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours"}, "name")
+#             if is_field and default_shift_type == "General":
+#                 eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name")
+#                 seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
+#             elif is_punch and default_shift_type == "General":
+#                 eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Punch"}, "name")
+#                 seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Punch"}, "name")
+#             else:
+#                 eight_hours_shift_id = default_shift_type_id
+#                 seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours"}, "name")
         
-        if default_shift_hours == "7hours":
+#         if default_shift_hours == "7hours":
             
-            if is_field and default_shift_type == "General":
-                seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
-                eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name")
-            elif is_punch and default_shift_type == "General":
-                seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Punch"}, "name")
-                eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Punch"}, "name")
-            else:        
-                seven_hours_shift_id = default_shift_type_id
-                eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours"}, "name")
+#             if is_field and default_shift_type == "General":
+#                 seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
+#                 eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name")
+#             elif is_punch and default_shift_type == "General":
+#                 seven_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Punch"}, "name")
+#                 eight_hours_shift_id=frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Punch"}, "name")
+#             else:        
+#                 seven_hours_shift_id = default_shift_type_id
+#                 eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours"}, "name")
 
-    else:
-        frappe.throw("error_create_shift_assignment_for_srinagar", f"No Shift Details found for the default shift {default_shift_type_id}")
-        return
+#     else:
+#         frappe.throw("error_create_shift_assignment_for_srinagar", f"No Shift Details found for the default shift {default_shift_type_id}")
+#         return
 
-    eight_hours_start = getdate(f"{start_year}-04-01")
-    eight_hours_end = getdate(f"{start_year}-09-30")
+#     eight_hours_start = getdate(f"{start_year}-04-01")
+#     eight_hours_end = getdate(f"{start_year}-09-30")
         
-    seven_hours_start = getdate(f"{start_year}-10-01")
-    seven_hours_end = getdate(f"{start_year + 1}-03-31")
+#     seven_hours_start = getdate(f"{start_year}-10-01")
+#     seven_hours_end = getdate(f"{start_year + 1}-03-31")
     
     
-    if 4 <= today_date.month <= 9:
-        assign_both = True
-    else:
-        assign_seven_hours = True
+#     if 4 <= today_date.month <= 9:
+#         assign_both = True
+#     else:
+#         assign_seven_hours = True
         
     
-    if assign_both:            
-        create_shift_assignment_rec(emp_id, today_date, eight_hours_end,eight_hours_shift_id)
-        create_shift_assignment_rec(emp_id, seven_hours_start, seven_hours_end, seven_hours_shift_id)
+#     if assign_both:            
+#         create_shift_assignment_rec(emp_id, today_date, eight_hours_end,eight_hours_shift_id)
+#         create_shift_assignment_rec(emp_id, seven_hours_start, seven_hours_end, seven_hours_shift_id)
     
-    elif assign_seven_hours:
-        create_shift_assignment_rec(emp_id, today_date, seven_hours_end, seven_hours_shift_id)
+#     elif assign_seven_hours:
+#         create_shift_assignment_rec(emp_id, today_date, seven_hours_end, seven_hours_shift_id)
 
 
 
-def create_shift_assignment_for_jammu(today_date, emp_id, default_shift_type_id, start_year, is_female = False, is_field=False):
+# def create_shift_assignment_for_jammu(today_date, emp_id, default_shift_type_id, start_year, is_female = False, is_field=False):
     
-    assign_all = False
-    assign_seven_hours = False
-    assign_second_eight_hours = False
+#     assign_all = False
+#     assign_seven_hours = False
+#     assign_second_eight_hours = False
         
-    eight_hours_shift_id = ""
-    seven_hours_shift_id = ""
+#     eight_hours_shift_id = ""
+#     seven_hours_shift_id = ""
 
-    emp_default_shift_details = frappe.db.get_values("Shift Type", default_shift_type_id, ["custom_shift_type", "custom_hours", "custom_branch"], as_dict=True)
+#     emp_default_shift_details = frappe.db.get_values("Shift Type", default_shift_type_id, ["custom_shift_type", "custom_hours", "custom_branch"], as_dict=True)
     
-    if emp_default_shift_details and emp_default_shift_details[0]:
-        default_shift_type = emp_default_shift_details[0].get("custom_shift_type")
-        default_shift_hours = emp_default_shift_details[0].get("custom_hours")
-        default_shift_branch = emp_default_shift_details[0].get("custom_branch")
+#     if emp_default_shift_details and emp_default_shift_details[0]:
+#         default_shift_type = emp_default_shift_details[0].get("custom_shift_type")
+#         default_shift_hours = emp_default_shift_details[0].get("custom_hours")
+#         default_shift_branch = emp_default_shift_details[0].get("custom_branch")
         
-        if default_shift_hours == "8hours":
-            if is_field and default_shift_type == "General":
-                seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
-                eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name")                
-            else:
-                eight_hours_shift_id = default_shift_type_id
-                seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours"}, "name")
+#         if default_shift_hours == "8hours":
+#             if is_field and default_shift_type == "General":
+#                 seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
+#                 eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name")                
+#             else:
+#                 eight_hours_shift_id = default_shift_type_id
+#                 seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours"}, "name")
                 
         
-        if default_shift_hours == "7hours":
-            if is_field and default_shift_type == "General":
-                seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
-                eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name") 
-            else:
-                seven_hours_shift_id = default_shift_type_id
-                eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours"}, "name")
+#         if default_shift_hours == "7hours":
+#             if is_field and default_shift_type == "General":
+#                 seven_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "7hours", "custom_attendance_source": "Field"}, "name")
+#                 eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours", "custom_attendance_source": "Field"}, "name") 
+#             else:
+#                 seven_hours_shift_id = default_shift_type_id
+#                 eight_hours_shift_id = frappe.db.get_value("Shift Type", {"custom_branch": default_shift_branch, "custom_shift_type": default_shift_type, "custom_hours": "8hours"}, "name")
 
-    else:
-        frappe.throw("error_create_shift_assignment_for_srinagar", f"No Shift Details found for the default shift {default_shift_type_id}")
-        return
+#     else:
+#         frappe.throw("error_create_shift_assignment_for_srinagar", f"No Shift Details found for the default shift {default_shift_type_id}")
+#         return
 
-    if is_female and is_field:
-        first_eight_hours_start = getdate(f"{start_year}-04-01")
-        first_eight_hours_end = getdate(f"{start_year}-11-30")
+#     if is_female and is_field:
+#         first_eight_hours_start = getdate(f"{start_year}-04-01")
+#         first_eight_hours_end = getdate(f"{start_year}-11-30")
             
-        seven_hours_start = getdate(f"{start_year}-12-01")
-        seven_hours_end = getdate(f"{start_year + 1}-01-31")
+#         seven_hours_start = getdate(f"{start_year}-12-01")
+#         seven_hours_end = getdate(f"{start_year + 1}-01-31")
         
-        second_eight_hours_start = getdate(f"{start_year + 1}-02-01")
-        second_eight_hours_end = getdate(f"{start_year + 1}-03-31")
+#         second_eight_hours_start = getdate(f"{start_year + 1}-02-01")
+#         second_eight_hours_end = getdate(f"{start_year + 1}-03-31")
         
-        print(f"\n\n {today_date.month} sdsad\n\n")
+#         print(f"\n\n {today_date.month} sdsad\n\n")
         
-        if 4 <= today_date.month <= 11:
-            assign_all = True        
+#         if 4 <= today_date.month <= 11:
+#             assign_all = True        
         
-        elif today_date.month == 12 or today_date.month == 1:
-            assign_seven_hours = True
-            assign_second_eight_hours = True
+#         elif today_date.month == 12 or today_date.month == 1:
+#             assign_seven_hours = True
+#             assign_second_eight_hours = True
             
-        elif 2<= today_date.month <=3:
-            assign_second_eight_hours = True
+#         elif 2<= today_date.month <=3:
+#             assign_second_eight_hours = True
                                         
-        try:
-            # pass
-            if assign_all:                        
-                create_shift_assignment_rec(emp_id, today_date,first_eight_hours_end, eight_hours_shift_id)
+#         try:
+#             # pass
+#             if assign_all:                        
+#                 create_shift_assignment_rec(emp_id, today_date,first_eight_hours_end, eight_hours_shift_id)
                 
-                create_shift_assignment_rec(emp_id, seven_hours_start, seven_hours_end, seven_hours_shift_id)
+#                 create_shift_assignment_rec(emp_id, seven_hours_start, seven_hours_end, seven_hours_shift_id)
                 
-                create_shift_assignment_rec(emp_id, second_eight_hours_start,second_eight_hours_end, eight_hours_shift_id)
+#                 create_shift_assignment_rec(emp_id, second_eight_hours_start,second_eight_hours_end, eight_hours_shift_id)
                 
-            elif assign_seven_hours:    
-                create_shift_assignment_rec(emp_id, today_date, seven_hours_end, seven_hours_shift_id)
-                create_shift_assignment_rec(emp_id, second_eight_hours_start,second_eight_hours_end, eight_hours_shift_id)
+#             elif assign_seven_hours:    
+#                 create_shift_assignment_rec(emp_id, today_date, seven_hours_end, seven_hours_shift_id)
+#                 create_shift_assignment_rec(emp_id, second_eight_hours_start,second_eight_hours_end, eight_hours_shift_id)
 
-            elif assign_second_eight_hours:
-                create_shift_assignment_rec(emp_id, today_date,second_eight_hours_end, eight_hours_shift_id)
-        except Exception as e:
-            frappe.log_error("error_shift_assignment", frappe.get_traceback())
-            frappe.throw(e)
+#             elif assign_second_eight_hours:
+#                 create_shift_assignment_rec(emp_id, today_date,second_eight_hours_end, eight_hours_shift_id)
+#         except Exception as e:
+#             frappe.log_error("error_shift_assignment", frappe.get_traceback())
+#             frappe.throw(e)
     
-    else:
-        try:
-            shift_end_date = getdate(f"{start_year +1}-03-31")
-            create_shift_assignment_rec(emp_id, today_date, shift_end_date, eight_hours_shift_id)    
-        except Exception as e:
-            frappe.log_error("error_shift_assignment", frappe.get_traceback())
-            frappe.throw(e)
+#     else:
+#         try:
+#             shift_end_date = getdate(f"{start_year +1}-03-31")
+#             create_shift_assignment_rec(emp_id, today_date, shift_end_date, eight_hours_shift_id)    
+#         except Exception as e:
+#             frappe.log_error("error_shift_assignment", frappe.get_traceback())
+#             frappe.throw(e)
     
 
 # * METHOD TO ALLOCATE CASUAL LEAVE ON EMPLOYEE CREATION BASED ON EMPLOYMENT TYPE AND DATE OF JOINING
