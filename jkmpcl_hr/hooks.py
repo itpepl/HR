@@ -165,7 +165,7 @@ doc_events = {
     #     "on_submit": "jkmpcl_hr.py.shift_request.on_submit"
     # },
     "Employee": {
-        # "after_insert": "jkmpcl_hr.py.employee.after_insert",
+        "after_insert": "jkmpcl_hr.py.employee.after_insert",
         "on_update": "jkmpcl_hr.py.employee.on_update",
         "validate": "jkmpcl_hr.py.employee.validate"
     },
@@ -210,6 +210,12 @@ doc_events = {
     },
     "Travel Request":{
         "validate":"jkmpcl_hr.py.travel_request.validate"
+    },
+    "Branch": {
+        "validate": "jkmpcl_hr.py.branch.validate"
+    },
+    "Expense Claim":{
+        "validate":"jkmpcl_hr.py.expense_claim.validate"
     }
 
 # 	"*": {
