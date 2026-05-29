@@ -222,18 +222,25 @@ def add_custom_hr_rows_to_employees(department, rows):
 #         frappe.log_error(f"error_determine_shift_types", frappe.get_traceback())
 #         frappe.throw(e)
 
-def get_required_shift_hours(dt, branch, is_female):
+def get_required_shift_hours(dt, branch, is_female=False):
 
-    dt = frappe.utils.getdate(dt)
+    dt = getdate(dt)
+
     current_month = dt.month
 
-    # Get Branch Document
     branch_doc = frappe.get_doc("Branch", branch)
 
-    # Loop child table
+    if not hasattr(branch_doc, "custom_branch_hours_setting"):
+        return None
+
     for row in branch_doc.custom_branch_hours_setting:
 
+        gender_match = False
+
+        # =========================
         # Gender Match
+        # =========================
+
         if row.gender == "All":
             gender_match = True
 
@@ -243,16 +250,20 @@ def get_required_shift_hours(dt, branch, is_female):
         elif row.gender == "Male" and not is_female:
             gender_match = True
 
-        else:
-            gender_match = False
-
+        # =========================
         # Month Match
-        if (gender_match and row.from_month <= current_month <= row.to_month):
+        # =========================
+
+        if (
+            gender_match
+            and row.from_month <= current_month <= row.to_month
+        ):
+
             return row.hours
 
     return None
 
-# METHOD TO GET THE SHIFT TYPE BASED ON THE DATE AND BRANCH
+
 @frappe.whitelist()
 def determine_shift_types(
     doctype,
@@ -266,24 +277,39 @@ def determine_shift_types(
     try:
 
         branch = filters.get("branch")
+
         date_str = filters.get("as_on_date")
+
         employee_id = filters.get("emp_id")
+
         gender = filters.get("gender")
+
+        attendance_source = filters.get("attendance_source")
 
         if not branch:
             return []
 
         as_on_date = getdate(date_str) if date_str else getdate()
 
-        conditions = {}
+        # =========================
+        # Employee Attendance Source
+        # =========================
 
-        emp_attendance_source = filters.get(
-            "attendance_source"
-        ) or frappe.db.get_value(
-            "Employee",
-            employee_id,
-            "custom_attendance_source"
-        )
+        if not attendance_source and employee_id:
+
+            attendance_source = frappe.db.get_value(
+                "Employee",
+                employee_id,
+                "custom_attendance_source"
+            )
+
+        # =========================
+        # Base Conditions
+        # =========================
+
+        conditions = {
+            "custom_branch": branch
+        }
 
         # =========================
         # Role Validation
@@ -298,51 +324,27 @@ def determine_shift_types(
         )
 
         if not any(role in user_roles for role in allowed_roles):
-            conditions["custom_shift_type"] = ["!=", "24 hours"]
 
-        # =========================
-        # Attendance Source Logic
-        # =========================
-
-        is_field = False
-
-        if emp_attendance_source == "Biometric":
-
-            conditions["custom_attendance_source"] = [
-                "not in",
-                ["Field", "Punch"]
-            ]
-
-        elif emp_attendance_source == "Punch":
-
-            conditions["custom_attendance_source"] = [
+            conditions["custom_shift_type"] = [
                 "!=",
-                "Field"
-            ]
-
-        elif emp_attendance_source == "Field":
-
-            is_field = True
-
-            conditions["custom_attendance_source"] = [
-                "!=",
-                "Punch"
+                "24 hours"
             ]
 
         # =========================
         # Gender Logic
         # =========================
 
-        employee_gender = gender or frappe.db.get_value(
-            "Employee",
-            employee_id,
-            "gender"
-        )
+        employee_gender = gender
 
-        is_female = (
-            employee_gender == "Female"
-            and is_field
-        )
+        if not employee_gender and employee_id:
+
+            employee_gender = frappe.db.get_value(
+                "Employee",
+                employee_id,
+                "gender"
+            )
+
+        is_female = employee_gender == "Female"
 
         # =========================
         # Dynamic Hours
@@ -355,13 +357,8 @@ def determine_shift_types(
         )
 
         if required_hours:
+
             conditions["custom_hours"] = required_hours
-
-        # =========================
-        # Branch Filter
-        # =========================
-
-        conditions["custom_branch"] = branch
 
         # =========================
         # Excluded Shift Types
@@ -376,40 +373,94 @@ def determine_shift_types(
             for row in branch_doc.custom_excluded_shift_types:
 
                 if row.shift_type and row.exclude:
+
                     excluded_shifts.append(row.shift_type)
 
         if excluded_shifts:
-            conditions["name"] = ["not in", excluded_shifts]
 
-        frappe.log_error(
-            "Shift Conditions",
-            frappe.as_json(conditions)
-        )
+            conditions["name"] = [
+                "not in",
+                excluded_shifts
+            ]
+
+        # =========================
+        # Search Text Filter
+        # =========================
+
+        if txt:
+
+            conditions[searchfield] = [
+                "like",
+                f"%{txt}%"
+            ]
 
         # =========================
         # Fetch Shift Types
         # =========================
 
-        shift_types = frappe.db.get_list(
+        shift_types = frappe.get_all(
             "Shift Type",
             filters=conditions,
-            fields=["name"],
-            order_by="name",
+            fields=[
+                "name",
+                "custom_attendance_source"
+            ],
+            order_by="name asc",
             start=start,
             page_length=page_len
         )
 
-        return [[d.name, d.name] for d in shift_types]
+        final_shifts = []
 
-    except Exception as e:
+        # =========================
+        # Attendance Source Filter
+        # =========================
+
+        for shift in shift_types:
+
+            shift_attendance_source = (
+                shift.custom_attendance_source
+            )
+
+            # If employee attendance source not set
+            # then allow all shifts
+            if not attendance_source:
+
+                final_shifts.append(
+                    [shift.name, shift.name]
+                )
+
+                continue
+
+            # Exact Match
+            if (
+                shift_attendance_source
+                == attendance_source
+            ):
+
+                final_shifts.append(
+                    [shift.name, shift.name]
+                )
+
+                continue
+
+            # Blank attendance source in Shift Type
+            if not shift_attendance_source:
+
+                final_shifts.append(
+                    [shift.name, shift.name]
+                )
+
+        return final_shifts
+
+    except Exception:
 
         frappe.log_error(
             "determine_shift_types_error",
             frappe.get_traceback()
         )
 
-        frappe.throw(str(e))
-
+        return []
         
 # # =====================================================
 # # 🔹 CORE CHECK FUNCTION
