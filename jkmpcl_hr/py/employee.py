@@ -1,4 +1,5 @@
 import frappe
+from calendar import monthrange
 from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day, add_months, month_diff, flt
 from jkmpcl_hr.py.utils import get_emp_reporting_manager
 
@@ -195,7 +196,241 @@ def set_approvers(doc):
 def after_insert(doc, event):
     
     allocate_cl_on_employee_creation(doc)
-    
+    auto_create_shift_assignment(doc)
+
+
+# =========================================================
+# AFTER INSERT METHOD
+# =========================================================
+
+def auto_create_shift_assignment(doc, method=None):
+
+    try:
+
+        if not doc.default_shift:
+            frappe.log_error(
+                title="Shift Assignment Debug",
+                message="Default Shift not found on Employee"
+            )
+            return
+
+        if not doc.branch:
+            frappe.log_error(
+                title="Shift Assignment Debug",
+                message="Branch not found on Employee"
+            )
+            return
+
+        attendance_source = doc.custom_attendance_source or ""
+        is_female = doc.gender == "Female"
+
+        branch_doc = frappe.get_doc("Branch", doc.branch)
+
+        if not branch_doc.custom_branch_hours_setting:
+            frappe.log_error(
+                title="Shift Assignment Debug",
+                message=f"No Branch Hours Setting found in Branch {doc.branch}"
+            )
+            return
+
+        for row in branch_doc.custom_branch_hours_setting:
+
+            # =================================================
+            # GENDER CHECK
+            # =================================================
+
+            if not is_gender_match(row.gender, is_female):
+
+                continue
+
+            # =================================================
+            # FIND SHIFT TYPE
+            # =================================================
+
+            shift_type = get_shift_type_from_hours(
+                branch=doc.branch,
+                default_shift=doc.default_shift,
+                hours=row.hours,
+                attendance_source=attendance_source
+            )
+
+            if not shift_type:
+
+                continue
+
+            # =================================================
+            # DATE RANGE
+            # =================================================
+
+            start_date, end_date = get_month_range_dates(
+                row.from_month,
+                row.to_month
+            )
+
+            # =================================================
+            # CREATE ASSIGNMENT
+            # =================================================
+
+            create_shift_assignment(
+                employee=doc.name,
+                shift_type=shift_type,
+                start_date=start_date,
+                end_date=end_date
+            )
+
+    except Exception:
+
+        frappe.log_error(
+            title="Auto Shift Assignment Error",
+            message=frappe.get_traceback()
+        )
+
+
+# =========================================================
+# GENDER CHECK
+# =========================================================
+
+def is_gender_match(setting_gender, is_female):
+
+    if setting_gender == "All":
+        return True
+
+    if setting_gender == "Female" and is_female:
+        return True
+
+    if setting_gender == "Male" and not is_female:
+        return True
+
+    return False
+
+
+# =========================================================
+# FIND SHIFT TYPE
+# =========================================================
+
+def get_shift_type_from_hours(
+    branch,
+    default_shift,
+    hours,
+    attendance_source=None
+):
+
+    default_shift_doc = frappe.db.get_value(
+        "Shift Type",
+        default_shift,
+        ["custom_shift_type"],
+        as_dict=True
+    )
+
+    if not default_shift_doc:
+
+        return None
+
+    filters = {
+        "custom_branch": branch,
+        "custom_shift_type": default_shift_doc.custom_shift_type,
+        "custom_hours": hours
+    }
+
+    if attendance_source:
+        filters["custom_attendance_source"] = attendance_source
+
+    shift_type = frappe.db.get_value(
+        "Shift Type",
+        filters,
+        "name"
+    )
+
+    return shift_type
+
+
+# =========================================================
+# DATE RANGE
+# =========================================================
+
+def get_month_range_dates(
+    from_month,
+    to_month
+):
+
+    today_date = getdate(today())
+
+    current_year = today_date.year
+
+    if from_month > to_month:
+
+        if today_date.month >= from_month:
+            start_year = current_year
+            end_year = current_year + 1
+        else:
+            start_year = current_year - 1
+            end_year = current_year
+
+    else:
+
+        start_year = current_year
+        end_year = current_year
+
+    start_date = getdate(
+        f"{start_year}-{int(from_month):02d}-01"
+    )
+
+    last_day = monthrange(
+        end_year,
+        int(to_month)
+    )[1]
+
+    end_date = getdate(
+        f"{end_year}-{int(to_month):02d}-{last_day}"
+    )
+
+    return start_date, end_date
+
+
+# =========================================================
+# CREATE SHIFT ASSIGNMENT
+# =========================================================
+
+def create_shift_assignment(
+    employee,
+    shift_type,
+    start_date,
+    end_date
+):
+
+    existing = frappe.db.exists(
+        "Shift Assignment",
+        {
+            "employee": employee,
+            "shift_type": shift_type,
+            "start_date": start_date,
+            "end_date": end_date,
+            "docstatus": ["!=", 2]
+        }
+    )
+
+    if existing:
+
+        return
+
+    shift_doc = frappe.get_doc({
+        "doctype": "Shift Assignment",
+        "employee": employee,
+        "shift_type": shift_type,
+        "start_date": start_date,
+        "end_date": end_date,
+        "status": "Active"
+    })
+
+    shift_doc.insert(ignore_permissions=True)
+
+    if shift_doc.docstatus == 0:
+        shift_doc.submit()
+
+        frappe.log_error(
+            title="Shift Assignment Debug",
+            message=f"Shift Assignment Submitted : {shift_doc.name}"
+        )
 #     if not doc.default_shift:
 #         return
 

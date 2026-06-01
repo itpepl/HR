@@ -354,8 +354,8 @@ def validate(self, method):
         """, (self.employee, claim_year, self.name))[0][0]
 
         if existing_claim_count >= lta_limit:
-            frappe.throw(f"Only {lta_limit} LTA claims allowed in year {claim_year}.")
-
+            # frappe.throw(f"Only {lta_limit} LTA claims allowed in year {claim_year}.")
+            frappe.throw("Current Year LTA claim is already done")
         # =====================================
         # Leave + Holiday + Weekoff Continuous Check
         # =====================================
@@ -369,18 +369,26 @@ def validate(self, method):
             leave_from = getdate(leave.from_date)
             leave_to = getdate(leave.to_date)
 
+            # =====================================
+            # Consider only leave after confirmation
+            # =====================================
+            if leave_to < confirmation_date:
+                continue
+
+            if leave_from < confirmation_date:
+                leave_from = confirmation_date
+
             days_after_leave = date_diff(expense_date, leave_to)
 
             if days_after_leave > 30:
                 continue
 
-            # December to Jan exception
+            # December to January exception
             if not (
                 leave_to.month == 12
                 and expense_date.month == 1
                 and days_after_leave <= 30
             ):
-
                 if leave_to.year != expense_date.year:
                     continue
 

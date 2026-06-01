@@ -16,18 +16,25 @@ from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import Attendan
 #         else:
 #             return "8hours"
 
-def get_required_shift_hours(dt, branch, is_female):
+def get_required_shift_hours(dt, branch, is_female=False):
 
-    dt = frappe.utils.getdate(dt)
+    dt = getdate(dt)
+
     current_month = dt.month
 
-    # Get Branch Document
     branch_doc = frappe.get_doc("Branch", branch)
 
-    # Loop child table
+    if not hasattr(branch_doc, "custom_branch_hours_setting"):
+        return None
+
     for row in branch_doc.custom_branch_hours_setting:
 
+        gender_match = False
+
+        # =========================
         # Gender Match
+        # =========================
+
         if row.gender == "All":
             gender_match = True
 
@@ -37,16 +44,18 @@ def get_required_shift_hours(dt, branch, is_female):
         elif row.gender == "Male" and not is_female:
             gender_match = True
 
-        else:
-            gender_match = False
-
+        # =========================
         # Month Match
-        if (gender_match and row.from_month <= current_month <= row.to_month):
+        # =========================
+
+        if (
+            gender_match
+            and row.from_month <= current_month <= row.to_month
+        ):
+
             return row.hours
 
     return None
-
-
 
 def validate(doc, event):
 
