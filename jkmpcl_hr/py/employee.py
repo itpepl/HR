@@ -8,6 +8,8 @@ from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
 
 from jkmpcl_hr.py.utils import create_shift_assignment_rec
+from calendar import monthrange
+from frappe.utils import getdate
 
 
 
@@ -686,23 +688,26 @@ def get_month_range_dates(
 
     joining_date = getdate(joining_date)
 
-    current_year = joining_date.year
-
     from_month = int(from_month)
     to_month = int(to_month)
 
-    if from_month > to_month:
-
-        if joining_date.month >= from_month:
-            start_year = current_year
-            end_year = current_year + 1
-        else:
-            start_year = current_year - 1
-            end_year = current_year
-
+    # Fiscal year starts from April
+    if joining_date.month >= 4:
+        fiscal_start_year = joining_date.year
     else:
-        start_year = current_year
-        end_year = current_year
+        fiscal_start_year = joining_date.year - 1
+
+
+
+    if from_month >= 4:
+        start_year = fiscal_start_year
+    else:
+        start_year = fiscal_start_year + 1
+
+    if to_month >= 4:
+        end_year = fiscal_start_year
+    else:
+        end_year = fiscal_start_year + 1
 
     start_date = getdate(
         f"{start_year}-{from_month:02d}-01"
@@ -718,7 +723,6 @@ def get_month_range_dates(
     )
 
     return start_date, end_date
-
 
 # =========================================================
 # CREATE SHIFT ASSIGNMENT
