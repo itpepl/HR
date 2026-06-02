@@ -18,7 +18,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Gender",
-   "options": "Male\nFemale\nAll"
+   "options": "Male\nFemale"
   },
   {
    "fieldname": "from_month",
@@ -47,7 +47,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-27 11:05:39.856011",
+ "modified": "2026-06-02 12:00:29.212460",
  "modified_by": "Administrator",
  "module": "JKMPCL HR",
  "name": "Branch Hours Setting",
