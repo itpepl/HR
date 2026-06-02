@@ -40,5 +40,20 @@ frappe.listview_settings["Off-Day Work Request"] = {
 				}
 			});
 		});
-	}
+		if (list_view.current_month_filter_applied) {
+            return;
+        }
+
+			const today = frappe.datetime.get_today();
+			const start_date = frappe.datetime.month_start(today);
+			const end_date = frappe.datetime.month_end(today);
+
+			list_view.filter_area.add([
+				["Off-Day Work Request", "date", ">=", start_date],
+				["Off-Day Work Request", "date", "<=", end_date]
+			]);
+
+			list_view.current_month_filter_applied = true;
+			list_view.refresh();
+		}
 };

@@ -40,5 +40,23 @@ frappe.listview_settings["Leave Application"] = {
 				}
 			});
 		});
+
+
+		if (list_view.current_month_filter_applied) {
+			return;
+		}
+
+		let today = frappe.datetime.get_today();
+		let start_date = frappe.datetime.month_start(today);
+		let end_date = frappe.datetime.month_end(today);
+
+		// Leave overlaps current month
+		list_view.filter_area.add([
+			["Leave Application", "from_date", "<=", end_date],
+			["Leave Application", "to_date", ">=", start_date]
+		]);
+
+		list_view.current_month_filter_applied = true;
+		list_view.refresh();
 	}
 };

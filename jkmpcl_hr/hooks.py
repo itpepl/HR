@@ -59,7 +59,9 @@ doctype_list_js = {
     "Attendance": "public/js/attendance_list.js",
     "Attendance Request": "public/js/attendance_request_ro_filter.js",
     "Leave Application": "public/js/leave_application_ro_filter.js",
-    "Off-Day Work Request": "public/js/off_day_request_ro_filter.js"
+    "Off-Day Work Request": "public/js/off_day_request_ro_filter.js",
+    "Shift Request": "public/js/shift_request_list.js",
+    "Employee Checkin": "public/js/employee_checkin_list.js",
 }
 # Svg Icons
 # ------------------
