@@ -102,16 +102,36 @@ frappe.ui.form.on("Employee", {
     },
     
 
-    branch: function (frm) {
+    // branch: function (frm) {
         
-        frm.set_value("default_shift", "")
-        if(frm.doc.branch){
-            apply_filter_in_shift_type(frm)
-        }
+    //     frm.set_value("default_shift", "")
+    //     if(frm.doc.branch){
+    //         apply_filter_in_shift_type(frm)
+    //     }
+    // },
+    branch: function(frm) {
+
+        frm.set_value("default_shift", "");
+
+        apply_filter_in_shift_type(frm);
     },
-    custom_attendance_source: function (frm) {
-        frm.set_value("default_shift", "")
+
+    custom_attendance_source: function(frm) {
+
+        frm.set_value("default_shift", "");
+
+        apply_filter_in_shift_type(frm);
     },
+
+    gender: function(frm) {
+
+        frm.set_value("default_shift", "");
+
+        apply_filter_in_shift_type(frm);
+    },
+    // custom_attendance_source: function (frm) {
+    //     frm.set_value("default_shift", "")
+    // },
 
     date_of_joining: function (frm) {
         
@@ -201,11 +221,29 @@ function setup_user_filters(frm) {
     });
 }
 
-// * FUNCTION TO APPLY FILTER ON shift_type FIELD
-function apply_filter_in_shift_type(frm){
+// // * FUNCTION TO APPLY FILTER ON shift_type FIELD
+// function apply_filter_in_shift_type(frm){
+//     frm.set_query("default_shift", function () {
+//         return {
+//             query: "jkmpcl_hr.py.api.determine_shift_types",
+//             filters: {
+//                 branch: frm.doc.branch,
+//                 as_on_date: frappe.datetime.get_today(),
+//                 emp_id: frm.doc.name,
+//                 gender: frm.doc.gender,
+//                 attendance_source: frm.doc.custom_attendance_source
+//             }
+//         };
+//     });
+// }
+
+function apply_filter_in_shift_type(frm) {
+
     frm.set_query("default_shift", function () {
+
         return {
             query: "jkmpcl_hr.py.api.determine_shift_types",
+
             filters: {
                 branch: frm.doc.branch,
                 as_on_date: frappe.datetime.get_today(),

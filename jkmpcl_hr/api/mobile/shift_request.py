@@ -480,150 +480,376 @@ def create_shift_request(data):
 
 #     return [[s.name, s.name] for s in shift_types] or []
 
+# @frappe.whitelist()
+# def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
+
+#     branch = filters.get("branch")
+#     date_str = filters.get("as_on_date")
+#     employee_id = filters.get("emp_id")
+
+#     if not branch or not employee_id:
+#         return []
+
+#     # ✅ If date not provided, do NOT auto use today
+#     as_on_date = getdate(date_str) if date_str else None
+
+#     emp_attendance_source = frappe.get_value(
+#         "Employee",
+#         employee_id,
+#         "custom_attendance_source"
+#     )
+
+#     conditions = {}
+
+#     allowed_roles_str = frappe.db.get_single_value(
+#         "HR Settings",
+#         "custom_roles_allowed_to_assign_24hours_shift"
+#     )
+
+#     allowed_roles = []
+#     if allowed_roles_str:
+#         allowed_roles = [
+#             r.strip()
+#             for r in allowed_roles_str.split(",")
+#             if r.strip()
+#         ]
+
+#     # Roles of current employee user
+#     user_id = frappe.db.get_value("Employee", employee_id, "user_id")
+#     employee_roles = []
+
+#     if user_id:
+#         employee_roles = frappe.get_roles(user_id)
+
+#     allow_24_hours = bool(
+#         set(employee_roles).intersection(set(allowed_roles))
+#     )
+
+#     required_hours = None  # ✅ default
+
+#     # ---------------------------------------------------------
+#     # BRANCH SPECIFIC LOGIC
+#     # ---------------------------------------------------------
+
+#     if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
+
+#         if emp_attendance_source:
+
+#             if emp_attendance_source == "Biometric":
+#                 conditions["custom_attendance_source"] = [
+#                     "not in",
+#                     ["Field", "Punch"]
+#                 ]
+
+#             elif emp_attendance_source == "Punch":
+#                 conditions["custom_attendance_source"] = ["!=", "Field"]
+#                 conditions["name"] = [
+#                     "not in",
+#                     ["Srinagar-General-8hours", "Srinagar-General-7hours"]
+#                 ]
+
+#             elif emp_attendance_source == "Field":
+#                 conditions["custom_attendance_source"] = ["!=", "Punch"]
+#                 conditions["name"] = [
+#                     "not in",
+#                     ["Srinagar-General-8hours", "Srinagar-General-7hours"]
+#                 ]
+
+#         # ✅ Apply month logic ONLY if date provided
+#         if as_on_date:
+#             if 4 <= as_on_date.month <= 9:
+#                 required_hours = "8hours"
+#             else:
+#                 required_hours = "7hours"
+
+#     elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
+
+#         if emp_attendance_source:
+
+#             if emp_attendance_source in ["Biometric", "Punch"]:
+#                 conditions["custom_attendance_source"] = [
+#                     "not in",
+#                     ["Field", "Punch"]
+#                 ]
+
+#             elif emp_attendance_source == "Field":
+#                 conditions["name"] = [
+#                     "not in",
+#                     ["Jammu-General-8hours", "Jammu-General-7hours"]
+#                 ]
+
+#         gender = frappe.db.get_value("Employee", employee_id, "gender")
+#         is_female = gender == "Female"
+
+#         # ✅ Apply month logic ONLY if date provided
+#         if as_on_date:
+#             if is_female:
+#                 if (4 <= as_on_date.month <= 11) or (2 <= as_on_date.month <= 3):
+#                     required_hours = "8hours"
+#                 else:
+#                     required_hours = "7hours"
+#             else:
+#                 required_hours = "8hours"
+
+#     else:
+#         return []
+
+#     # ---------------------------------------------------------
+#     # FINAL FILTER CONDITIONS
+#     # ---------------------------------------------------------
+
+#     conditions["custom_branch"] = branch
+
+#     # ✅ Apply hours filter only if date provided
+#     if required_hours:
+#         conditions["custom_hours"] = required_hours
+
+#     # ✅ Hide 24 hours shift if role not allowed
+#     if not allow_24_hours:
+#         conditions["custom_shift_type"] = ["!=", "24 hours"]
+
+#     # ---------------------------------------------------------
+#     # FETCH SHIFT TYPES
+#     # ---------------------------------------------------------
+
+#     shift_types = frappe.db.get_list(
+#         "Shift Type",
+#         filters=conditions,
+#         fields=["name"],
+#         order_by="name",
+#         start=start,
+#         page_length=page_len,
+#         ignore_permissions=True
+#     )
+
+#     return [[s.name, s.name] for s in shift_types] or []
+
+def get_required_shift_hours(dt, branch, is_female):
+
+    if not dt:
+        return None
+
+    dt = getdate(dt)
+    current_month = dt.month
+
+    branch_doc = frappe.get_doc("Branch", branch)
+
+    if not hasattr(branch_doc, "custom_branch_hours_setting"):
+        return None
+
+    for row in branch_doc.custom_branch_hours_setting:
+
+        gender_match = False
+
+        # =========================
+        # Gender Match
+        # =========================
+
+        if row.gender == "All":
+            gender_match = True
+
+        elif row.gender == "Female" and is_female:
+            gender_match = True
+
+        elif row.gender == "Male" and not is_female:
+            gender_match = True
+
+        # =========================
+        # Month Match
+        # =========================
+
+        if (
+            gender_match
+            and row.from_month <= current_month <= row.to_month
+        ):
+            return row.hours
+
+    return None
+
+
 @frappe.whitelist()
-def determine_shift_types(doctype, txt, searchfield, start, page_len, filters):
+def determine_shift_types(
+    doctype,
+    txt,
+    searchfield,
+    start,
+    page_len,
+    filters
+):
 
-    branch = filters.get("branch")
-    date_str = filters.get("as_on_date")
-    employee_id = filters.get("emp_id")
+    try:
 
-    if not branch or not employee_id:
-        return []
+        branch = filters.get("branch")
+        date_str = filters.get("as_on_date")
+        employee_id = filters.get("emp_id")
 
-    # ✅ If date not provided, do NOT auto use today
-    as_on_date = getdate(date_str) if date_str else None
+        if not branch or not employee_id:
+            return []
 
-    emp_attendance_source = frappe.get_value(
-        "Employee",
-        employee_id,
-        "custom_attendance_source"
-    )
+        # =========================
+        # Date
+        # =========================
 
-    conditions = {}
+        as_on_date = getdate(date_str) if date_str else None
 
-    allowed_roles_str = frappe.db.get_single_value(
-        "HR Settings",
-        "custom_roles_allowed_to_assign_24hours_shift"
-    )
+        # =========================
+        # Employee Details
+        # =========================
 
-    allowed_roles = []
-    if allowed_roles_str:
-        allowed_roles = [
-            r.strip()
-            for r in allowed_roles_str.split(",")
-            if r.strip()
-        ]
+        employee = frappe.db.get_value(
+            "Employee",
+            employee_id,
+            [
+                "custom_attendance_source",
+                "gender",
+                "user_id"
+            ],
+            as_dict=True
+        )
 
-    # Roles of current employee user
-    user_id = frappe.db.get_value("Employee", employee_id, "user_id")
-    employee_roles = []
+        if not employee:
+            return []
 
-    if user_id:
-        employee_roles = frappe.get_roles(user_id)
+        emp_attendance_source = employee.custom_attendance_source
+        employee_gender = employee.gender
+        user_id = employee.user_id
 
-    allow_24_hours = bool(
-        set(employee_roles).intersection(set(allowed_roles))
-    )
+        conditions = {}
 
-    required_hours = None  # ✅ default
+        # =========================
+        # Role Validation
+        # =========================
 
-    # ---------------------------------------------------------
-    # BRANCH SPECIFIC LOGIC
-    # ---------------------------------------------------------
+        allowed_roles_str = frappe.db.get_single_value(
+            "HR Settings",
+            "custom_roles_allowed_to_assign_24hours_shift"
+        )
 
-    if branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
+        allowed_roles = []
 
-        if emp_attendance_source:
+        if allowed_roles_str:
 
-            if emp_attendance_source == "Biometric":
-                conditions["custom_attendance_source"] = [
-                    "not in",
-                    ["Field", "Punch"]
-                ]
+            allowed_roles = [
+                r.strip()
+                for r in allowed_roles_str.split(",")
+                if r.strip()
+            ]
 
-            elif emp_attendance_source == "Punch":
-                conditions["custom_attendance_source"] = ["!=", "Field"]
-                conditions["name"] = [
-                    "not in",
-                    ["Srinagar-General-8hours", "Srinagar-General-7hours"]
-                ]
+        employee_roles = frappe.get_roles(user_id) if user_id else []
 
-            elif emp_attendance_source == "Field":
-                conditions["custom_attendance_source"] = ["!=", "Punch"]
-                conditions["name"] = [
-                    "not in",
-                    ["Srinagar-General-8hours", "Srinagar-General-7hours"]
-                ]
+        allow_24_hours = bool(
+            set(employee_roles).intersection(set(allowed_roles))
+        )
 
-        # ✅ Apply month logic ONLY if date provided
-        if as_on_date:
-            if 4 <= as_on_date.month <= 9:
-                required_hours = "8hours"
-            else:
-                required_hours = "7hours"
+        # =========================
+        # Attendance Source Logic
+        # =========================
 
-    elif branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu":
+        is_field = False
 
-        if emp_attendance_source:
+        if emp_attendance_source == "Biometric":
 
-            if emp_attendance_source in ["Biometric", "Punch"]:
-                conditions["custom_attendance_source"] = [
-                    "not in",
-                    ["Field", "Punch"]
-                ]
+            conditions["custom_attendance_source"] = [
+                "not in",
+                ["Field", "Punch"]
+            ]
 
-            elif emp_attendance_source == "Field":
-                conditions["name"] = [
-                    "not in",
-                    ["Jammu-General-8hours", "Jammu-General-7hours"]
-                ]
+        elif emp_attendance_source == "Punch":
 
-        gender = frappe.db.get_value("Employee", employee_id, "gender")
-        is_female = gender == "Female"
+            conditions["custom_attendance_source"] = [
+                "!=",
+                "Field"
+            ]
 
-        # ✅ Apply month logic ONLY if date provided
-        if as_on_date:
-            if is_female:
-                if (4 <= as_on_date.month <= 11) or (2 <= as_on_date.month <= 3):
-                    required_hours = "8hours"
-                else:
-                    required_hours = "7hours"
-            else:
-                required_hours = "8hours"
+        elif emp_attendance_source == "Field":
 
-    else:
-        return []
+            is_field = True
 
-    # ---------------------------------------------------------
-    # FINAL FILTER CONDITIONS
-    # ---------------------------------------------------------
+            conditions["custom_attendance_source"] = [
+                "!=",
+                "Punch"
+            ]
 
-    conditions["custom_branch"] = branch
+        # =========================
+        # Gender Logic
+        # =========================
 
-    # ✅ Apply hours filter only if date provided
-    if required_hours:
-        conditions["custom_hours"] = required_hours
+        is_female = (
+            employee_gender == "Female"
+            and is_field
+        )
 
-    # ✅ Hide 24 hours shift if role not allowed
-    if not allow_24_hours:
-        conditions["custom_shift_type"] = ["!=", "24 hours"]
+        # =========================
+        # Dynamic Hours Logic
+        # =========================
 
-    # ---------------------------------------------------------
-    # FETCH SHIFT TYPES
-    # ---------------------------------------------------------
+        required_hours = get_required_shift_hours(
+            as_on_date,
+            branch,
+            is_female
+        )
 
-    shift_types = frappe.db.get_list(
-        "Shift Type",
-        filters=conditions,
-        fields=["name"],
-        order_by="name",
-        start=start,
-        page_length=page_len,
-        ignore_permissions=True
-    )
+        if required_hours:
+            conditions["custom_hours"] = required_hours
 
-    return [[s.name, s.name] for s in shift_types] or []
+        # =========================
+        # Branch Filter
+        # =========================
 
+        conditions["custom_branch"] = branch
+
+        # =========================
+        # Excluded Shift Types
+        # =========================
+
+        branch_doc = frappe.get_doc("Branch", branch)
+
+        excluded_shifts = []
+
+        if hasattr(branch_doc, "custom_excluded_shift_types"):
+
+            for row in branch_doc.custom_excluded_shift_types:
+
+                if row.exclude and row.shift_type:
+                    excluded_shifts.append(row.shift_type)
+
+        if excluded_shifts:
+            conditions["name"] = ["not in", excluded_shifts]
+
+        # =========================
+        # Hide 24 Hours Shift
+        # =========================
+
+        if not allow_24_hours:
+            conditions["custom_shift_type"] = [
+                "!=",
+                "24 hours"
+            ]
+
+        # =========================
+        # Fetch Shift Types
+        # =========================
+
+        shift_types = frappe.db.get_list(
+            "Shift Type",
+            filters=conditions,
+            fields=["name"],
+            order_by="name",
+            start=start,
+            page_length=page_len,
+            ignore_permissions=True
+        )
+
+        return [[d.name, d.name] for d in shift_types] or []
+
+    except Exception as e:
+
+        frappe.log_error(
+            title="determine_shift_types_error",
+            message=frappe.get_traceback()
+        )
+
+        frappe.throw(str(e))
 
 # ---------------------------------------------------------
 # API WRAPPER

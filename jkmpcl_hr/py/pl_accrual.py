@@ -114,15 +114,22 @@ def process_pl_after_payroll(dt=None, branch=None):
     # end_date = payroll_entry.end_date
     # fiscal_year = payroll_entry.fiscal_year
 
-    VALID_BRANCHES = [
-        "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar",
-        "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"
-    ]
+    # VALID_BRANCHES = [
+    #     "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar",
+    #     "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"
+    # ]
 
     if branch:
         branch = branch.strip().strip('"').strip("'")
 
-        if branch not in VALID_BRANCHES:
+        branch_exists = frappe.db.exists(
+            "Branch",
+            {
+                "name": branch,
+            }
+        )
+
+        if not branch_exists:
             frappe.throw(f"Invalid branch: {branch}")
 
     if dt:

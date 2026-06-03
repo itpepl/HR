@@ -59,7 +59,9 @@ doctype_list_js = {
     "Attendance": "public/js/attendance_list.js",
     "Attendance Request": "public/js/attendance_request_ro_filter.js",
     "Leave Application": "public/js/leave_application_ro_filter.js",
-    "Off-Day Work Request": "public/js/off_day_request_ro_filter.js"
+    "Off-Day Work Request": "public/js/off_day_request_ro_filter.js",
+    "Shift Request": "public/js/shift_request_list.js",
+    "Employee Checkin": "public/js/employee_checkin_list.js",
 }
 # Svg Icons
 # ------------------
@@ -210,6 +212,12 @@ doc_events = {
     },
     "Travel Request":{
         "validate":"jkmpcl_hr.py.travel_request.validate"
+    },
+    "Branch": {
+        "validate": "jkmpcl_hr.py.branch.validate"
+    },
+    "Expense Claim":{
+        "validate":"jkmpcl_hr.py.expense_claim.validate"
     }
 
 # 	"*": {
@@ -225,7 +233,7 @@ doc_events = {
 scheduler_events = {
     "cron":{
         "0 0 1 4 *": [
-            "jkmpcl_hr.py.scheduler_method.create_shift_assignments",
+            # "jkmpcl_hr.py.scheduler_method.create_shift_assignments",
             "jkmpcl_hr.py.scheduler_method.allocate_leaves_to_confirmed_employee",
             "jkmpcl_hr.py.pl_accrual.carry_forward_pl_new_fy"
         ],
