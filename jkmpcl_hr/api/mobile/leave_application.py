@@ -12,7 +12,7 @@ from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import Attendan
 from frappe.utils import (
     add_days,
     date_diff,
-    formatdate
+    formatdate,cint
 )
 
 @frappe.whitelist()
@@ -21,7 +21,8 @@ def validate_leave_for_mobile(
     from_date,
     to_date,
     no_of_surviving_children=None,
-    adopting_child_age=None
+    adopting_child_age=None,
+    half_day=0
 ):
     try:
         leave_details = frappe.get_doc("Leave Type", leave_type)
@@ -37,7 +38,14 @@ def validate_leave_for_mobile(
                     "message": _("For Compensatory Off, From Date and To Date must be the same."),
                     "data": None
                 }
-
+        
+            # Half Day not allowed for Compensatory Off
+            if cint(half_day):
+                return {
+                    "success": False,
+                    "message": _("Half Day leave is not allowed for Compensatory Off."),
+                    "data": None
+                }
             if leave_details.custom_applied_once:
                 response_data["total_leave_days"] = 1.0
 
