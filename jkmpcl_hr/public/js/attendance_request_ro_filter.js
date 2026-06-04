@@ -40,6 +40,7 @@ frappe.listview_settings["Attendance Request"] = {
 				}
 			});
 		});
+		// list view filter code start
 		if (list_view.current_month_filter_applied) {
 			return;
 		}
