@@ -101,11 +101,39 @@ class AttendanceRequest(HRMSAttendanceRequest):
     #         self.db_set("custom_approver_note", approver_msg, update_modified=False)
 
 
-    def set_waiver_note(self):
-        if self.reason  != "Miss Punch":
-            return
+    # def set_waiver_note(self):
+    #     if self.reason  != "Miss Punch":
+    #         return
         
-        employee_msg, approver_msg = get_waiver_messages(
+    #     employee_msg, approver_msg = get_waiver_messages(
+    #         employee=self.employee,
+    #         from_date=self.from_date,
+    #         punch_type=self.custom_punch_type,
+    #         docname=self.name,
+    #         workflow_state=self.workflow_state
+    #     )
+
+    #     is_new = self.is_new()  # True when doc has never been saved
+
+    #     # ✅ Employee message — set ONLY once (never overwrite)
+    #     if employee_msg and not self.custom_note:
+    #         if is_new:
+    #             # Doc not in DB yet — set in memory so it saves with the record
+    #             self.custom_note = employee_msg
+    #         else:
+    #             self.db_set("custom_note", employee_msg, update_modified=False)
+
+    #     # ✅ Approver message — always update (so latest attempt count shows)
+    #     if approver_msg:
+    #         if is_new:
+    #             self.custom_approver_note = approver_msg
+    #         else:
+    #             self.db_set("custom_approver_note", approver_msg, update_modified=False)
+    def set_waiver_note(self):
+        if self.reason != "Miss Punch":
+            return
+
+        employee_msg, approver_msg, attempt_no = get_waiver_messages(
             employee=self.employee,
             from_date=self.from_date,
             punch_type=self.custom_punch_type,
@@ -113,22 +141,26 @@ class AttendanceRequest(HRMSAttendanceRequest):
             workflow_state=self.workflow_state
         )
 
-        is_new = self.is_new()  # True when doc has never been saved
+        # ✅ Save Attempt Number
+        self.custom_attempt_no = attempt_no
 
-        # ✅ Employee message — set ONLY once (never overwrite)
+        is_new = self.is_new()
+
         if employee_msg and not self.custom_note:
             if is_new:
-                # Doc not in DB yet — set in memory so it saves with the record
                 self.custom_note = employee_msg
             else:
                 self.db_set("custom_note", employee_msg, update_modified=False)
 
-        # ✅ Approver message — always update (so latest attempt count shows)
         if approver_msg:
             if is_new:
                 self.custom_approver_note = approver_msg
             else:
                 self.db_set("custom_approver_note", approver_msg, update_modified=False)
+
+        # Save attempt number for existing docs
+        if not is_new:
+            self.db_set("custom_attempt_no", attempt_no, update_modified=False)
 
 
     # ─────────────────────────────────────────────────────────────────
@@ -1387,28 +1419,52 @@ def get_employee_custom_shift_type(employee, date):
 
 # ----------------- UPDATED CODE (16-04-2026) -------------------
 
+# def get_waiver_messages(employee, from_date, punch_type=None, docname=None, workflow_state=None, reason=None):
+#     if reason and reason != "Miss Punch":
+#         return "", ""
+    
+#     data = get_manual_punch_note_html(employee, from_date, punch_type, docname)
+
+#     count = data.get("count", 0)
+#     limit = cint(frappe.db.get_single_value("HR Settings", "custom_manual_punch_count") or 0)
+
+#     if not limit or count <= limit:
+#         return "", ""
+
+#     # ✅ Employee Message (STATIC)
+#     employee_msg = """<div style="color:#fff;background-color:#e53935;
+#     padding:10px;border-radius:5px;font-weight:600;">
+#     ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
+#     </div>"""
+
+#     # ✅ Approver Message (DYNAMIC)
+#     approver_msg = f"""<div style="color:#fff;background-color:#e53935;
+#     padding:10px;border-radius:5px;font-weight:600;">
+#     ⚠️ Waiver limit has been exhausted (Attempt No. {count})
+#     </div>"""
+
+#     return employee_msg, approver_msg
+
 def get_waiver_messages(employee, from_date, punch_type=None, docname=None, workflow_state=None, reason=None):
     if reason and reason != "Miss Punch":
-        return "", ""
-    
+        return "", "", 0
+
     data = get_manual_punch_note_html(employee, from_date, punch_type, docname)
 
     count = data.get("count", 0)
     limit = cint(frappe.db.get_single_value("HR Settings", "custom_manual_punch_count") or 0)
 
     if not limit or count <= limit:
-        return "", ""
+        return "", "", count
 
-    # ✅ Employee Message (STATIC)
-    employee_msg = """<div style="color:#fff;background-color:#e53935;
+    employee_msg = f"""<div style="color:#fff;background-color:#e53935;
     padding:10px;border-radius:5px;font-weight:600;">
     ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
     </div>"""
 
-    # ✅ Approver Message (DYNAMIC)
     approver_msg = f"""<div style="color:#fff;background-color:#e53935;
     padding:10px;border-radius:5px;font-weight:600;">
     ⚠️ Waiver limit has been exhausted (Attempt No. {count})
     </div>"""
 
-    return employee_msg, approver_msg
+    return employee_msg, approver_msg, count
