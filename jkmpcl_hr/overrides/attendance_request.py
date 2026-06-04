@@ -1457,6 +1457,7 @@ def get_waiver_messages(employee, from_date, punch_type=None, docname=None, work
     if not limit or count <= limit:
         return "", "", count
 
+    # ✅ Employee Message (STATIC)
     employee_msg = f"""<div style="color:#fff;background-color:#e53935;
     padding:10px;border-radius:5px;font-weight:600;">
     ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
