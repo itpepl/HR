@@ -202,16 +202,24 @@ def share_doc(doc):
 
 
 def on_submit(doc, method):
-    attendance_name = frappe.db.get_value(
-        "Attendance",
-        {
-            "employee": doc.employee,
-            "attendance_date": doc.from_date
-        },
-        "name"
-    )
-    if attendance_name:
-        revert_penalty_leave(attendance_name)
+    current_date = getdate(doc.from_date)
+    to_date = getdate(doc.to_date)
+
+    while current_date <= to_date:
+        attendance_name = frappe.db.get_value(
+            "Attendance",
+            {
+                "employee": doc.employee,
+                "attendance_date": current_date
+            },
+            "name"
+        )
+
+        if attendance_name:
+            revert_penalty_leave(attendance_name)
+
+        current_date = add_days(current_date, 1)
+
     leave_details = get_leave_type(doc.leave_type)
     if not leave_details.is_compensatory:
         return
