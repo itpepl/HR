@@ -141,10 +141,9 @@ class AttendanceRequest(HRMSAttendanceRequest):
             workflow_state=self.workflow_state
         )
 
-        # ✅ Save Attempt Number
-        self.custom_attempt_no = attempt_no
-
         is_new = self.is_new()
+        if is_new:
+            self.custom_attempt_no = attempt_no
 
         if employee_msg and not self.custom_note:
             if is_new:
@@ -158,9 +157,6 @@ class AttendanceRequest(HRMSAttendanceRequest):
             else:
                 self.db_set("custom_approver_note", approver_msg, update_modified=False)
 
-        # Save attempt number for existing docs
-        if not is_new:
-            self.db_set("custom_attempt_no", attempt_no, update_modified=False)
 
 
     # ─────────────────────────────────────────────────────────────────
