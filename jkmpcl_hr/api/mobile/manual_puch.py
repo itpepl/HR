@@ -1,11 +1,11 @@
 import frappe
-from frappe.utils import getdate, cint
+from frappe.utils import getdate, cint,cstr
 from frappe import _
 from frappe.utils import strip_html
 from frappe.utils import get_datetime
 
 from frappe.utils import cint
-from jkmpcl_hr.py.utils import get_emp_reporting_manager, get_emp_hr_manager, get_ceo_user
+from jkmpcl_hr.py.utils import get_emp_reporting_manager, get_emp_hr_manager, get_ceo_user,get_emp_review_manager
 from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
 from frappe.utils import (
     add_days,
@@ -368,8 +368,109 @@ def punch_type_list():
 
 #------------ UPDATED CODE (16-04-2026) to handle Field Visit request type and show warning only for Miss Punch type --------------
 
+# @frappe.whitelist()
+# def get_manual_punch_note(employeeId, from_date, request_type=None, current_punch_type=None, current_name=None):
+#     if not employeeId or not from_date:
+#         return {
+#             "show_warning": False,
+#             "count": 0,
+#             "limit": 0,
+#             "message": ""
+#         }
+
+#     if request_type != "Miss Punch":
+#         return {
+#             "show_warning": False,
+#             "count": 0,
+#             "limit": 0,
+#             "message": ""
+#         }
+
+#     # 🔥 Current logged-in user
+#     current_user = frappe.session.user
+#     print(f"\n\nCurrent User: {current_user}\n\n")
+
+#     # 🔥 Get approvers
+#     reporting_manager = get_emp_reporting_manager(employeeId, from_date)
+#     hr_manager = get_emp_hr_manager(employeeId, from_date)
+#     ceo_user = get_ceo_user()
+
+#     # 🔥 Check if current user is approver
+#     is_approver = current_user in [reporting_manager, hr_manager, ceo_user]
+
+#     manual_punch_limit = cint(
+#         frappe.db.get_single_value("HR Settings", "custom_manual_punch_count") or 0
+#     )
+
+#     ref_date = getdate(from_date)
+#     month = ref_date.month
+#     year = ref_date.year
+
+#     def punch_count(pt):
+#         if not pt:
+#             return 0
+#         pt = str(pt).lower().strip()
+#         if pt == "both":
+#             return 2
+#         if pt in ("in", "out"):
+#             return 1
+#         return 0
+
+#     filters = {
+#         "employee": employeeId,
+#         "reason": "Miss Punch",
+#         "docstatus": ["<", 2]
+#     }
+
+#     if current_name:
+#         filters["name"] = ["!=", current_name]
+
+#     existing = frappe.get_all(
+#         "Attendance Request",
+#         filters=filters,
+#         fields=["custom_punch_type", "from_date"]
+#     )
+
+#     total = 0
+#     for row in existing:
+#         d = getdate(row.from_date)
+#         if d.month == month and d.year == year:
+#             total += punch_count(row.custom_punch_type)
+
+#     # ✅ Include current selection
+#     total += punch_count(current_punch_type)
+
+#     show_warning = manual_punch_limit and total > manual_punch_limit
+
+#     message = ""
+
+#     if show_warning:
+#         if is_approver:
+#             # ✅ Approver Message
+#             message = _("Waiver limit has been exhausted (Attempt No. {0})").format(total)
+#         else:
+#             # ✅ Employee Message
+#             message = _("The waiver limit is over, so CEO approval is required. (Attempt No. {0})").format(total)
+
+#     return {
+#         "show_warning": show_warning,
+#         "count": total,
+#         "limit": manual_punch_limit,
+#         "message": message
+#     }
+
+
+#------------ UPDATED CODE (08-06-2026) to handle that attempt no show only --------------
+
 @frappe.whitelist()
-def get_manual_punch_note(employeeId, from_date, request_type=None, current_punch_type=None, current_name=None):
+def get_manual_punch_note(
+    employeeId,
+    from_date,
+    request_type=None,
+    current_punch_type=None,
+    current_name=None
+):
+
     if not employeeId or not from_date:
         return {
             "show_warning": False,
@@ -386,20 +487,25 @@ def get_manual_punch_note(employeeId, from_date, request_type=None, current_punc
             "message": ""
         }
 
-    # 🔥 Current logged-in user
     current_user = frappe.session.user
-    print(f"\n\nCurrent User: {current_user}\n\n")
 
-    # 🔥 Get approvers
     reporting_manager = get_emp_reporting_manager(employeeId, from_date)
+    review_manager = get_emp_review_manager(employeeId)
     hr_manager = get_emp_hr_manager(employeeId, from_date)
     ceo_user = get_ceo_user()
 
-    # 🔥 Check if current user is approver
-    is_approver = current_user in [reporting_manager, hr_manager, ceo_user]
+    is_approver = current_user in [
+        reporting_manager,
+        review_manager,
+        hr_manager,
+        ceo_user
+    ]
 
     manual_punch_limit = cint(
-        frappe.db.get_single_value("HR Settings", "custom_manual_punch_count") or 0
+        frappe.db.get_single_value(
+            "HR Settings",
+            "custom_manual_punch_count"
+        ) or 0
     )
 
     ref_date = getdate(from_date)
@@ -409,11 +515,15 @@ def get_manual_punch_note(employeeId, from_date, request_type=None, current_punc
     def punch_count(pt):
         if not pt:
             return 0
-        pt = str(pt).lower().strip()
+
+        pt = cstr(pt).strip().lower()
+
         if pt == "both":
             return 2
+
         if pt in ("in", "out"):
             return 1
+
         return 0
 
     filters = {
@@ -422,35 +532,71 @@ def get_manual_punch_note(employeeId, from_date, request_type=None, current_punc
         "docstatus": ["<", 2]
     }
 
-    if current_name:
-        filters["name"] = ["!=", current_name]
-
     existing = frappe.get_all(
         "Attendance Request",
         filters=filters,
-        fields=["custom_punch_type", "from_date"]
+        fields=[
+            "name",
+            "custom_punch_type",
+            "from_date",
+            "creation"
+        ],
+        order_by="creation asc"
     )
 
     total = 0
-    for row in existing:
-        d = getdate(row.from_date)
-        if d.month == month and d.year == year:
-            total += punch_count(row.custom_punch_type)
 
-    # ✅ Include current selection
+    # Editing existing document
+    if current_name:
+
+        for row in existing:
+
+            if row.name == current_name:
+                break
+
+            try:
+                d = getdate(row.from_date)
+
+                if d.month == month and d.year == year:
+                    total += punch_count(row.custom_punch_type)
+
+            except Exception:
+                continue
+
+    # New document
+    else:
+
+        for row in existing:
+
+            try:
+                d = getdate(row.from_date)
+
+                if d.month == month and d.year == year:
+                    total += punch_count(row.custom_punch_type)
+
+            except Exception:
+                continue
+
+    # Add current request
     total += punch_count(current_punch_type)
 
-    show_warning = manual_punch_limit and total > manual_punch_limit
+    show_warning = (
+        manual_punch_limit > 0
+        and total > manual_punch_limit
+    )
 
     message = ""
 
     if show_warning:
         if is_approver:
-            # ✅ Approver Message
-            message = _("Waiver limit has been exhausted (Attempt No. {0})").format(total)
+            message = _(
+                "Waiver limit has been exhausted (Attempt No. {0})"
+            ).format(total)
+
         else:
-            # ✅ Employee Message
-            message = _("The waiver limit is over, so CEO approval is required. (Attempt No. {0})").format(total)
+            message = _(
+                "The waiver limit is over, so CEO approval is required. (Attempt No. {0})"
+            ).format(total)
 
     return {
         "show_warning": show_warning,
