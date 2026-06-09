@@ -22,8 +22,33 @@ frappe.ui.form.on("Employee", {
             // })
             apply_filter_in_shift_type(frm)
         }
-    },
+         frm.set_query("custom_warehouse", function () {
+            return {
+                filters: {
+                    custom_parent_warehouse_type: frm.doc.custom_head_quarter_type
+                }
+            };
+        });
 
+        // Supplier Filter
+        frm.set_query("custom_supplier", function () {
+            return {
+                filters: {
+                    supplier_type: frm.doc.custom_head_quarter_type
+                }
+            };
+        });
+    },
+    custom_head_quarter_type(frm) {
+
+            // Clear values when type changes
+            frm.set_value("custom_warehouse", "");
+            frm.set_value("custom_supplier", "");
+
+            // Refresh fields
+            frm.refresh_field("custom_warehouse");
+            frm.refresh_field("custom_supplier");
+        },
     validate: function (frm) { 
         if(frm.doc.final_confirmation_date && frm.doc.final_confirmation_date < frm.doc.date_of_joining){
             frappe.throw('Final Confirmation Date cannot be before Date of Joining.');

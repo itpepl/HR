@@ -218,6 +218,9 @@ doc_events = {
     },
     "Expense Claim":{
         "validate":"jkmpcl_hr.py.expense_claim.validate"
+    },
+    "HR Settings":{
+        "validate":"jkmpcl_hr.py.hr_settings.validate"
     }
 
 # 	"*": {

@@ -1,13 +1,13 @@
 import frappe
 from frappe import _, cint
-from frappe.utils import getdate, get_link_to_form, nowdate, get_datetime, add_days, date_diff, formatdate # ✅ NEW IMPORT
+from frappe.utils import getdate, get_link_to_form, nowdate, get_datetime, add_days, date_diff, cstr,formatdate # ✅ NEW IMPORT
 from hrms.hr.doctype.attendance_request.attendance_request import AttendanceRequest as HRMSAttendanceRequest, OverlappingAttendanceRequestError
 from datetime import datetime, date,timedelta, time
 from jkmpcl_hr.py.scheduler_method import deduct_leave_by_priority ,get_employee_leave_type, create_leave_ledger
 from jkmpcl_hr.py.utils import send_notification_email
 from erpnext.setup.doctype.employee.employee import is_holiday
 from jkmpcl_hr.py.scheduler_method import get_employee_shift,create_or_update_attendance, get_holiday_type
-from jkmpcl_hr.py.utils import get_emp_hr_manager, get_ceo_user, get_current_holiday_list  # ✅ NEW IMPORT
+from jkmpcl_hr.py.utils import get_emp_hr_manager, get_ceo_user, get_current_holiday_list,get_emp_review_manager  # ✅ NEW IMPORT
 from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
 
 def _get_holiday_type_for_date(employee: str, date) -> str | None:
@@ -101,11 +101,39 @@ class AttendanceRequest(HRMSAttendanceRequest):
     #         self.db_set("custom_approver_note", approver_msg, update_modified=False)
 
 
-    def set_waiver_note(self):
-        if self.reason  != "Miss Punch":
-            return
+    # def set_waiver_note(self):
+    #     if self.reason  != "Miss Punch":
+    #         return
         
-        employee_msg, approver_msg = get_waiver_messages(
+    #     employee_msg, approver_msg = get_waiver_messages(
+    #         employee=self.employee,
+    #         from_date=self.from_date,
+    #         punch_type=self.custom_punch_type,
+    #         docname=self.name,
+    #         workflow_state=self.workflow_state
+    #     )
+
+    #     is_new = self.is_new()  # True when doc has never been saved
+
+    #     # ✅ Employee message — set ONLY once (never overwrite)
+    #     if employee_msg and not self.custom_note:
+    #         if is_new:
+    #             # Doc not in DB yet — set in memory so it saves with the record
+    #             self.custom_note = employee_msg
+    #         else:
+    #             self.db_set("custom_note", employee_msg, update_modified=False)
+
+    #     # ✅ Approver message — always update (so latest attempt count shows)
+    #     if approver_msg:
+    #         if is_new:
+    #             self.custom_approver_note = approver_msg
+    #         else:
+    #             self.db_set("custom_approver_note", approver_msg, update_modified=False)
+    def set_waiver_note(self):
+        if self.reason != "Miss Punch":
+            return
+
+        employee_msg, approver_msg, attempt_no = get_waiver_messages(
             employee=self.employee,
             from_date=self.from_date,
             punch_type=self.custom_punch_type,
@@ -113,22 +141,22 @@ class AttendanceRequest(HRMSAttendanceRequest):
             workflow_state=self.workflow_state
         )
 
-        is_new = self.is_new()  # True when doc has never been saved
+        is_new = self.is_new()
+        if is_new:
+            self.custom_attempt_no = attempt_no
 
-        # ✅ Employee message — set ONLY once (never overwrite)
         if employee_msg and not self.custom_note:
             if is_new:
-                # Doc not in DB yet — set in memory so it saves with the record
                 self.custom_note = employee_msg
             else:
                 self.db_set("custom_note", employee_msg, update_modified=False)
 
-        # ✅ Approver message — always update (so latest attempt count shows)
         if approver_msg:
             if is_new:
                 self.custom_approver_note = approver_msg
             else:
                 self.db_set("custom_approver_note", approver_msg, update_modified=False)
+
 
 
     # ─────────────────────────────────────────────────────────────────
@@ -393,14 +421,19 @@ class AttendanceRequest(HRMSAttendanceRequest):
 
     def share_doc(self):
         old_doc = self.get_doc_before_save()
-        
+        punch_count = frappe.db.get_single_value("HR Settings", "custom_manual_punch_count")
         if old_doc and old_doc.workflow_state:
             if old_doc.workflow_state != self.workflow_state and self.workflow_state == "Approved by Reporting Manager":
+                review_manager = get_emp_review_manager(self.employee)
+                if review_manager:
+                    frappe.share.add_docshare(self.doctype, self.name, review_manager, read=1, select=1, write=1, submit=1, flags={"ignore_share_permission": True})
+               
+            elif old_doc.workflow_state != self.workflow_state and self.workflow_state == "Approved by Review Manager" and not (self.reason == "Miss Punch" and (self.custom_punch_type == "Both" or self.custom_attempt_no > punch_count)):
                 hr_manager = get_emp_hr_manager(self.employee)
-                
+              
                 if hr_manager:
                     frappe.share.add_docshare(self.doctype, self.name, hr_manager, read=1, select=1, write=1, submit=1, flags={"ignore_share_permission": True})
-            
+
             elif old_doc.workflow_state != self.workflow_state and self.workflow_state == "Approved by HR":
                 ceo = get_ceo_user()
                 
@@ -1213,12 +1246,76 @@ def get_attendance_status(working_hours, shift_details):
 
 
 
+# @frappe.whitelist()
+# def get_manual_punch_note_html(employee, from_date, current_punch_type=None, current_name=None):
+#     """
+#     Real-time UI message for miss punch limit.
+#     Triggered instantly on punch type selection.
+#     """
+
+#     if not employee or not from_date:
+#         return {"count": 0, "html": ""}
+
+#     manual_punch_limit = cint(
+#         frappe.db.get_single_value("HR Settings", "custom_manual_punch_count") or 0
+#     )
+
+#     ref_date = getdate(from_date)
+#     month = ref_date.month
+#     year = ref_date.year
+
+#     def punch_count(pt):
+#         if not pt:
+#             return 0
+#         pt = str(pt).strip().lower()
+#         return 2 if pt == "both" else (1 if pt in ("in", "out") else 0)
+
+#     filters = {
+#         "employee": employee,
+#         "reason": "Miss Punch",
+#         "docstatus": ["<", 2],
+#     }
+
+#     # exclude current doc if editing
+#     if current_name:
+#         filters["name"] = ["!=", current_name]
+
+#     existing = frappe.get_all(
+#         "Attendance Request",
+#         filters=filters,
+#         fields=["custom_punch_type", "from_date"]
+#     ) or []
+
+#     total = 0
+#     for er in existing:
+#         try:
+#             d = getdate(er.get("from_date"))
+#             if d.month == month and d.year == year:
+#                 total += punch_count(er.get("custom_punch_type"))
+#         except Exception:
+#             continue
+
+#     # include current punch type
+#     total += punch_count(current_punch_type)
+
+#     count = total
+#     html = ""
+
+#     # ✅ 🔥 NEW REAL-TIME MESSAGE
+#     if manual_punch_limit and count > manual_punch_limit:
+
+#         html = f"""
+#         <div style="color:#fff;background-color:#e53935;
+#         padding:10px;border-radius:5px;font-weight:600;">
+#         ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
+#         </div>
+#         """
+
+#     return {"count": count, "html": html}
+
+
 @frappe.whitelist()
 def get_manual_punch_note_html(employee, from_date, current_punch_type=None, current_name=None):
-    """
-    Real-time UI message for miss punch limit.
-    Triggered instantly on punch type selection.
-    """
 
     if not employee or not from_date:
         return {"count": 0, "html": ""}
@@ -1234,52 +1331,69 @@ def get_manual_punch_note_html(employee, from_date, current_punch_type=None, cur
     def punch_count(pt):
         if not pt:
             return 0
-        pt = str(pt).strip().lower()
-        return 2 if pt == "both" else (1 if pt in ("in", "out") else 0)
+
+        pt = cstr(pt).strip().lower()
+
+        if pt == "both":
+            return 2
+        elif pt in ("in", "out"):
+            return 1
+
+        return 0
 
     filters = {
         "employee": employee,
         "reason": "Miss Punch",
-        "docstatus": ["<", 2],
+        "docstatus": ["<", 2]
     }
-
-    # exclude current doc if editing
-    if current_name:
-        filters["name"] = ["!=", current_name]
 
     existing = frappe.get_all(
         "Attendance Request",
         filters=filters,
-        fields=["custom_punch_type", "from_date"]
-    ) or []
+        fields=[
+            "name",
+            "custom_punch_type",
+            "from_date",
+            "creation"
+        ],
+        order_by="creation asc"
+    )
 
     total = 0
-    for er in existing:
-        try:
-            d = getdate(er.get("from_date"))
-            if d.month == month and d.year == year:
-                total += punch_count(er.get("custom_punch_type"))
-        except Exception:
-            continue
 
-    # include current punch type
+    for row in existing:
+
+        if current_name and row.name == current_name:
+            break
+
+        try:
+            d = getdate(row.from_date)
+
+            if d.month == month and d.year == year:
+                total += punch_count(row.custom_punch_type)
+
+        except Exception:
+            pass
+
     total += punch_count(current_punch_type)
 
     count = total
+
     html = ""
 
-    # ✅ 🔥 NEW REAL-TIME MESSAGE
     if manual_punch_limit and count > manual_punch_limit:
-
         html = f"""
         <div style="color:#fff;background-color:#e53935;
         padding:10px;border-radius:5px;font-weight:600;">
-        ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
+        ⚠️ The waiver limit is over, so CEO approval is required.
+        (Attempt No. {count})
         </div>
         """
 
-    return {"count": count, "html": html}
-
+    return {
+        "count": count,
+        "html": html
+    }
 
 @frappe.whitelist()
 def get_employee_for_session_user():
@@ -1387,17 +1501,43 @@ def get_employee_custom_shift_type(employee, date):
 
 # ----------------- UPDATED CODE (16-04-2026) -------------------
 
+# def get_waiver_messages(employee, from_date, punch_type=None, docname=None, workflow_state=None, reason=None):
+#     if reason and reason != "Miss Punch":
+#         return "", ""
+    
+#     data = get_manual_punch_note_html(employee, from_date, punch_type, docname)
+
+#     count = data.get("count", 0)
+#     limit = cint(frappe.db.get_single_value("HR Settings", "custom_manual_punch_count") or 0)
+
+#     if not limit or count <= limit:
+#         return "", ""
+
+#     # ✅ Employee Message (STATIC)
+#     employee_msg = """<div style="color:#fff;background-color:#e53935;
+#     padding:10px;border-radius:5px;font-weight:600;">
+#     ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
+#     </div>"""
+
+#     # ✅ Approver Message (DYNAMIC)
+#     approver_msg = f"""<div style="color:#fff;background-color:#e53935;
+#     padding:10px;border-radius:5px;font-weight:600;">
+#     ⚠️ Waiver limit has been exhausted (Attempt No. {count})
+#     </div>"""
+
+#     return employee_msg, approver_msg
+
 def get_waiver_messages(employee, from_date, punch_type=None, docname=None, workflow_state=None, reason=None):
     if reason and reason != "Miss Punch":
-        return "", ""
-    
+        return "", "", 0
+
     data = get_manual_punch_note_html(employee, from_date, punch_type, docname)
 
     count = data.get("count", 0)
     limit = cint(frappe.db.get_single_value("HR Settings", "custom_manual_punch_count") or 0)
 
     if not limit or count <= limit:
-        return "", ""
+        return "", "", count
 
     # ✅ Employee Message (STATIC)
     employee_msg = f"""<div style="color:#fff;background-color:#e53935;
@@ -1405,10 +1545,9 @@ def get_waiver_messages(employee, from_date, punch_type=None, docname=None, work
     ⚠️ The waiver limit is over, so CEO approval is required. (Attempt No. {count})
     </div>"""
 
-    # ✅ Approver Message (DYNAMIC)
     approver_msg = f"""<div style="color:#fff;background-color:#e53935;
     padding:10px;border-radius:5px;font-weight:600;">
     ⚠️ Waiver limit has been exhausted (Attempt No. {count})
     </div>"""
 
-    return employee_msg, approver_msg
+    return employee_msg, approver_msg, count
