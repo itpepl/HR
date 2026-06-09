@@ -10,6 +10,10 @@ def validate(self, method):
             frappe.throw(
                 f"Row #{row.idx}: Punch Count cannot be negative."
             )
+        if row.punch_count > 9:
+            frappe.throw(
+                f"Row #{row.idx}: Punch Count cannot be a double-digit number."
+            )
 
         # Duplicate Department + Attendance Source validation
         key = (row.department, row.attendnace_source)
