@@ -1,6 +1,9 @@
 import frappe
 
 def validate(self, method):
+    if self.custom_geo_fence_radius < 0:
+        frappe.throw(f" Geo Fence Radius cannot be negative.")
+
     seen_combinations = set()
 
     for row in self.custom_punch_limit_setting:
