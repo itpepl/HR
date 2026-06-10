@@ -221,6 +221,12 @@ doc_events = {
     },
     "HR Settings":{
         "validate":"jkmpcl_hr.py.hr_settings.validate"
+    },
+    "Supplier":{
+        "validate":"jkmpcl_hr.py.supplier.validate"
+    },
+    "Warehouse":{
+        "validate":"jkmpcl_hr.py.warehouse.validate"
     }
 
 # 	"*": {
