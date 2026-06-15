@@ -358,16 +358,17 @@ def get_eligible_days(employee, start_date, end_date):
             "employee": employee,
             "attendance_date": ["between", [start_date, end_date]],
         },
-        fields=["attendance_date", "status", "leave_type", "half_day_status"],
+        fields=["attendance_date", "status", "leave_type", "half_day_status", "custom_penalty_leave_type"],
     )
     attendance_map = {att.attendance_date: att for att in attendance_list}
     
     eligible_days = 0
     
-    for date in attendance_map:
+    for date in sorted(attendance_map):
         att = attendance_map[date]
         status = att.status
         leave_type = att.leave_type
+        custom_penalty_leave_type = att.custom_penalty_leave_type
     
         if status == "Half Day":
             if leave_type == "Compensatory Off":
@@ -386,7 +387,7 @@ def get_eligible_days(employee, start_date, end_date):
         ]:
             if status != "On Leave":
                 eligible_days += 1
-            elif status == "On Leave" and leave_type != "Leave Without Pay":
+            elif status == "On Leave" and leave_type != "Leave Without Pay" and custom_penalty_leave_type != "Leave Without Pay":
                 eligible_days += 1
 
         # Absent = 0 (do nothing)
