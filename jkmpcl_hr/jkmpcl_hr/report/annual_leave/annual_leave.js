@@ -97,13 +97,13 @@ frappe.query_reports["Annual Leave"] = {
             reqd: 1,
             default: frappe.defaults.get_user_default("fiscal_year")
         },
-        {
-            fieldname: "as_on_date",
-            label: __("Leave Balance As On Date"),
-            fieldtype: "Date",
-            reqd: 1,
-            default: frappe.datetime.get_today()
-        },
+        // {
+        //     fieldname: "as_on_date",
+        //     label: __("Leave Balance As On Date"),
+        //     fieldtype: "Date",
+        //     reqd: 1,
+        //     default: frappe.datetime.get_today()
+        // },
         {
             fieldname: "branch",
             label: __("Branch"),
@@ -164,10 +164,6 @@ frappe.query_reports["Annual Leave"] = {
     ],
     
     onload: function(report) {
-        report.page.add_inner_message(
-            __("Annual Leave Report generated from Leave Ledger Entry")
-        );
-        
         // Add dynamic filter behavior
         report.filters.forEach(filter => {
             if (filter.fieldname === "group_by") {
