@@ -1,6 +1,7 @@
 import frappe
 import  calendar
 from frappe import _
+import json
 from math import floor
 from frappe.utils import getdate, add_years, date_diff, add_days, flt, cint,formatdate
 from jkmpcl_hr.overrides.attendance_request import revert_penalty_leave
@@ -67,6 +68,39 @@ def validate(doc, method):
 def on_update(doc, method):
     handle_workflow_notification(doc)
     share_doc(doc)
+    update_comp_off_leave_allocation(doc)
+
+
+def update_comp_off_leave_allocation(doc):
+    if doc.leave_type != "Compensatory Off":
+        return
+
+    if not doc.custom_off_day_work_request:
+        return
+
+    leave_allocation = frappe.db.get_value(
+        "Off-Day Work Request",
+        doc.custom_off_day_work_request,
+        "leave_allocation"
+    )
+
+    if not leave_allocation:
+        return
+
+    update_dict = {
+        "custom_leave_status": doc.workflow_state
+    }
+
+    if doc.docstatus == 1:
+        update_dict["custom_leave_date"] = doc.from_date
+
+    frappe.db.set_value(
+        "Leave Allocation",
+        leave_allocation,
+        update_dict
+    )
+
+
 
 def handle_workflow_notification(doc):
 
@@ -236,7 +270,64 @@ def on_submit(doc, method):
 def before_submit(doc, method):
     doc.status = "Approved"
         
-    
+# off day and leave allocation cleanup code start
+@frappe.whitelist()
+def cleanup_and_cancel(docs, doctype, docname, ignore_doctypes_on_cancel_all=None):
+    """
+    Cleanup references and cancel documents
+    """
+    try:
+        # Parse docs if it's a string
+        if isinstance(docs, str):
+            docs = json.loads(docs)
+        
+        # Parse ignore_doctypes_on_cancel_all if it's a string
+        if isinstance(ignore_doctypes_on_cancel_all, str):
+            ignore_doctypes_on_cancel_all = json.loads(ignore_doctypes_on_cancel_all)
+        elif ignore_doctypes_on_cancel_all is None:
+            ignore_doctypes_on_cancel_all = []
+        
+        # Step 1: Clear references from Leave Application
+        frappe.db.set_value(doctype, docname, "custom_off_day_work_request", None)
+        frappe.db.set_value(doctype, docname, "custom_off_day_date", None)
+        frappe.db.commit()
+        
+        # Step 2: Process Off-Day Work Request
+        for doc in docs:
+            if doc.get("doctype") == "Off-Day Work Request":
+                off_day_name = doc.get("name")
+                
+                # Clear leave_application from Off-Day Work Request
+                frappe.db.set_value("Off-Day Work Request", off_day_name, "leave_application", None)
+                
+                # Get the Off-Day Work Request document to find leave_allocation
+                off_day_doc = frappe.get_doc("Off-Day Work Request", off_day_name)
+                leave_allocation_name = off_day_doc.get("leave_allocation")
+                
+                # If Leave Allocation exists, clean its fields
+                if leave_allocation_name:
+                    # Clear custom_leave_status
+                    frappe.db.set_value("Leave Allocation", leave_allocation_name, "custom_leave_status", None)
+                    
+                    # Clear custom_leave_date
+                    frappe.db.set_value("Leave Allocation", leave_allocation_name, "custom_leave_date", None)
+                    
+                    frappe.db.commit()
+        
+        # Step 3: Cancel only documents other than Off-Day Work Request and Leave Allocation
+        docs_to_cancel = [d for d in docs if d.get("doctype") not in ["Off-Day Work Request", "Leave Allocation"]]
+        
+        if docs_to_cancel:
+            from frappe.desk.form.linked_with import cancel_all_linked_docs
+            cancel_all_linked_docs(docs_to_cancel, ignore_doctypes_on_cancel_all)
+        
+        return {"success": True, "message": "Cleanup and cancellation completed"}
+        
+    except Exception as e:
+        frappe.log_error(f"cleanup_and_cancel error: {str(e)}\nTraceback: {frappe.get_traceback()}", "Leave Application Cleanup Error")
+        return {"success": False, "error": str(e)}
+# off day and leave allocation cleanup code end
+
 @frappe.whitelist()
 def get_leave_type(leave_type):
     return frappe.db.get_value("Leave Type", {"name": leave_type}, ["name", "is_compensatory", "custom_applied_once", "custom_leave_type"], as_dict=True)

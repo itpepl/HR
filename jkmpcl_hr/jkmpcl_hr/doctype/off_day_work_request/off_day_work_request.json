@@ -125,25 +125,25 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "leave_allocation",
    "fieldtype": "Link",
    "label": "Leave Allocation",
-   "options": "Leave Allocation",
-   "read_only": 1
+   "options": "Leave Allocation"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "leave_application",
    "fieldtype": "Link",
    "label": "Leave Application",
-   "options": "Leave Application",
-   "read_only": 1
+   "options": "Leave Application"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-01 14:13:55.136666",
+ "modified": "2026-06-11 15:30:44.655568",
  "modified_by": "Administrator",
  "module": "JKMPCL HR",
  "name": "Off-Day Work Request",

@@ -428,7 +428,7 @@ class AttendanceRequest(HRMSAttendanceRequest):
                 if review_manager:
                     frappe.share.add_docshare(self.doctype, self.name, review_manager, read=1, select=1, write=1, submit=1, flags={"ignore_share_permission": True})
                
-            elif old_doc.workflow_state != self.workflow_state and self.workflow_state == "Approved by Review Manager" and not (self.reason == "Miss Punch" and (self.custom_punch_type == "Both" or self.custom_attempt_no > punch_count)):
+            elif old_doc.workflow_state != self.workflow_state and self.workflow_state == "Approved by Review Manager" and not (self.reason == "Miss Punch" and (self.custom_punch_type == "Both" or int(self.custom_attempt_no or 0) > int(punch_count or 0))):
                 hr_manager = get_emp_hr_manager(self.employee)
               
                 if hr_manager:
