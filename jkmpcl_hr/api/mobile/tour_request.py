@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import today, getdate, date_diff,formatdate
+from frappe.utils import today, getdate, date_diff,formatdate,cint
 
 @frappe.whitelist(allow_guest=False)
 def create_tour_request(from_date, to_date, purpose_of_travel):
@@ -100,70 +100,160 @@ def create_tour_request(from_date, to_date, purpose_of_travel):
             "status": "error",
             "message": "An unexpected error occurred while creating the Tour Request."
         }
+# @frappe.whitelist()
+# def get_my_tour_requests(page=1, page_size=20):
+#     page = int(page)
+#     page_size = int(page_size)
+
+#     employee = frappe.db.get_value(
+#         "Employee",
+#         {"user_id": frappe.session.user},
+#         "name"
+#     )
+
+#     if not employee:
+#         frappe.throw("Employee record not found for logged in user")
+
+#     start = (page - 1) * page_size
+
+#     total_count = frappe.db.count(
+#         "Tour Request",
+#         {"employee": employee}
+#     )
+
+#     data = frappe.get_all(
+#         "Tour Request",
+#         filters={"employee": employee},
+#         fields=[
+#             "name",
+#             "employee",
+#             "employee_name",
+#             "travel_request_date",
+#             "from_date",
+#             "to_date",
+#             "purpose_of_travel",
+#             "workflow_state",
+#             "docstatus"
+#         ],
+#         order_by="creation desc",
+#         start=start,
+#         limit_page_length=page_size
+#     )
+
+#     for row in data:
+#         row["travel_request_date"] = (
+#             formatdate(row["travel_request_date"], "dd-MM-yyyy")
+#             if row.get("travel_request_date") else ""
+#         )
+
+#         row["from_date"] = (
+#             formatdate(row["from_date"], "dd-MM-yyyy")
+#             if row.get("from_date") else ""
+#         )
+
+#         row["to_date"] = (
+#             formatdate(row["to_date"], "dd-MM-yyyy")
+#             if row.get("to_date") else ""
+#         )
+
+#     return {
+#         "page": page,
+#         "page_size": page_size,
+#         "total_records": total_count,
+#         "total_pages": (total_count + page_size - 1) // page_size,
+#         "data": data
+#     }
+
+
 @frappe.whitelist()
-def get_my_tour_requests(page=1, page_size=20):
-    page = int(page)
-    page_size = int(page_size)
+def get_my_tour_requests(
+    filters=None,
+    order_by="creation desc",
+    limit_page_length=None,
+    limit_start=0
+):
+    try:
+        user = frappe.session.user
 
-    employee = frappe.db.get_value(
-        "Employee",
-        {"user_id": frappe.session.user},
-        "name"
-    )
+        # Parse filters
+        filters = frappe.parse_json(filters) if filters else []
 
-    if not employee:
-        frappe.throw("Employee record not found for logged in user")
+        if isinstance(filters, dict):
+            filters = [[k, "=", v] for k, v in filters.items()]
 
-    start = (page - 1) * page_size
-
-    total_count = frappe.db.count(
-        "Tour Request",
-        {"employee": employee}
-    )
-
-    data = frappe.get_all(
-        "Tour Request",
-        filters={"employee": employee},
-        fields=[
-            "name",
-            "employee",
-            "employee_name",
-            "travel_request_date",
-            "from_date",
-            "to_date",
-            "purpose_of_travel",
-            "workflow_state",
-            "docstatus"
-        ],
-        order_by="creation desc",
-        start=start,
-        limit_page_length=page_size
-    )
-
-    for row in data:
-        row["travel_request_date"] = (
-            formatdate(row["travel_request_date"], "dd-MM-yyyy")
-            if row.get("travel_request_date") else ""
+        employee = frappe.db.get_value(
+            "Employee",
+            {"user_id": user},
+            "name"
         )
 
-        row["from_date"] = (
-            formatdate(row["from_date"], "dd-MM-yyyy")
-            if row.get("from_date") else ""
+        if not employee:
+            frappe.throw("Employee not linked with current user")
+
+        # Always show only logged-in employee records
+        filters.append(["employee", "=", employee])
+
+        # Total count
+        total_records = frappe.db.count(
+            "Tour Request",
+            filters=filters
         )
 
-        row["to_date"] = (
-            formatdate(row["to_date"], "dd-MM-yyyy")
-            if row.get("to_date") else ""
+        # Records with pagination
+        records = frappe.get_list(
+            "Tour Request",
+            filters=filters,
+            fields=[
+                "name",
+                "employee",
+                "employee_name",
+                "travel_request_date",
+                "from_date",
+                "to_date",
+                "purpose_of_travel",
+                "workflow_state",
+                "docstatus",
+                "creation"
+            ],
+            order_by=order_by,
+            limit_page_length=cint(limit_page_length) if limit_page_length else None,
+            limit_start=cint(limit_start)
         )
 
-    return {
-        "page": page,
-        "page_size": page_size,
-        "total_records": total_count,
-        "total_pages": (total_count + page_size - 1) // page_size,
-        "data": data
-    }
+        # Format dates
+        for row in records:
+            row["travel_request_date"] = (
+                formatdate(row["travel_request_date"], "dd-MM-yyyy")
+                if row.get("travel_request_date") else ""
+            )
 
+            row["from_date"] = (
+                formatdate(row["from_date"], "dd-MM-yyyy")
+                if row.get("from_date") else ""
+            )
+
+            row["to_date"] = (
+                formatdate(row["to_date"], "dd-MM-yyyy")
+                if row.get("to_date") else ""
+            )
+
+        return {
+            "success": True,
+            "data": records,
+            "total_records": total_records,
+            "count": len(records),
+            "message": "Tour Request List Loaded Successfully!"
+        }
+
+    except Exception as e:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Tour Request API Error"
+        )
+        return {
+            "success": False,
+            "message": str(e)
+        }
 
 @frappe.whitelist(allow_guest=False)
 def update_tour_request(tour_request, from_date, to_date, purpose_of_travel):
