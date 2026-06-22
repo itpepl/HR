@@ -262,8 +262,11 @@ scheduler_events = {
         "0 0 * * *":[
             "jkmpcl_hr.py.scheduler_method.set_approvers_in_employee"
         ]
-        
-    }
+
+    },
+    "daily": [
+            "jkmpcl_hr.py.scheduler_method.expire_comp_off_leave_allocations"
+        ]
 # 	"all": [
 # 		"jkmpcl_hr.tasks.all"
 # 	],

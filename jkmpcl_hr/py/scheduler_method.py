@@ -9475,6 +9475,40 @@ def create_comp_off(employee, date):
     return allocation
 
 
+
+# =========================================================
+# Comp Off ALLOCATION expire status set
+# =========================================================
+
+@frappe.whitelist()
+def expire_comp_off_leave_allocations():
+    expired_allocations = frappe.get_all(
+        "Leave Allocation",
+        filters={
+            "leave_type": "Compensatory Off",
+            "docstatus": 1,
+            "custom_leave_status": ["!=", "Expire"],
+            "to_date": ["<", today()]  # Only expired allocations
+        },
+        fields=["name", "to_date"]
+    )
+
+    for allocation in expired_allocations:
+        doc = frappe.get_doc("Leave Allocation", allocation.name)
+
+        # Set status as Expire
+        doc.db_set("custom_leave_status", "Expire", update_modified=False)
+
+        # # Add timeline comment
+        # doc.add_comment(
+        #     "Info",
+        #     f"Compensatory Off leave allocation expired automatically. "
+        #     f"Valid until {allocation.to_date}."
+        # )
+
+    frappe.db.commit()
+
+
 # =========================================================
 # DUPLICATE CHECK
 # =========================================================
