@@ -1,372 +1,42 @@
-# import frappe
-# from frappe import _
-# from frappe.utils import today, getdate, date_diff,formatdate,cint
-
-# @frappe.whitelist(allow_guest=False)
-# def create_tour_request(from_date, to_date, purpose_of_travel):
-#     try:
-#         # Mandatory field validation
-#         if not from_date:
-#             frappe.throw(_("From Date is mandatory"))
-
-#         if not to_date:
-#             frappe.throw(_("To Date is mandatory"))
-
-#         if not purpose_of_travel:
-#             frappe.throw(_("Purpose of Travel is mandatory"))
-
-#         from_date = getdate(from_date)
-#         to_date = getdate(to_date)
-
-#         # To Date cannot be earlier than From Date
-#         if to_date < from_date:
-#             frappe.throw(
-#                 _("Invalid Date Range. To Date cannot be before From Date.")
-#             )
-
-#         # Travel duration must be exactly 1 day
-#         days_diff = date_diff(to_date, from_date)
-
-#         if days_diff != 1:
-#             frappe.throw(
-#                 _("Tour duration must be exactly 1 day. Please select a To Date that is one day after the From Date.")
-#             )
-
-#         employee = frappe.db.get_value(
-#             "Employee",
-#             {"user_id": frappe.session.user},
-#             ["name", "employee_name"],
-#             as_dict=True
-#         )
-
-#         if not employee:
-#             frappe.throw(
-#                 _("Employee record not found for the logged-in user.")
-#             )
-
-#         # Check overlapping Tour Request
-#         existing_tour = frappe.db.sql("""
-#             SELECT name
-#             FROM `tabTour Request`
-#             WHERE employee = %s
-#                 AND docstatus != 2
-#                 AND from_date <= %s
-#                 AND to_date >= %s
-#             LIMIT 1
-#         """, (
-#             employee.name,
-#             to_date,
-#             from_date
-#         ), as_dict=True)
-
-#         if existing_tour:
-#             frappe.throw(
-#                 _("Tour Request already exists for this date range: {0}").format(
-#                     existing_tour[0].name
-#                 )
-#             )
-
-#         doc = frappe.get_doc({
-#             "doctype": "Tour Request",
-#             "employee": employee.name,
-#             "travel_request_date": today(),
-#             "from_date": from_date,
-#             "to_date": to_date,
-#             "purpose_of_travel": purpose_of_travel
-#         })
-
-#         doc.insert(ignore_permissions=True)
-#         frappe.db.commit()
-
-#         return {
-#             "status": "success",
-#             "message": "Tour Request created successfully.",
-#             "tour_request": doc.name
-#         }
-
-#     except frappe.ValidationError as e:
-#         return {
-#             "status": "error",
-#             "message": str(e)
-#         }
-
-#     except Exception:
-#         frappe.log_error(
-#             frappe.get_traceback(),
-#             "Create Tour Request API Error"
-#         )
-
-#         return {
-#             "status": "error",
-#             "message": "An unexpected error occurred while creating the Tour Request."
-#         }
-# # @frappe.whitelist()
-# # def get_my_tour_requests(page=1, page_size=20):
-# #     page = int(page)
-# #     page_size = int(page_size)
-
-# #     employee = frappe.db.get_value(
-# #         "Employee",
-# #         {"user_id": frappe.session.user},
-# #         "name"
-# #     )
-
-# #     if not employee:
-# #         frappe.throw("Employee record not found for logged in user")
-
-# #     start = (page - 1) * page_size
-
-# #     total_count = frappe.db.count(
-# #         "Tour Request",
-# #         {"employee": employee}
-# #     )
-
-# #     data = frappe.get_all(
-# #         "Tour Request",
-# #         filters={"employee": employee},
-# #         fields=[
-# #             "name",
-# #             "employee",
-# #             "employee_name",
-# #             "travel_request_date",
-# #             "from_date",
-# #             "to_date",
-# #             "purpose_of_travel",
-# #             "workflow_state",
-# #             "docstatus"
-# #         ],
-# #         order_by="creation desc",
-# #         start=start,
-# #         limit_page_length=page_size
-# #     )
-
-# #     for row in data:
-# #         row["travel_request_date"] = (
-# #             formatdate(row["travel_request_date"], "dd-MM-yyyy")
-# #             if row.get("travel_request_date") else ""
-# #         )
-
-# #         row["from_date"] = (
-# #             formatdate(row["from_date"], "dd-MM-yyyy")
-# #             if row.get("from_date") else ""
-# #         )
-
-# #         row["to_date"] = (
-# #             formatdate(row["to_date"], "dd-MM-yyyy")
-# #             if row.get("to_date") else ""
-# #         )
-
-# #     return {
-# #         "page": page,
-# #         "page_size": page_size,
-# #         "total_records": total_count,
-# #         "total_pages": (total_count + page_size - 1) // page_size,
-# #         "data": data
-# #     }
-
-
-# @frappe.whitelist()
-# def get_my_tour_requests(
-#     filters=None,
-#     order_by="creation desc",
-#     limit_page_length=None,
-#     limit_start=0
-# ):
-#     try:
-#         user = frappe.session.user
-
-#         # Parse filters
-#         filters = frappe.parse_json(filters) if filters else []
-
-#         if isinstance(filters, dict):
-#             filters = [[k, "=", v] for k, v in filters.items()]
-
-#         employee = frappe.db.get_value(
-#             "Employee",
-#             {"user_id": user},
-#             "name"
-#         )
-
-#         if not employee:
-#             frappe.throw("Employee not linked with current user")
-
-#         # Always show only logged-in employee records
-#         filters.append(["employee", "=", employee])
-
-#         # Total count
-#         total_records = frappe.db.count(
-#             "Tour Request",
-#             filters=filters
-#         )
-
-#         # Records with pagination
-#         records = frappe.get_list(
-#             "Tour Request",
-#             filters=filters,
-#             fields=[
-#                 "name",
-#                 "employee",
-#                 "employee_name",
-#                 "travel_request_date",
-#                 "from_date",
-#                 "to_date",
-#                 "purpose_of_travel",
-#                 "workflow_state",
-#                 "docstatus",
-#                 "creation"
-#             ],
-#             order_by=order_by,
-#             limit_page_length=cint(limit_page_length) if limit_page_length else None,
-#             limit_start=cint(limit_start)
-#         )
-
-#         # Format dates
-#         for row in records:
-#             row["travel_request_date"] = (
-#                 formatdate(row["travel_request_date"], "dd-MM-yyyy")
-#                 if row.get("travel_request_date") else ""
-#             )
-
-#             row["from_date"] = (
-#                 formatdate(row["from_date"], "dd-MM-yyyy")
-#                 if row.get("from_date") else ""
-#             )
-
-#             row["to_date"] = (
-#                 formatdate(row["to_date"], "dd-MM-yyyy")
-#                 if row.get("to_date") else ""
-#             )
-
-#         return {
-#             "success": True,
-#             "data": records,
-#             "total_records": total_records,
-#             "count": len(records),
-#             "message": "Tour Request List Loaded Successfully!"
-#         }
-
-#     except Exception as e:
-#         frappe.log_error(
-#             frappe.get_traceback(),
-#             "Tour Request API Error"
-#         )
-#         return {
-#             "success": False,
-#             "message": str(e)
-#         }
-
-# @frappe.whitelist(allow_guest=False)
-# def update_tour_request(tour_request, from_date, to_date, purpose_of_travel):
-#     try:
-#         # Mandatory field validation
-#         if not tour_request:
-#             frappe.throw(_("Tour Request ID is mandatory"))
-
-#         if not from_date:
-#             frappe.throw(_("From Date is mandatory"))
-
-#         if not to_date:
-#             frappe.throw(_("To Date is mandatory"))
-
-#         if not purpose_of_travel:
-#             frappe.throw(_("Purpose of Travel is mandatory"))
-
-#         from_date = getdate(from_date)
-#         to_date = getdate(to_date)
-
-#         # Date validation
-#         if to_date < from_date:
-#             frappe.throw(
-#                 _("Invalid Date Range. To Date cannot be before From Date.")
-#             )
-
-#         # Tour duration validation
-#         days_diff = date_diff(to_date, from_date)
-
-#         if days_diff != 1:
-#             frappe.throw(
-#                 _("Tour duration must be exactly 1 day. Please select a To Date that is one day after the From Date.")
-#             )
-
-#         # Get logged-in employee
-#         employee = frappe.db.get_value(
-#             "Employee",
-#             {"user_id": frappe.session.user},
-#             ["name", "employee_name"],
-#             as_dict=True
-#         )
-
-#         if not employee:
-#             frappe.throw(
-#                 _("Employee record not found for the logged-in user.")
-#             )
-
-#         # Check Tour Request exists
-#         if not frappe.db.exists("Tour Request", tour_request):
-#             frappe.throw(
-#                 _("Tour Request not found.")
-#             )
-
-#         doc = frappe.get_doc("Tour Request", tour_request)
-
-#         # Allow only owner employee to update
-#         if doc.employee != employee.name:
-#             frappe.throw(
-#                 _("You are not authorized to update this Tour Request.")
-#             )
-
-#         # Allow update only in Draft state
-#         if doc.docstatus != 0:
-#             frappe.throw(
-#                 _("Only Draft Tour Requests can be updated.")
-#             )
-
-#         # Update fields
-#         doc.from_date = from_date
-#         doc.to_date = to_date
-#         doc.purpose_of_travel = purpose_of_travel
-
-#         doc.save(ignore_permissions=True)
-#         frappe.db.commit()
-
-#         return {
-#             "status": "success",
-#             "message": "Tour Request updated successfully.",
-#             "data": {
-#                 "tour_request": doc.name,
-#                 "employee": doc.employee,
-#                 "employee_name": doc.employee_name,
-#                 "workflow_state": doc.workflow_state,
-#                 "travel_request_date": str(doc.travel_request_date),
-#                 "from_date": str(doc.from_date),
-#                 "to_date": str(doc.to_date),
-#                 "purpose_of_travel": doc.purpose_of_travel,
-#                 "docstatus": doc.docstatus
-#             }
-#         }
-
-#     except frappe.ValidationError as e:
-#         return {
-#             "status": "error",
-#             "message": str(e)
-#         }
-
-#     except Exception:
-#         frappe.log_error(
-#             frappe.get_traceback(),
-#             "Update Tour Request API Error"
-#         )
-
-#         return {
-#             "status": "error",
-#             "message": "An unexpected error occurred while updating the Tour Request."
-#         }
-
-
 import frappe
 from frappe import _
 from frappe.utils import getdate, date_diff, today
 
+def get_status(workflow_state, docstatus):
+    """
+    Helper function to determine status based on workflow_state and docstatus
+    """
+    workflow_state = (workflow_state or "").lower()
+    
+    # Check docstatus first
+    if docstatus == 2:
+        return "Cancelled"
+    
+    elif docstatus == 1:
+        # If docstatus is 1, it's Approved regardless of workflow_state
+        return "Approved"
+    
+    elif docstatus == 0:
+        # For Draft/Open status
+        if "reject" in workflow_state:
+            return "Rejected"
+        elif "approved" in workflow_state:
+            # Even if workflow_state says "Approved by", but docstatus is 0, it's still in progress
+            # So we should return "Open" or "Draft"
+            if "draft" in workflow_state:
+                return "Draft"
+            else:
+                # If it's in approval process but not yet fully approved (docstatus=0)
+                return "Open"
+        elif "draft" in workflow_state:
+            return "Draft"
+        elif workflow_state:
+            # For any other workflow_state with docstatus=0, it's Open
+            return "Open"
+        else:
+            return "Draft"
+    
+    return "Unknown"
 
 @frappe.whitelist()
 def create_tour_request(data):
@@ -496,8 +166,10 @@ def create_tour_request(data):
                     "name": doc.name,
                     "employee": doc.employee,
                     "employee_name": doc.employee_name,
-                    "status": doc.workflow_state,
-                    "docstatus": doc.docstatus
+                    "status": get_status(
+                        doc.workflow_state,
+                        doc.docstatus
+                    )
                 }
             }
 
@@ -545,8 +217,10 @@ def create_tour_request(data):
                     "name": doc.name,
                     "employee": doc.employee,
                     "employee_name": doc.employee_name,
-                    "status": doc.workflow_state,
-                    "docstatus": doc.docstatus
+                    "status": get_status(
+                        doc.workflow_state,
+                        doc.docstatus
+                    )
                 }
             }
 
@@ -569,11 +243,6 @@ def create_tour_request(data):
             "message": "Unable to process Tour Request. Please contact Administrator.",
             "data": None
         }
-  
-
-
-import frappe
-
 
 @frappe.whitelist()
 def get_tour_requests(
@@ -584,12 +253,32 @@ def get_tour_requests(
     try:
         # Parse Filters
         filters = frappe.parse_json(filters) if filters else {}
+        
+        # Extract filter values from the nested array structure
+        filter_dict = {}
+        if isinstance(filters, list):
+            for filter_item in filters:
+                if isinstance(filter_item, list) and len(filter_item) >= 3:
+                    field = filter_item[0]
+                    operator = filter_item[1]
+                    value = filter_item[2]
+                    
+                    # Convert to dictionary format
+                    if operator == "=":
+                        filter_dict[field] = value
+                    elif operator == ">=":
+                        filter_dict[field + "_gte"] = value
+                    elif operator == "<=":
+                        filter_dict[field + "_lte"] = value
+        else:
+            filter_dict = filters
 
-        department = filters.get("Department")
-        employee = filters.get("employee")
-        from_date = filters.get("from_date")
-        to_date = filters.get("to_date")
-        status = filters.get("status")
+        # Extract values from filter dictionary
+        department = filter_dict.get("department")
+        employee = filter_dict.get("employee")
+        from_date = filter_dict.get("from_date") or filter_dict.get("from_date_gte")
+        to_date = filter_dict.get("to_date") or filter_dict.get("to_date_lte")
+        status = filter_dict.get("status")
 
         tour_filters = {}
 
@@ -619,11 +308,25 @@ def get_tour_requests(
         if employee:
             tour_filters["employee"] = employee
 
-        # Status Filter (Workflow State)
+        # Status Filter - Now handling both docstatus and workflow_state
         if status:
-            tour_filters["workflow_state"] = status
+            if status == "Approved":
+                tour_filters["docstatus"] = 1
+            elif status == "Cancelled":
+                tour_filters["docstatus"] = 2
+            elif status == "Open" or status == "Draft":
+                # For Open/Draft, docstatus=0 and not rejected
+                tour_filters["docstatus"] = 0
+                # Exclude rejected ones if they have docstatus=0
+                tour_filters["workflow_state"] = ["not like", "%Reject%"]
+            elif status == "Rejected":
+                tour_filters["docstatus"] = 0
+                tour_filters["workflow_state"] = ["like", "%Reject%"]
+            else:
+                # For any other status, check workflow_state
+                tour_filters["workflow_state"] = status
 
-        # Date Range Filter
+        # Date Range Filter - Handle from_date and to_date properly
         if from_date and to_date:
             tour_filters["from_date"] = ["<=", to_date]
             tour_filters["to_date"] = [">=", from_date]
@@ -646,7 +349,8 @@ def get_tour_requests(
                 "to_date",
                 "purpose_of_travel",
                 "workflow_state",
-                "creation"
+                "docstatus",
+                "creation",
             ],
             order_by="creation desc",
             limit_start=int(limit_start),
@@ -655,8 +359,14 @@ def get_tour_requests(
 
         # Convert workflow_state to status
         for row in records:
-            row["status"] = row.pop("workflow_state", "")
+            row["status"] = get_status(
+                row.get("workflow_state"),
+                row.get("docstatus")
+            )
 
+            # Remove only docstatus
+            row.pop("docstatus", None)
+            
         page_size = int(limit_page_length)
         current_page = (int(limit_start) // page_size) + 1 if page_size else 1
         total_pages = (
@@ -672,10 +382,11 @@ def get_tour_requests(
             "current_page": current_page,
             "total_pages": total_pages,
             "returned_records": len(records),
-            "data": records
+            "data": records,
+            "applied_filters": filter_dict  # Optional: return applied filters for debugging
         }
 
-    except Exception:
+    except Exception as e:
         frappe.log_error(
             frappe.get_traceback(),
             "Get Tour Requests API"
@@ -683,10 +394,9 @@ def get_tour_requests(
 
         return {
             "success": False,
-            "message": str(frappe.get_traceback()),
+            "message": str(e),
             "data": []
         }
-    
 
 @frappe.whitelist(allow_guest=False)
 def get_workflow_states(workflow_name):
