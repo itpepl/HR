@@ -9114,8 +9114,8 @@ def process_working_day(req):
         return
     
     holiday = get_holiday_details(req["employee"], req["date"])
-    if(req["employee"] == "20082: Harshiya Gupta"):
-        frappe.log_error("compoff_holiday", f"{holiday}")
+    # if(req["employee"] == "20082: Harshiya Gupta"):
+    #     frappe.log_error("compoff_holiday", f"{holiday}")
     
     if not holiday:
         frappe.log_error("start_process_comp_off_scheduler", f"Holiday details not found for employee: {req['date']} - {req['employee']}")
@@ -9123,8 +9123,8 @@ def process_working_day(req):
 
     # WO OR Normal Holiday OR RH+WO
     if holiday["is_wo"] or not holiday["is_rh"]:
-        if(req["employee"] == "20082: Harshiya Gupta"):
-            frappe.log_error("comp_off", "is wo")
+        # if(req["employee"] == "20082: Harshiya Gupta"):
+        #     frappe.log_error("comp_off", "is wo")
         allocation = create_comp_off(req["employee"], req["date"])
 
         frappe.db.set_value(
@@ -9450,13 +9450,13 @@ def create_comp_off(employee, date):
         },
         "custom_validity_days"
     )
-    if(employee == "20082: Harshiya Gupta"):
-        frappe.log_error("comp_off leave type", f"{leave_type}")
+    # if(employee == "20082: Harshiya Gupta"):
+    #     frappe.log_error("comp_off leave type", f"{leave_type}")
     
     validity_days = leave_type if leave_type else 45
 
-    if(employee == "20082: Harshiya Gupta"):
-        frappe.log_error("comp_off_validate_days", f"{validity_days}")
+    # if(employee == "20082: Harshiya Gupta"):
+    #     frappe.log_error("comp_off_validate_days", f"{validity_days}")
     try:
         allocation = frappe.get_doc({
             "doctype": "Leave Allocation",
