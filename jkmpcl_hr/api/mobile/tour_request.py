@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import getdate, date_diff, today
+from frappe.utils import getdate, date_diff, today,formatdate,add_days
 
 def get_status(workflow_state, docstatus):
     """
@@ -38,211 +38,211 @@ def get_status(workflow_state, docstatus):
     
     return "Unknown"
 
-@frappe.whitelist()
-def create_tour_request(data):
-    try:
-        if isinstance(data, str):
-            data = frappe.parse_json(data)
+# @frappe.whitelist()
+# def create_tour_request(data):
+#     try:
+#         if isinstance(data, str):
+#             data = frappe.parse_json(data)
 
-        name = data.get("name")
-        from_date = data.get("from_date")
-        to_date = data.get("to_date")
-        purpose_of_travel = data.get("purpose_of_travel")
+#         name = data.get("name")
+#         from_date = data.get("from_date")
+#         to_date = data.get("to_date")
+#         purpose_of_travel = data.get("purpose_of_travel")
 
-        # -----------------------------
-        # Mandatory Validation
-        # -----------------------------
-        if not from_date:
-            return {
-                "success": False,
-                "message": "From Date is required",
-                "data": None
-            }
+#         # -----------------------------
+#         # Mandatory Validation
+#         # -----------------------------
+#         if not from_date:
+#             return {
+#                 "success": False,
+#                 "message": "From Date is required",
+#                 "data": None
+#             }
 
-        if not to_date:
-            return {
-                "success": False,
-                "message": "To Date is required",
-                "data": None
-            }
+#         if not to_date:
+#             return {
+#                 "success": False,
+#                 "message": "To Date is required",
+#                 "data": None
+#             }
 
-        if not purpose_of_travel:
-            return {
-                "success": False,
-                "message": "Purpose of Travel is required",
-                "data": None
-            }
+#         if not purpose_of_travel:
+#             return {
+#                 "success": False,
+#                 "message": "Purpose of Travel is required",
+#                 "data": None
+#             }
 
-        from_date = getdate(from_date)
-        to_date = getdate(to_date)
+#         from_date = getdate(from_date)
+#         to_date = getdate(to_date)
 
-        # -----------------------------
-        # Date Validation
-        # -----------------------------
-        if to_date < from_date:
-            frappe.throw(
-                _("To Date cannot be before From Date.")
-            )
+#         # -----------------------------
+#         # Date Validation
+#         # -----------------------------
+#         if to_date < from_date:
+#             frappe.throw(
+#                 _("To Date cannot be before From Date.")
+#             )
 
-        days_diff = date_diff(to_date, from_date)
+#         days_diff = date_diff(to_date, from_date)
 
-        if days_diff != 1:
-            frappe.throw(
-                _("Tour duration must be exactly 1 day. Please select a To Date that is one day after the From Date.")
-            )
+#         if days_diff != 1:
+#             frappe.throw(
+#                 _("Tour duration must be exactly 1 day. Please select a To Date that is one day after the From Date.")
+#             )
 
-        # -----------------------------
-        # Employee Validation
-        # -----------------------------
-        employee = frappe.db.get_value(
-            "Employee",
-            {"user_id": frappe.session.user},
-            ["name", "employee_name"],
-            as_dict=True
-        )
+#         # -----------------------------
+#         # Employee Validation
+#         # -----------------------------
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": frappe.session.user},
+#             ["name", "employee_name"],
+#             as_dict=True
+#         )
 
-        if not employee:
-            frappe.throw(
-                _("Employee record not found for the logged-in user.")
-            )
+#         if not employee:
+#             frappe.throw(
+#                 _("Employee record not found for the logged-in user.")
+#             )
 
-        # -----------------------------
-        # UPDATE FLOW
-        # -----------------------------
-        if name:
+#         # -----------------------------
+#         # UPDATE FLOW
+#         # -----------------------------
+#         if name:
 
-            if not frappe.db.exists("Tour Request", name):
-                return {
-                    "success": False,
-                    "message": "Tour Request not found",
-                    "data": None
-                }
+#             if not frappe.db.exists("Tour Request", name):
+#                 return {
+#                     "success": False,
+#                     "message": "Tour Request not found",
+#                     "data": None
+#                 }
 
-            doc = frappe.get_doc("Tour Request", name)
+#             doc = frappe.get_doc("Tour Request", name)
 
-            if doc.employee != employee.name:
-                frappe.throw(
-                    _("You are not authorized to update this Tour Request.")
-                )
+#             if doc.employee != employee.name:
+#                 frappe.throw(
+#                     _("You are not authorized to update this Tour Request.")
+#                 )
 
-            if doc.docstatus != 0:
-                frappe.throw(
-                    _("Only Draft Tour Requests can be updated.")
-                )
+#             if doc.docstatus != 0:
+#                 frappe.throw(
+#                     _("Only Draft Tour Requests can be updated.")
+#                 )
 
-            # Check overlapping requests excluding current record
-            existing_tour = frappe.db.sql("""
-                SELECT name
-                FROM `tabTour Request`
-                WHERE employee = %s
-                    AND name != %s
-                    AND docstatus != 2
-                    AND from_date <= %s
-                    AND to_date >= %s
-                LIMIT 1
-            """, (
-                employee.name,
-                name,
-                to_date,
-                from_date
-            ), as_dict=True)
+#             # Check overlapping requests excluding current record
+#             existing_tour = frappe.db.sql("""
+#                 SELECT name
+#                 FROM `tabTour Request`
+#                 WHERE employee = %s
+#                     AND name != %s
+#                     AND docstatus != 2
+#                     AND from_date <= %s
+#                     AND to_date >= %s
+#                 LIMIT 1
+#             """, (
+#                 employee.name,
+#                 name,
+#                 to_date,
+#                 from_date
+#             ), as_dict=True)
 
-            if existing_tour:
-                frappe.throw(
-                    _("Tour Request already exists for this date range: {0}")
-                    .format(existing_tour[0].name)
-                )
+#             if existing_tour:
+#                 frappe.throw(
+#                     _("Tour Request already exists for this date range: {0}")
+#                     .format(existing_tour[0].name)
+#                 )
 
-            doc.from_date = from_date
-            doc.to_date = to_date
-            doc.purpose_of_travel = purpose_of_travel
+#             doc.from_date = from_date
+#             doc.to_date = to_date
+#             doc.purpose_of_travel = purpose_of_travel
 
-            doc.save(ignore_permissions=True)
+#             doc.save(ignore_permissions=True)
 
-            return {
-                "success": True,
-                "message": "Tour Request updated successfully",
-                "data": {
-                    "name": doc.name,
-                    "employee": doc.employee,
-                    "employee_name": doc.employee_name,
-                    "status": get_status(
-                        doc.workflow_state,
-                        doc.docstatus
-                    )
-                }
-            }
+#             return {
+#                 "success": True,
+#                 "message": "Tour Request updated successfully",
+#                 "data": {
+#                     "name": doc.name,
+#                     "employee": doc.employee,
+#                     "employee_name": doc.employee_name,
+#                     "status": get_status(
+#                         doc.workflow_state,
+#                         doc.docstatus
+#                     )
+#                 }
+#             }
 
-        # -----------------------------
-        # CREATE FLOW
-        # -----------------------------
-        else:
+#         # -----------------------------
+#         # CREATE FLOW
+#         # -----------------------------
+#         else:
 
-            # Check overlapping requests
-            existing_tour = frappe.db.sql("""
-                SELECT name
-                FROM `tabTour Request`
-                WHERE employee = %s
-                    AND docstatus != 2
-                    AND from_date <= %s
-                    AND to_date >= %s
-                LIMIT 1
-            """, (
-                employee.name,
-                to_date,
-                from_date
-            ), as_dict=True)
+#             # Check overlapping requests
+#             existing_tour = frappe.db.sql("""
+#                 SELECT name
+#                 FROM `tabTour Request`
+#                 WHERE employee = %s
+#                     AND docstatus != 2
+#                     AND from_date <= %s
+#                     AND to_date >= %s
+#                 LIMIT 1
+#             """, (
+#                 employee.name,
+#                 to_date,
+#                 from_date
+#             ), as_dict=True)
 
-            if existing_tour:
-                frappe.throw(
-                    _("Tour Request already exists for this date range: {0}")
-                    .format(existing_tour[0].name)
-                )
+#             if existing_tour:
+#                 frappe.throw(
+#                     _("Tour Request already exists for this date range: {0}")
+#                     .format(existing_tour[0].name)
+#                 )
 
-            doc = frappe.get_doc({
-                "doctype": "Tour Request",
-                "employee": employee.name,
-                "travel_request_date": today(),
-                "from_date": from_date,
-                "to_date": to_date,
-                "purpose_of_travel": purpose_of_travel
-            })
+#             doc = frappe.get_doc({
+#                 "doctype": "Tour Request",
+#                 "employee": employee.name,
+#                 "travel_request_date": today(),
+#                 "from_date": from_date,
+#                 "to_date": to_date,
+#                 "purpose_of_travel": purpose_of_travel
+#             })
 
-            doc.insert(ignore_permissions=True)
+#             doc.insert(ignore_permissions=True)
 
-            return {
-                "success": True,
-                "message": "Tour Request created successfully",
-                "data": {
-                    "name": doc.name,
-                    "employee": doc.employee,
-                    "employee_name": doc.employee_name,
-                    "status": get_status(
-                        doc.workflow_state,
-                        doc.docstatus
-                    )
-                }
-            }
+#             return {
+#                 "success": True,
+#                 "message": "Tour Request created successfully",
+#                 "data": {
+#                     "name": doc.name,
+#                     "employee": doc.employee,
+#                     "employee_name": doc.employee_name,
+#                     "status": get_status(
+#                         doc.workflow_state,
+#                         doc.docstatus
+#                     )
+#                 }
+#             }
 
-    except frappe.ValidationError as e:
-        frappe.clear_messages()
-        return {
-            "success": False,
-            "message": str(e),
-            "data": None
-        }
+#     except frappe.ValidationError as e:
+#         frappe.clear_messages()
+#         return {
+#             "success": False,
+#             "message": str(e),
+#             "data": None
+#         }
 
-    except Exception:
-        frappe.log_error(
-            frappe.get_traceback(),
-            "Tour Request API Error"
-        )
+#     except Exception:
+#         frappe.log_error(
+#             frappe.get_traceback(),
+#             "Tour Request API Error"
+#         )
 
-        return {
-            "success": False,
-            "message": "Unable to process Tour Request. Please contact Administrator.",
-            "data": None
-        }
+#         return {
+#             "success": False,
+#             "message": "Unable to process Tour Request. Please contact Administrator.",
+#             "data": None
+#         }
 
 # @frappe.whitelist()
 # def get_tour_requests(
@@ -398,6 +398,381 @@ def create_tour_request(data):
 #             "data": []
 #         }
 
+@frappe.whitelist()
+def create_tour_request(data):
+    try:
+        if isinstance(data, str):
+            data = frappe.parse_json(data)
+
+        name = data.get("name")
+        from_date = data.get("from_date")
+        to_date = data.get("to_date")
+        purpose_of_travel = data.get("purpose_of_travel")
+
+        # -----------------------------
+        # Mandatory Validation
+        # -----------------------------
+        if not from_date:
+            return {
+                "success": False,
+                "message": "From Date is required",
+                "data": None
+            }
+
+        if not to_date:
+            return {
+                "success": False,
+                "message": "To Date is required",
+                "data": None
+            }
+
+        if not purpose_of_travel:
+            return {
+                "success": False,
+                "message": "Purpose of Travel is required",
+                "data": None
+            }
+
+        from_date = getdate(from_date)
+        to_date = getdate(to_date)
+
+        # -----------------------------
+        # Date Validation
+        # -----------------------------
+        if to_date < from_date:
+            frappe.throw(
+                _("To Date cannot be before From Date.")
+            )
+
+        # Calculate No. of Days
+        no_of_days = date_diff(to_date, from_date) + 1
+
+        # Validate travel duration is at least 2 days
+        if no_of_days < 2:
+            frappe.throw(
+                _("Travel request cannot be less than 2 days.")
+            )
+
+        # -----------------------------
+        # Employee Validation
+        # -----------------------------
+        employee = frappe.db.get_value(
+            "Employee",
+            {"user_id": frappe.session.user},
+            ["name", "employee_name", "status", "custom_suspended_from_date", "custom_suspended_to_date"],
+            as_dict=True
+        )
+
+        if not employee:
+            frappe.throw(
+                _("Employee record not found for the logged-in user.")
+            )
+
+        # -----------------------------
+        # Employee Suspension Validation
+        # -----------------------------
+        validate_employee_suspension(employee, from_date, to_date)
+
+        # -----------------------------
+        # Attendance Lock Validation
+        # -----------------------------
+        validate_attendance_lock(employee.name, from_date, to_date)
+
+        # -----------------------------
+        # UPDATE FLOW
+        # -----------------------------
+        if name:
+
+            if not frappe.db.exists("Tour Request", name):
+                return {
+                    "success": False,
+                    "message": "Tour Request not found",
+                    "data": None
+                }
+
+            doc = frappe.get_doc("Tour Request", name)
+
+            if doc.employee != employee.name:
+                frappe.throw(
+                    _("You are not authorized to update this Tour Request.")
+                )
+
+            if doc.docstatus != 0:
+                frappe.throw(
+                    _("Only Draft Tour Requests can be updated.")
+                )
+
+            # Check overlapping requests excluding current record
+            existing_tour = frappe.db.sql("""
+                SELECT name
+                FROM `tabTour Request`
+                WHERE employee = %s
+                    AND name != %s
+                    AND docstatus != 2
+                    AND from_date <= %s
+                    AND to_date >= %s
+                LIMIT 1
+            """, (
+                employee.name,
+                name,
+                to_date,
+                from_date
+            ), as_dict=True)
+
+            if existing_tour:
+                frappe.throw(
+                    _("Tour Request already exists for this date range: {0}")
+                    .format(existing_tour[0].name)
+                )
+
+            doc.from_date = from_date
+            doc.to_date = to_date
+            doc.purpose_of_travel = purpose_of_travel
+            doc.no_of_days = no_of_days  # Update the days count
+
+            doc.save(ignore_permissions=True)
+
+            return {
+                "success": True,
+                "message": "Tour Request updated successfully",
+                "data": {
+                    "name": doc.name,
+                    "employee": doc.employee,
+                    "employee_name": doc.employee_name,
+                    "no_of_days": doc.no_of_days,
+                    "status": get_status(
+                        doc.workflow_state,
+                        doc.docstatus
+                    )
+                }
+            }
+
+        # -----------------------------
+        # CREATE FLOW
+        # -----------------------------
+        else:
+
+            # Check overlapping requests
+            existing_tour = frappe.db.sql("""
+                SELECT name
+                FROM `tabTour Request`
+                WHERE employee = %s
+                    AND docstatus != 2
+                    AND from_date <= %s
+                    AND to_date >= %s
+                LIMIT 1
+            """, (
+                employee.name,
+                to_date,
+                from_date
+            ), as_dict=True)
+
+            if existing_tour:
+                frappe.throw(
+                    _("Tour Request already exists for this date range: {0}")
+                    .format(existing_tour[0].name)
+                )
+
+            doc = frappe.get_doc({
+                "doctype": "Tour Request",
+                "employee": employee.name,
+                "employee_name": employee.employee_name,
+                "travel_request_date": today(),
+                "from_date": from_date,
+                "to_date": to_date,
+                "purpose_of_travel": purpose_of_travel,
+                "no_of_days": no_of_days
+            })
+
+            doc.insert(ignore_permissions=True)
+
+            return {
+                "success": True,
+                "message": "Tour Request created successfully",
+                "data": {
+                    "name": doc.name,
+                    "employee": doc.employee,
+                    "employee_name": doc.employee_name,
+                    "no_of_days": doc.no_of_days,
+                    "status": get_status(
+                        doc.workflow_state,
+                        doc.docstatus
+                    )
+                }
+            }
+
+    except frappe.ValidationError as e:
+        frappe.clear_messages()
+        return {
+            "success": False,
+            "message": str(e),
+            "data": None
+        }
+
+    except Exception as e:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Tour Request API Error"
+        )
+
+        return {
+            "success": False,
+            "message": "Unable to process Tour Request. Please contact Administrator.",
+            "data": None
+        }
+
+
+def validate_employee_suspension(employee, from_date, to_date):
+    """
+    Validate that the employee is not suspended before allowing Tour Request creation
+    """
+    if not employee:
+        return
+    
+    # Check if employee is suspended
+    if employee.get("status") == "Suspended":
+        frappe.throw(
+            _("Tour Request cannot be created. Employee is currently suspended")
+        )
+    
+    suspended_from = employee.get("custom_suspended_from_date")
+    suspended_to = employee.get("custom_suspended_to_date")
+    
+    if not suspended_from:
+        return
+    
+    # Convert suspension dates to string if they are date objects
+    if hasattr(suspended_from, 'strftime'):
+        suspended_from = suspended_from.strftime('%Y-%m-%d')
+    if suspended_to and hasattr(suspended_to, 'strftime'):
+        suspended_to = suspended_to.strftime('%Y-%m-%d')
+    
+    current_date = today()
+    
+    # Check if current date falls within suspension period
+    is_suspended = False
+    
+    if suspended_from and suspended_to:
+        if current_date >= suspended_from and current_date <= suspended_to:
+            is_suspended = True
+    elif suspended_from and not suspended_to:
+        if current_date >= suspended_from:
+            is_suspended = True
+    
+    if is_suspended:
+        from_date_str = formatdate(suspended_from) if suspended_from else "N/A"
+        to_date_str = formatdate(suspended_to) if suspended_to else "Ongoing"
+        
+        frappe.throw(
+            _("Tour Request cannot be created. Employee {0} is currently suspended from {1} to {2}.").format(
+                employee.get("employee_name", ""),
+                from_date_str,
+                to_date_str
+            )
+        )
+    
+    # Also check if any travel date falls within suspension period
+    if from_date and to_date:
+        total_days = date_diff(to_date, from_date) + 1
+        
+        for i in range(total_days):
+            travel_date = add_days(from_date, i)
+            
+            # Convert travel date to string if it's a date object
+            if hasattr(travel_date, 'strftime'):
+                travel_date = travel_date.strftime('%Y-%m-%d')
+            
+            is_date_suspended = False
+            
+            if suspended_from and suspended_to:
+                if travel_date >= suspended_from and travel_date <= suspended_to:
+                    is_date_suspended = True
+            elif suspended_from and not suspended_to:
+                if travel_date >= suspended_from:
+                    is_date_suspended = True
+            
+            if is_date_suspended:
+                from_date_str = formatdate(suspended_from) if suspended_from else "N/A"
+                to_date_str = formatdate(suspended_to) if suspended_to else "Ongoing"
+                travel_date_str = formatdate(travel_date)
+                
+                frappe.throw(
+                    _("Tour Request cannot be created. Employee {0} is suspended from {1} to {2}. Travel date {3} falls within suspension period.").format(
+                        employee.get("employee_name", ""),
+                        from_date_str,
+                        to_date_str,
+                        travel_date_str
+                    )
+                )
+
+
+def validate_attendance_lock(employee_name, from_date, to_date):
+    """
+    Validate attendance lock for travel request date and tour period
+    """
+    # Check attendance lock for travel request date (today)
+    travel_request_date = today()
+    
+    if travel_request_date:
+        lock_name = frappe.db.get_value(
+            "Attendance Lock",
+            {
+                "lock_date": travel_request_date,
+                "docstatus": 1  # Submitted/Active attendance lock
+            },
+            "name"
+        )
+        
+        if lock_name:
+            # Check if employee is affected by this attendance lock
+            # This may need to be customized based on your Attendance Lock logic
+            month = frappe.db.get_value(
+                "Attendance Lock",
+                lock_name,
+                "month"
+            )
+            
+            if not month:
+                month = formatdate(
+                    travel_request_date,
+                    "MMMM yyyy"
+                )
+            
+            frappe.throw(
+                _("Attendance is locked for {0}. Travel Request Date is not allowed.").format(month),
+                title=_("Attendance Lock")
+            )
+    
+    # Check attendance lock for entire tour period
+    for i in range(date_diff(to_date, from_date) + 1):
+        att_date = add_days(from_date, i)
+        
+        lock_name = frappe.db.get_value(
+            "Attendance Lock",
+            {
+                "lock_date": att_date,
+                "docstatus": 1  # Submitted/Active attendance lock
+            },
+            "name"
+        )
+        
+        if lock_name:
+            month = frappe.db.get_value(
+                "Attendance Lock",
+                lock_name,
+                "month"
+            )
+            
+            if not month:
+                month = formatdate(
+                    att_date,
+                    "MMMM yyyy"
+                )
+            
+            frappe.throw(
+                _("Attendance is locked for {0}. Tour Request cannot be created or updated for this period.").format(month),
+                title=_("Attendance Lock")
+            )
 
 @frappe.whitelist()
 def get_tour_requests(
