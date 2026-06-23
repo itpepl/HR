@@ -41,5 +41,21 @@ frappe.ui.form.on("Tour Request", {
                 }
             });
         }
-    }
+    },
+    from_date: calculate_days,
+    to_date: calculate_days
 });
+
+// for no of days calculate function 
+function calculate_days(frm) {
+    if (frm.doc.from_date && frm.doc.to_date) {
+        let days = frappe.datetime.get_day_diff(
+            frm.doc.to_date,
+            frm.doc.from_date
+        ) + 1;
+
+        frm.set_value("no_of_days", days);
+    } else {
+        frm.set_value("no_of_days", 0);
+    }
+}
