@@ -1,6 +1,7 @@
 import frappe
 from frappe import _
 from frappe.utils import getdate, date_diff, today,formatdate,add_days
+from jkmpcl_hr.jkmpcl_hr.doctype.attendance_lock.attendance_lock import AttendanceLock
 
 def get_status(workflow_state, docstatus):
     """
@@ -398,9 +399,11 @@ def get_status(workflow_state, docstatus):
 #             "data": []
 #         }
 
+
 @frappe.whitelist()
 def create_tour_request(data):
     try:
+
         if isinstance(data, str):
             data = frappe.parse_json(data)
 
@@ -482,7 +485,6 @@ def create_tour_request(data):
         # UPDATE FLOW
         # -----------------------------
         if name:
-
             if not frappe.db.exists("Tour Request", name):
                 return {
                     "success": False,
@@ -528,7 +530,7 @@ def create_tour_request(data):
             doc.from_date = from_date
             doc.to_date = to_date
             doc.purpose_of_travel = purpose_of_travel
-            doc.no_of_days = no_of_days  # Update the days count
+            doc.no_of_days = no_of_days
 
             doc.save(ignore_permissions=True)
 
@@ -551,7 +553,6 @@ def create_tour_request(data):
         # CREATE FLOW
         # -----------------------------
         else:
-
             # Check overlapping requests
             existing_tour = frappe.db.sql("""
                 SELECT name
@@ -611,10 +612,10 @@ def create_tour_request(data):
 
     except Exception as e:
         frappe.log_error(
-            frappe.get_traceback(),
+            f"Error: {str(e)}\nTraceback: {frappe.get_traceback()}",
             "Tour Request API Error"
         )
-
+        
         return {
             "success": False,
             "message": "Unable to process Tour Request. Please contact Administrator.",
@@ -714,18 +715,12 @@ def validate_attendance_lock(employee_name, from_date, to_date):
     travel_request_date = today()
     
     if travel_request_date:
-        lock_name = frappe.db.get_value(
-            "Attendance Lock",
-            {
-                "lock_date": travel_request_date,
-                "docstatus": 1  # Submitted/Active attendance lock
-            },
-            "name"
+        lock_name = AttendanceLock.is_attendance_locked(
+            travel_request_date,
+            employee_name
         )
         
         if lock_name:
-            # Check if employee is affected by this attendance lock
-            # This may need to be customized based on your Attendance Lock logic
             month = frappe.db.get_value(
                 "Attendance Lock",
                 lock_name,
@@ -747,13 +742,9 @@ def validate_attendance_lock(employee_name, from_date, to_date):
     for i in range(date_diff(to_date, from_date) + 1):
         att_date = add_days(from_date, i)
         
-        lock_name = frappe.db.get_value(
-            "Attendance Lock",
-            {
-                "lock_date": att_date,
-                "docstatus": 1  # Submitted/Active attendance lock
-            },
-            "name"
+        lock_name = AttendanceLock.is_attendance_locked(
+            att_date,
+            employee_name
         )
         
         if lock_name:
@@ -773,6 +764,18 @@ def validate_attendance_lock(employee_name, from_date, to_date):
                 _("Attendance is locked for {0}. Tour Request cannot be created or updated for this period.").format(month),
                 title=_("Attendance Lock")
             )
+
+
+def get_status(workflow_state, docstatus):
+    """Helper function to get status"""
+    if docstatus == 1:
+        return "Submitted"
+    elif docstatus == 2:
+        return "Cancelled"
+    elif workflow_state:
+        return workflow_state
+    else:
+        return "Draft"
 
 @frappe.whitelist()
 def get_tour_requests(
