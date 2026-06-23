@@ -62,6 +62,7 @@ doctype_list_js = {
     "Off-Day Work Request": "public/js/off_day_request_ro_filter.js",
     "Shift Request": "public/js/shift_request_list.js",
     "Employee Checkin": "public/js/employee_checkin_list.js",
+    "Tour Request": "public/js/tour_request_list.js",
 }
 # Svg Icons
 # ------------------

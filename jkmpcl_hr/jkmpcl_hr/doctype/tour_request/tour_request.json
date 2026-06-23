@@ -15,6 +15,7 @@
   "travel_request_date",
   "from_date",
   "to_date",
+  "comp_off_created",
   "amended_from"
  ],
  "fields": [
@@ -89,13 +90,20 @@
    "in_list_view": 1,
    "label": "No of Days",
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "comp_off_created",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Comp off Created"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-19 15:25:56.505482",
+ "modified": "2026-06-23 09:53:26.408320",
  "modified_by": "Administrator",
  "module": "JKMPCL HR",
  "name": "Tour Request",
