@@ -62,6 +62,7 @@ doctype_list_js = {
     "Off-Day Work Request": "public/js/off_day_request_ro_filter.js",
     "Shift Request": "public/js/shift_request_list.js",
     "Employee Checkin": "public/js/employee_checkin_list.js",
+    "Tour Request": "public/js/tour_request_list.js",
 }
 # Svg Icons
 # ------------------
@@ -262,8 +263,11 @@ scheduler_events = {
         "0 0 * * *":[
             "jkmpcl_hr.py.scheduler_method.set_approvers_in_employee"
         ]
-        
-    }
+
+    },
+    "daily": [
+            "jkmpcl_hr.py.scheduler_method.expire_comp_off_leave_allocations"
+        ]
 # 	"all": [
 # 		"jkmpcl_hr.tasks.all"
 # 	],

@@ -5978,6 +5978,23 @@ def has_approved_travel_request(employee, att_date):
 
     return bool(travel_exists)
 
+
+# =====================================================
+# CHECK APPROVED TOUR REQUEST
+# =====================================================
+def has_approved_tour_request(employee, att_date):
+
+    return frappe.db.exists(
+        "Tour Request",
+        {
+            "employee": employee,
+            "docstatus": 1,
+            "workflow_state": "Approved by HR",
+            "from_date": ["<=", att_date],
+            "to_date": [">=", att_date]
+        }
+    )
+
 def mark_attendance(emp, att_date):
     # =====================================================
     # TRAVEL REQUEST LOGIC
@@ -6067,6 +6084,80 @@ def mark_attendance(emp, att_date):
     # Travel Request
     if has_approved_travel_request(emp, att_date):
         return
+
+    # =====================================================
+    # TOUR REQUEST LOGIC
+    # =====================================================
+    if has_approved_tour_request(emp, att_date):
+
+        existing_attendance = frappe.db.exists(
+            "Attendance",
+            {
+                "employee": emp,
+                "attendance_date": att_date,
+                "docstatus": 1
+            }
+        )
+
+        employee_details = frappe.db.get_value(
+            "Employee",
+            emp,
+            ["employee_name", "department", "company", "branch"],
+            as_dict=True
+        )
+
+        shift_type = get_employee_shift(emp, att_date)
+
+        # Update Existing Attendance
+        if existing_attendance:
+
+            revert_penalty_leave(existing_attendance)
+
+            frappe.db.set_value(
+                "Attendance",
+                existing_attendance,
+                {
+                    "status": "Present",
+                    "shift": shift_type,
+                    "employee_name": employee_details.employee_name,
+                    "department": employee_details.department,
+                    "company": employee_details.company,
+                    "custom_branch": employee_details.branch,
+                    "custom_is_penalize": 0,
+                    "custom_penalty_leave_count": "",
+                    "custom_penalty_leave_type": "",
+                    "custom_remark": "On Duty"
+                },
+                update_modified=False
+            )
+
+            frappe.db.commit()
+            return existing_attendance
+
+        # Create Attendance
+        else:
+
+            att = frappe.get_doc({
+                "doctype": "Attendance",
+                "employee": emp,
+                "employee_name": employee_details.employee_name,
+                "department": employee_details.department,
+                "company": employee_details.company,
+                "attendance_date": att_date,
+                "status": "Present",
+                "shift": shift_type,
+                "custom_branch": employee_details.branch,
+                "custom_is_penalize": 0,
+                "custom_penalty_leave_count": "",
+                "custom_penalty_leave_type": "",
+                "custom_remark": "On Duty"
+            })
+
+            att.insert(ignore_permissions=True)
+            att.submit()
+
+            frappe.db.commit()
+            return att.name
     
     if has_approved_leave(emp, att_date):
                 return
@@ -9023,8 +9114,8 @@ def process_working_day(req):
         return
     
     holiday = get_holiday_details(req["employee"], req["date"])
-    if(req["employee"] == "20082: Harshiya Gupta"):
-        frappe.log_error("compoff_holiday", f"{holiday}")
+    # if(req["employee"] == "20082: Harshiya Gupta"):
+    #     frappe.log_error("compoff_holiday", f"{holiday}")
     
     if not holiday:
         frappe.log_error("start_process_comp_off_scheduler", f"Holiday details not found for employee: {req['date']} - {req['employee']}")
@@ -9032,8 +9123,8 @@ def process_working_day(req):
 
     # WO OR Normal Holiday OR RH+WO
     if holiday["is_wo"] or not holiday["is_rh"]:
-        if(req["employee"] == "20082: Harshiya Gupta"):
-            frappe.log_error("comp_off", "is wo")
+        # if(req["employee"] == "20082: Harshiya Gupta"):
+        #     frappe.log_error("comp_off", "is wo")
         allocation = create_comp_off(req["employee"], req["date"])
 
         frappe.db.set_value(
@@ -9359,13 +9450,13 @@ def create_comp_off(employee, date):
         },
         "custom_validity_days"
     )
-    if(employee == "20082: Harshiya Gupta"):
-        frappe.log_error("comp_off leave type", f"{leave_type}")
+    # if(employee == "20082: Harshiya Gupta"):
+    #     frappe.log_error("comp_off leave type", f"{leave_type}")
     
     validity_days = leave_type if leave_type else 45
 
-    if(employee == "20082: Harshiya Gupta"):
-        frappe.log_error("comp_off_validate_days", f"{validity_days}")
+    # if(employee == "20082: Harshiya Gupta"):
+    #     frappe.log_error("comp_off_validate_days", f"{validity_days}")
     try:
         allocation = frappe.get_doc({
             "doctype": "Leave Allocation",
@@ -9382,6 +9473,40 @@ def create_comp_off(employee, date):
         frappe.log_error("compff_error", f"{frappe.get_traceback()}")
 
     return allocation
+
+
+
+# =========================================================
+# Comp Off ALLOCATION expire status set
+# =========================================================
+
+@frappe.whitelist()
+def expire_comp_off_leave_allocations():
+    expired_allocations = frappe.get_all(
+        "Leave Allocation",
+        filters={
+            "leave_type": "Compensatory Off",
+            "docstatus": 1,
+            "custom_leave_status": ["!=", "Expire"],
+            "to_date": ["<", today()]  # Only expired allocations
+        },
+        fields=["name", "to_date"]
+    )
+
+    for allocation in expired_allocations:
+        doc = frappe.get_doc("Leave Allocation", allocation.name)
+
+        # Set status as Expire
+        doc.db_set("custom_leave_status", "Expire", update_modified=False)
+
+        # # Add timeline comment
+        # doc.add_comment(
+        #     "Info",
+        #     f"Compensatory Off leave allocation expired automatically. "
+        #     f"Valid until {allocation.to_date}."
+        # )
+
+    frappe.db.commit()
 
 
 # =========================================================
