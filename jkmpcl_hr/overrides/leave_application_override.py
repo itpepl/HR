@@ -210,6 +210,13 @@ def custom_get_leave_balance_on(
     date = getdate(date)
 
     if leave_type == "Compensatory Off":
+
+        valid_balance = 0
+        leave_balance_for_consumption = 0
+
+        counted_allocations = []
+
+        # Existing Off-Day Work Request logic
         off_day_records = frappe.get_all(
             "Off-Day Work Request",
             filters={
@@ -221,42 +228,85 @@ def custom_get_leave_balance_on(
             fields=["name", "leave_allocation"],
         )
 
-        valid_balance = 0
-        leave_balance_for_consumption = 0
         for rec in off_day_records:
             if not rec.leave_allocation:
                 continue
-            
-            # CHECK: Only if leave application exists and is NOT rejected
-            existing_app = frappe.db.exists("Leave Application", {
-                "docstatus": 0,  # Your workflow keeps all except final at 0
-                "custom_off_day_work_request": rec.name,
-                "workflow_state": ["!=", "Rejected"],  # Exclude rejected
-                "status": ["!=", "Rejected"]
-            }, "name")
-            
+
+            allocation = frappe.db.get_value(
+                "Leave Allocation",
+                rec.leave_allocation,
+                ["leave_type", "to_date"],
+                as_dict=True,
+            )
+
+            if not allocation:
+                continue
+
+            # Only Compensatory Off allocations
+            if allocation.leave_type != "Compensatory Off":
+                continue
+
+            counted_allocations.append(rec.leave_allocation)
+
+            existing_app = frappe.db.exists(
+                "Leave Application",
+                {
+                    "docstatus": 0,
+                    "custom_off_day_work_request": rec.name,
+                    "workflow_state": ["!=", "Rejected"],
+                    "status": ["!=", "Rejected"],
+                }
+            )
+
             if existing_app:
                 if for_consumption and leave_app_id and existing_app == leave_app_id:
                     leave_balance_for_consumption += 1
                 continue
 
-            allocation_to_date = frappe.db.get_value(
-                "Leave Allocation",
-                rec.leave_allocation,
-                "to_date",
-            )
-
-            if allocation_to_date and getdate(allocation_to_date) >= date:
+            if allocation.to_date and getdate(allocation.to_date) >= date:
                 valid_balance += 1
                 leave_balance_for_consumption += 1
+
+        # Additional allocations (Tour Request / Manual Allocation)
+        extra_allocations = frappe.get_all(
+            "Leave Allocation",
+            filters={
+                "employee": employee,
+                "leave_type": "Compensatory Off",
+                "docstatus": 1,
+            },
+            fields=[
+                "name",
+                "to_date",
+                "new_leaves_allocated",
+                "total_leaves_allocated",
+            ],
+        )
+
+        for alloc in extra_allocations:
+
+            # Skip allocations already counted from Off-Day Work Request
+            if alloc.name in counted_allocations:
+                continue
+
+            if alloc.to_date and getdate(alloc.to_date) >= date:
+
+                allocated_days = (
+                    flt(alloc.new_leaves_allocated)
+                    or flt(alloc.total_leaves_allocated)
+                    or 0
+                )
+
+                valid_balance += allocated_days
+                leave_balance_for_consumption += allocated_days
 
         if for_consumption:
             return {
                 "leave_balance": valid_balance,
                 "leave_balance_for_consumption": leave_balance_for_consumption,
             }
-        return valid_balance
 
+        return valid_balance
     # Regular leave processing
     allocation_records = get_leave_allocation_records(employee, date, leave_type)
     allocation = allocation_records.get(leave_type, frappe._dict())
