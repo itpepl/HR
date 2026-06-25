@@ -420,35 +420,38 @@ def get_status(workflow_state, docstatus):
 
 @frappe.whitelist()
 def get_tour_requests(
-    view_type="self",   # self / team
+    view_type="self",
     filters=None,
     limit_page_length=20,
     limit_start=0
 ):
     try:
-        # Parse Filters
-        filters = frappe.parse_json(filters) if filters else {}
-        
-        # Extract filter values from the nested array structure
-        filter_dict = {}
-        if isinstance(filters, list):
-            for filter_item in filters:
-                if isinstance(filter_item, list) and len(filter_item) >= 3:
-                    field = filter_item[0]
-                    operator = filter_item[1]
-                    value = filter_item[2]
-                    
-                    # Convert to dictionary format
-                    if operator == "=":
-                        filter_dict[field] = value
-                    elif operator == ">=":
-                        filter_dict[field + "_gte"] = value
-                    elif operator == "<=":
-                        filter_dict[field + "_lte"] = value
-        else:
-            filter_dict = filters
 
-        # Get logged-in employee
+        # -------------------------
+        # Parse filters
+        # -------------------------
+        filters = frappe.parse_json(filters) if filters else []
+
+        filter_dict = {}
+
+        if isinstance(filters, dict):
+            filters = [[k, "=", v] for k, v in filters.items()]
+
+        if isinstance(filters, list):
+            for item in filters:
+                if isinstance(item, (list, tuple)) and len(item) >= 3:
+                    field, op, value = item[0], item[1], item[2]
+
+                    if op == "=":
+                        filter_dict[field] = value
+                    elif op == ">=":
+                        filter_dict[field + "_gte"] = value
+                    elif op == "<=":
+                        filter_dict[field + "_lte"] = value
+
+        # -------------------------
+        # Current Employee
+        # -------------------------
         current_employee = frappe.db.get_value(
             "Employee",
             {"user_id": frappe.session.user},
@@ -456,102 +459,129 @@ def get_tour_requests(
         )
 
         if not current_employee:
-            return {
-                "success": False,
-                "message": "Employee not linked with current user",
-                "data": []
-            }
+            return {"success": False, "message": "Employee not found", "data": []}
 
-        # Extract values from filter dictionary
-        department = filter_dict.get("department")
-        employee_filter = filter_dict.get("employee")
-        from_date = filter_dict.get("from_date") or filter_dict.get("from_date_gte")
-        to_date = filter_dict.get("to_date") or filter_dict.get("to_date_lte")
-        status = filter_dict.get("status")
-
-        tour_filters = {}
-
-        # Apply view_type filter
+        # -------------------------
+        # TEAM LOGIC
+        # -------------------------
         if view_type == "self":
-            # Only show current user's requests
-            tour_filters["employee"] = current_employee
-        elif view_type == "team":
-            # Show all team members' requests (excluding current user)
-            tour_filters["employee"] = ["!=", current_employee]
-        else:
-            return {
-                "success": False,
-                "message": "Invalid view_type. Use 'self' or 'team'.",
-                "data": []
-            }
+            employee_list = [current_employee]
 
-        # Department Filter (only applies if view_type is team)
+        elif view_type == "team":
+            today = frappe.utils.today()
+
+            employee_list = frappe.db.sql("""
+                SELECT DISTINCT parent
+                FROM `tabApprover`
+                WHERE user = %(user)s
+                AND effective_from <= %(today)s
+                AND parenttype = 'Employee'
+                AND parentfield IN (
+                    'custom_reporting_manager',
+                    'custom_review_manager',
+                    'custom_hr_manager'
+                )
+            """, {
+                "user": frappe.session.user,
+                "today": today
+            }, pluck="parent")
+
+        else:
+            return {"success": False, "message": "Invalid view_type"}
+
+        if not employee_list:
+            employee_list = ["__none__"]
+
+        # -------------------------
+        # Base filters
+        # -------------------------
+        tour_filters = [
+            ["employee", "in", employee_list]
+        ]
+
+        # -------------------------
+        # Department filter (optional refinement)
+        # -------------------------
+        department = filter_dict.get("department")
+
         if department and view_type == "team":
-            employees = frappe.get_all(
+            dept_employees = frappe.db.get_list(
                 "Employee",
-                filters={"department": department},
+                filters={
+                    "reports_to": current_employee,
+                    "department": department
+                },
                 pluck="name"
             )
 
-            if not employees:
-                return {
-                    "success": True,
-                    "message": "No employees found for this department",
-                    "total_records": 0,
-                    "page_size": int(limit_page_length),
-                    "current_page": 1,
-                    "total_pages": 0,
-                    "returned_records": 0,
-                    "data": []
-                }
+            employee_list = dept_employees or ["__none__"]
 
-            # Combine department filter with team filter
-            tour_filters["employee"] = ["in", employees]
+            tour_filters = [
+                ["employee", "in", employee_list]
+            ]
 
-        # Employee Filter (override if provided and view_type is team)
-        if employee_filter and view_type == "team":
-            tour_filters["employee"] = employee_filter
-        elif employee_filter and view_type == "self":
-            # For self view, ignore employee filter or validate it
-            if employee_filter != current_employee:
+        # -------------------------
+        # Employee override
+        # -------------------------
+        employee_filter = filter_dict.get("employee")
+
+        if employee_filter:
+            if view_type == "self" and employee_filter != current_employee:
                 return {
                     "success": False,
-                    "message": "You can only view your own tour requests in self view",
-                    "data": []
+                    "message": "You can only view your own data"
                 }
-            tour_filters["employee"] = current_employee
 
-        # Status Filter - Now handling both docstatus and workflow_state
+            tour_filters = [["employee", "=", employee_filter]]
+
+        # -------------------------
+        # Status filter
+        # -------------------------
+        status = filter_dict.get("status")
+
         if status:
             if status == "Approved":
-                tour_filters["docstatus"] = 1
+                tour_filters.append(["docstatus", "=", 1])
+
             elif status == "Cancelled":
-                tour_filters["docstatus"] = 2
-            elif status == "Open" or status == "Draft":
-                # For Open/Draft, docstatus=0 and not rejected
-                tour_filters["docstatus"] = 0
-                # Exclude rejected ones if they have docstatus=0
-                tour_filters["workflow_state"] = ["not like", "%Reject%"]
+                tour_filters.append(["docstatus", "=", 2])
+
+            elif status in ["Open", "Draft"]:
+                tour_filters.append(["docstatus", "=", 0])
+                tour_filters.append(["workflow_state", "not like", "%Reject%"])
+
             elif status == "Rejected":
-                tour_filters["docstatus"] = 0
-                tour_filters["workflow_state"] = ["like", "%Reject%"]
+                tour_filters.append(["docstatus", "=", 0])
+                tour_filters.append(["workflow_state", "like", "%Reject%"])
+
             else:
-                # For any other status, check workflow_state
-                tour_filters["workflow_state"] = status
+                tour_filters.append(["workflow_state", "=", status])
 
-        # Date Range Filter - Handle from_date and to_date properly
+        # -------------------------
+        # Date filter
+        # -------------------------
+        from_date = filter_dict.get("from_date") or filter_dict.get("from_date_gte")
+        to_date = filter_dict.get("to_date") or filter_dict.get("to_date_lte")
+
         if from_date and to_date:
-            tour_filters["from_date"] = ["<=", to_date]
-            tour_filters["to_date"] = [">=", from_date]
+            tour_filters.append(["from_date", "<=", to_date])
+            tour_filters.append(["to_date", ">=", from_date])
 
-        # Total Records
-        total_records = frappe.db.count(
-            "Tour Request",
-            filters=tour_filters
+        # -------------------------
+        # COUNT
+        # -------------------------
+        total_records = len(
+            frappe.db.get_list(
+                "Tour Request",
+                filters=tour_filters,
+                pluck="name"
+            )
         )
 
-        # Get Records
-        records = frappe.get_all(
+        # -------------------------
+        # DATA
+        # -------------------------
+        records = frappe.db.get_list(
             "Tour Request",
             filters=tour_filters,
             fields=[
@@ -570,242 +600,29 @@ def get_tour_requests(
             limit_page_length=int(limit_page_length)
         )
 
-        # Convert workflow_state to status
         for row in records:
-            row["status"] = get_status(
-                row.get("workflow_state"),
-                row.get("docstatus")
-            )
-
-            # Remove only docstatus
+            row["status"] = get_status(row["workflow_state"], row["docstatus"])
             row.pop("docstatus", None)
-            
-        page_size = int(limit_page_length)
-        current_page = (int(limit_start) // page_size) + 1 if page_size else 1
-        total_pages = (
-            (total_records + page_size - 1) // page_size
-            if page_size else 1
-        )
 
         return {
             "success": True,
             "message": "Tour Requests fetched successfully",
             "total_records": total_records,
-            "page_size": page_size,
-            "current_page": current_page,
-            "total_pages": total_pages,
             "returned_records": len(records),
             "data": records,
-            "applied_filters": filter_dict,
-            "view_type": view_type 
+            "view_type": view_type,
+            "applied_filters": filter_dict
         }
 
     except Exception as e:
-        frappe.log_error(
-            frappe.get_traceback(),
-            "Get Tour Requests API"
-        )
-
+        frappe.log_error(frappe.get_traceback(), "Tour API Error")
         return {
             "success": False,
             "message": str(e),
             "data": []
         }
+    
 
-
-# @frappe.whitelist()
-# def get_tour_requests(
-#     view_type="self",
-#     filters=None,
-#     limit_page_length=20,
-#     limit_start=0
-# ):
-#     try:
-
-#         # -------------------------
-#         # Parse filters
-#         # -------------------------
-#         filters = frappe.parse_json(filters) if filters else []
-
-#         filter_dict = {}
-
-#         if isinstance(filters, dict):
-#             filters = [[k, "=", v] for k, v in filters.items()]
-
-#         if isinstance(filters, list):
-#             for item in filters:
-#                 if isinstance(item, (list, tuple)) and len(item) >= 3:
-#                     field, op, value = item[0], item[1], item[2]
-
-#                     if op == "=":
-#                         filter_dict[field] = value
-#                     elif op == ">=":
-#                         filter_dict[field + "_gte"] = value
-#                     elif op == "<=":
-#                         filter_dict[field + "_lte"] = value
-
-#         # -------------------------
-#         # Current Employee
-#         # -------------------------
-#         current_employee = frappe.db.get_value(
-#             "Employee",
-#             {"user_id": frappe.session.user},
-#             "name"
-#         )
-
-#         if not current_employee:
-#             return {"success": False, "message": "Employee not found", "data": []}
-
-#         # -------------------------
-#         # TEAM LOGIC (IMPORTANT FIX)
-#         # -------------------------
-#         if view_type == "self":
-#             employee_list = [current_employee]
-
-#         elif view_type == "team":
-#             employee_list = frappe.db.get_list(
-#                 "Employee",
-#                 filters={
-#                     "reports_to": current_employee   # 🔥 REAL TEAM LOGIC
-#                 },
-#                 pluck="name"
-#             )
-
-#         else:
-#             return {"success": False, "message": "Invalid view_type"}
-
-#         if not employee_list:
-#             employee_list = ["__none__"]
-
-#         # -------------------------
-#         # Base filters
-#         # -------------------------
-#         tour_filters = [
-#             ["employee", "in", employee_list]
-#         ]
-
-#         # -------------------------
-#         # Department filter (optional refinement)
-#         # -------------------------
-#         department = filter_dict.get("department")
-
-#         if department and view_type == "team":
-#             dept_employees = frappe.db.get_list(
-#                 "Employee",
-#                 filters={
-#                     "reports_to": current_employee,
-#                     "department": department
-#                 },
-#                 pluck="name"
-#             )
-
-#             employee_list = dept_employees or ["__none__"]
-
-#             tour_filters = [
-#                 ["employee", "in", employee_list]
-#             ]
-
-#         # -------------------------
-#         # Employee override
-#         # -------------------------
-#         employee_filter = filter_dict.get("employee")
-
-#         if employee_filter:
-#             if view_type == "self" and employee_filter != current_employee:
-#                 return {
-#                     "success": False,
-#                     "message": "You can only view your own data"
-#                 }
-
-#             tour_filters = [["employee", "=", employee_filter]]
-
-#         # -------------------------
-#         # Status filter
-#         # -------------------------
-#         status = filter_dict.get("status")
-
-#         if status:
-#             if status == "Approved":
-#                 tour_filters.append(["docstatus", "=", 1])
-
-#             elif status == "Cancelled":
-#                 tour_filters.append(["docstatus", "=", 2])
-
-#             elif status in ["Open", "Draft"]:
-#                 tour_filters.append(["docstatus", "=", 0])
-#                 tour_filters.append(["workflow_state", "not like", "%Reject%"])
-
-#             elif status == "Rejected":
-#                 tour_filters.append(["docstatus", "=", 0])
-#                 tour_filters.append(["workflow_state", "like", "%Reject%"])
-
-#             else:
-#                 tour_filters.append(["workflow_state", "=", status])
-
-#         # -------------------------
-#         # Date filter
-#         # -------------------------
-#         from_date = filter_dict.get("from_date") or filter_dict.get("from_date_gte")
-#         to_date = filter_dict.get("to_date") or filter_dict.get("to_date_lte")
-
-#         if from_date and to_date:
-#             tour_filters.append(["from_date", "<=", to_date])
-#             tour_filters.append(["to_date", ">=", from_date])
-
-#         # -------------------------
-#         # COUNT
-#         # -------------------------
-#         total_records = len(
-#             frappe.db.get_list(
-#                 "Tour Request",
-#                 filters=tour_filters,
-#                 pluck="name"
-#             )
-#         )
-
-#         # -------------------------
-#         # DATA
-#         # -------------------------
-#         records = frappe.db.get_list(
-#             "Tour Request",
-#             filters=tour_filters,
-#             fields=[
-#                 "name",
-#                 "employee",
-#                 "employee_name",
-#                 "from_date",
-#                 "to_date",
-#                 "purpose_of_travel",
-#                 "workflow_state",
-#                 "docstatus",
-#                 "creation",
-#             ],
-#             order_by="creation desc",
-#             limit_start=int(limit_start),
-#             limit_page_length=int(limit_page_length)
-#         )
-
-#         for row in records:
-#             row["status"] = get_status(row["workflow_state"], row["docstatus"])
-#             row.pop("docstatus", None)
-
-#         return {
-#             "success": True,
-#             "message": "Tour Requests fetched successfully",
-#             "total_records": total_records,
-#             "returned_records": len(records),
-#             "data": records,
-#             "view_type": view_type,
-#             "applied_filters": filter_dict
-#         }
-
-#     except Exception as e:
-#         frappe.log_error(frappe.get_traceback(), "Tour API Error")
-#         return {
-#             "success": False,
-#             "message": str(e),
-#             "data": []
-#         }
 
 @frappe.whitelist(allow_guest=False)
 def get_workflow_states(workflow_name):
