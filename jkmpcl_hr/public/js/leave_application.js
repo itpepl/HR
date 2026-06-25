@@ -20,6 +20,9 @@ frappe.ui.form.on("Leave Application", {
         frm.set_value("from_date", null);
         frm.set_value("to_date", null);
         frm.set_value("half_day_date", null);
+        frm.set_value("half_day",null);
+        frm.set_value("custom_half_day_time",null);
+        frm.set_value("total_leave_days",null);
 
         toggle_comp_off_fields(frm, true);
         toggle_maternity_fields(frm);
