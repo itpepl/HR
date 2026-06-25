@@ -21,7 +21,10 @@ class Attendance(ERPNextAttendance):
             "Half Day",
             "Work From Home",
             "Partially",
-            "Suspended",
+            "Weekly Off",
+            "Restricted Holiday",
+            "Holiday",
+            "Suspended"
         ]
 
         validate_status(self.status, allowed_status)

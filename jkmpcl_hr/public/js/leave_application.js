@@ -16,6 +16,10 @@ frappe.ui.form.on("Leave Application", {
         }
     },
     leave_type(frm) {
+        
+        frm.set_value("from_date", null);
+        frm.set_value("to_date", null);
+        frm.set_value("half_day_date", null);
 
         toggle_comp_off_fields(frm, true);
         toggle_maternity_fields(frm);
@@ -148,161 +152,161 @@ frappe.ui.form.on("Leave Application", {
 		}
 	},
     // # off day and leave allocation cleanup code start
- refresh: function(frm) {
-        console.log("=== Leave Application form loaded ===");
-        
-        // Override the _cancel_all method
-        frm._cancel_all = function(r, btn, callback, on_error) {
-            const me = this;
+    refresh: function(frm) {
+            console.log("=== Leave Application form loaded ===");
             
-            console.log("=== Starting _cancel_all override ===");
-            console.log("Linked Docs:", r.message.docs);
-            
-            let links = r.message.docs;
-            
-            // Filter out Off-Day Work Request and Leave Allocation from cancellation
-            let docs_to_cancel = links.filter(link => 
-                link.doctype !== "Off-Day Work Request" && 
-                link.doctype !== "Leave Allocation"
-            );
-            
-            console.log("Docs to cancel:", docs_to_cancel);
-            console.log("Docs to clean only:", links.filter(link => 
-                link.doctype === "Off-Day Work Request" || 
-                link.doctype === "Leave Allocation"
-            ));
-            
-            // Build the list of documents to show in confirmation
-            const doctypes = Array.from(new Set(links.map((link) => link.doctype)));
-            
-            let links_text = "";
-            me.ignore_doctypes_on_cancel_all = me.ignore_doctypes_on_cancel_all || [];
-            
-            for (let doctype of doctypes) {
-                if (!me.ignore_doctypes_on_cancel_all.includes(doctype)) {
-                    let docnames = links
-                        .filter((link) => link.doctype == doctype)
-                        .map((link) => frappe.utils.get_form_link(link.doctype, link.name, true))
-                        .join(", ");
-                    links_text += `<li><strong>${__(doctype)}</strong>: ${docnames}</li>`;
+            // Override the _cancel_all method
+            frm._cancel_all = function(r, btn, callback, on_error) {
+                const me = this;
+                
+                console.log("=== Starting _cancel_all override ===");
+                console.log("Linked Docs:", r.message.docs);
+                
+                let links = r.message.docs;
+                
+                // Filter out Off-Day Work Request and Leave Allocation from cancellation
+                let docs_to_cancel = links.filter(link => 
+                    link.doctype !== "Off-Day Work Request" && 
+                    link.doctype !== "Leave Allocation"
+                );
+                
+                console.log("Docs to cancel:", docs_to_cancel);
+                console.log("Docs to clean only:", links.filter(link => 
+                    link.doctype === "Off-Day Work Request" || 
+                    link.doctype === "Leave Allocation"
+                ));
+                
+                // Build the list of documents to show in confirmation
+                const doctypes = Array.from(new Set(links.map((link) => link.doctype)));
+                
+                let links_text = "";
+                me.ignore_doctypes_on_cancel_all = me.ignore_doctypes_on_cancel_all || [];
+                
+                for (let doctype of doctypes) {
+                    if (!me.ignore_doctypes_on_cancel_all.includes(doctype)) {
+                        let docnames = links
+                            .filter((link) => link.doctype == doctype)
+                            .map((link) => frappe.utils.get_form_link(link.doctype, link.name, true))
+                            .join(", ");
+                        links_text += `<li><strong>${__(doctype)}</strong>: ${docnames}</li>`;
+                    }
                 }
-            }
-            links_text = `<ul>${links_text}</ul>`;
-            
-            let confirm_message = __("{0} {1} is linked with the following submitted documents: {2}", [
-                __(me.doc.doctype).bold(),
-                me.doc.name,
-                links_text,
-            ]);
-            
-            let can_cancel = docs_to_cancel.every((link) => frappe.model.can_cancel(link.doctype));
-            console.log("Can cancel docs:", can_cancel);
-            
-            if (can_cancel) {
-                confirm_message += __(" Do you want to cancel this document? Note: Off-Day Work Request and its linked Leave Allocation will only be cleaned (references removed) but not canceled.");
-            } else {
-                confirm_message += __(" You do not have permissions to cancel this document.");
-            }
-            
-            let d = new frappe.ui.Dialog({
-                title: __("Cancel Documents"),
-                fields: [
-                    {
-                        fieldtype: "HTML",
-                        options: `<p class="frappe-confirm-message">${confirm_message}</p>`,
-                    },
-                ],
-            }, () => me.handle_save_fail(btn, on_error));
-            
-            if (can_cancel) {
-                d.set_primary_action(__("Confirm Cancel"), () => {
-                    d.hide();
-                    
-                    console.log("=== Calling server cleanup_and_cancel ===");
-                    
-                    // Call server method
-                    frappe.call({
-                        method: "jkmpcl_hr.py.leave_application.cleanup_and_cancel",
-                        args: {
-                            docs: links,
-                            doctype: me.doc.doctype,
-                            docname: me.doc.name,
-                            ignore_doctypes_on_cancel_all: me.ignore_doctypes_on_cancel_all || [],
+                links_text = `<ul>${links_text}</ul>`;
+                
+                let confirm_message = __("{0} {1} is linked with the following submitted documents: {2}", [
+                    __(me.doc.doctype).bold(),
+                    me.doc.name,
+                    links_text,
+                ]);
+                
+                let can_cancel = docs_to_cancel.every((link) => frappe.model.can_cancel(link.doctype));
+                console.log("Can cancel docs:", can_cancel);
+                
+                if (can_cancel) {
+                    confirm_message += __(" Do you want to cancel this document? Note: Off-Day Work Request and its linked Leave Allocation will only be cleaned (references removed) but not canceled.");
+                } else {
+                    confirm_message += __(" You do not have permissions to cancel this document.");
+                }
+                
+                let d = new frappe.ui.Dialog({
+                    title: __("Cancel Documents"),
+                    fields: [
+                        {
+                            fieldtype: "HTML",
+                            options: `<p class="frappe-confirm-message">${confirm_message}</p>`,
                         },
-                        freeze: true,
-                        freeze_message: __("Cleaning up references and canceling..."),
-                        callback: (resp) => {
-                            console.log("Server response:", resp);
-                            if (!resp.exc && resp.message && resp.message.success) {
-                                console.log("Cleanup and cancellation completed successfully");
-                                frappe.msgprint({
-                                    title: __("Success"),
-                                    indicator: "green",
-                                    message: __("Document canceled successfully. All references have been cleaned.")
-                                });
-                                me.reload_doc();
-                                // Call the actual cancel method
-                                me._cancel(btn, callback, on_error, true);
-                            } else {
-                                console.error("Error in cleanup and cancellation:", resp);
+                    ],
+                }, () => me.handle_save_fail(btn, on_error));
+                
+                if (can_cancel) {
+                    d.set_primary_action(__("Confirm Cancel"), () => {
+                        d.hide();
+                        
+                        console.log("=== Calling server cleanup_and_cancel ===");
+                        
+                        // Call server method
+                        frappe.call({
+                            method: "jkmpcl_hr.py.leave_application.cleanup_and_cancel",
+                            args: {
+                                docs: links,
+                                doctype: me.doc.doctype,
+                                docname: me.doc.name,
+                                ignore_doctypes_on_cancel_all: me.ignore_doctypes_on_cancel_all || [],
+                            },
+                            freeze: true,
+                            freeze_message: __("Cleaning up references and canceling..."),
+                            callback: (resp) => {
+                                console.log("Server response:", resp);
+                                if (!resp.exc && resp.message && resp.message.success) {
+                                    console.log("Cleanup and cancellation completed successfully");
+                                    frappe.msgprint({
+                                        title: __("Success"),
+                                        indicator: "green",
+                                        message: __("Document canceled successfully. All references have been cleaned.")
+                                    });
+                                    me.reload_doc();
+                                    // Call the actual cancel method
+                                    me._cancel(btn, callback, on_error, true);
+                                } else {
+                                    console.error("Error in cleanup and cancellation:", resp);
+                                    frappe.msgprint({
+                                        title: __("Error"),
+                                        indicator: "red",
+                                        message: __("Error in cleanup and cancellation. Please cancel linked document.")
+                                    });
+                                    me.handle_save_fail(btn, on_error);
+                                }
+                            },
+                            error: function(error) {
+                                console.error("Error calling server method:", error);
                                 frappe.msgprint({
                                     title: __("Error"),
                                     indicator: "red",
-                                    message: __("Error in cleanup and cancellation. Please cancel linked document.")
+                                    message: __("Error calling server method. Please check Error Log for details.")
                                 });
                                 me.handle_save_fail(btn, on_error);
                             }
-                        },
-                        error: function(error) {
-                            console.error("Error calling server method:", error);
-                            frappe.msgprint({
-                                title: __("Error"),
-                                indicator: "red",
-                                message: __("Error calling server method. Please check Error Log for details.")
-                            });
-                            me.handle_save_fail(btn, on_error);
-                        }
+                        });
                     });
-                });
-            }
-            d.show();
-        };
-        
-        // Override _cancel method to handle the actual cancellation
-        frm._cancel = function(btn, callback, on_error, skip_confirm) {
-            const me = this;
-            const cancel_doc = () => {
-                frappe.validated = true;
-                me.script_manager.trigger("before_cancel").then(() => {
-                    if (!frappe.validated) {
-                        return me.handle_save_fail(btn, on_error);
-                    }
-                    
-                    var after_cancel = function (r) {
-                        if (r.exc) {
-                            me.handle_save_fail(btn, on_error);
-                        } else {
-                            frappe.utils.play_sound("cancel");
-                            me.refresh();
-                            callback && callback();
-                            me.script_manager.trigger("after_cancel");
-                        }
-                    };
-                    frappe.ui.form.save(me, "cancel", after_cancel, btn);
-                });
+                }
+                d.show();
             };
             
-            if (skip_confirm) {
-                cancel_doc();
-            } else {
-                frappe.confirm(
-                    __("Permanently Cancel {0}?", [this.docname]),
-                    cancel_doc,
-                    me.handle_save_fail(btn, on_error)
-                );
-            }
-        };
-    }
+            // Override _cancel method to handle the actual cancellation
+            frm._cancel = function(btn, callback, on_error, skip_confirm) {
+                const me = this;
+                const cancel_doc = () => {
+                    frappe.validated = true;
+                    me.script_manager.trigger("before_cancel").then(() => {
+                        if (!frappe.validated) {
+                            return me.handle_save_fail(btn, on_error);
+                        }
+                        
+                        var after_cancel = function (r) {
+                            if (r.exc) {
+                                me.handle_save_fail(btn, on_error);
+                            } else {
+                                frappe.utils.play_sound("cancel");
+                                me.refresh();
+                                callback && callback();
+                                me.script_manager.trigger("after_cancel");
+                            }
+                        };
+                        frappe.ui.form.save(me, "cancel", after_cancel, btn);
+                    });
+                };
+                
+                if (skip_confirm) {
+                    cancel_doc();
+                } else {
+                    frappe.confirm(
+                        __("Permanently Cancel {0}?", [this.docname]),
+                        cancel_doc,
+                        me.handle_save_fail(btn, on_error)
+                    );
+                }
+            };
+        }
 // off day and leave allocation cleanup code end
 });
 
