@@ -470,7 +470,8 @@ def get_tour_requests(
         elif view_type == "team":
             today = frappe.utils.today()
 
-            employee_list = frappe.db.sql("""
+            # Step 1: Get all employees where current user appears as approver
+            candidate_employees = frappe.db.sql("""
                 SELECT DISTINCT parent
                 FROM `tabApprover`
                 WHERE user = %(user)s
@@ -486,6 +487,48 @@ def get_tour_requests(
                 "today": today
             }, pluck="parent")
 
+            employee_list = []
+
+            if candidate_employees:
+                placeholders = ", ".join(["%s"] * len(candidate_employees))
+
+                # Step 2: Fetch ALL approver rows for candidate employees
+                all_entries = frappe.db.sql("""
+                    SELECT parent, user, parentfield, effective_from
+                    FROM `tabApprover`
+                    WHERE parent IN ({placeholders})
+                    AND effective_from <= %s
+                    AND parenttype = 'Employee'
+                    AND parentfield IN (
+                        'custom_reporting_manager',
+                        'custom_review_manager',
+                        'custom_hr_manager'
+                    )
+                    ORDER BY parent ASC, parentfield ASC, effective_from DESC
+                """.format(placeholders=placeholders),
+                    tuple(candidate_employees) + (today,),
+                    as_dict=True
+                )
+
+                # Step 3: Per (employee + parentfield), keep only latest row
+                seen = {}
+                for entry in all_entries:
+                    key = (entry["parent"], entry["parentfield"])
+                    if key not in seen:
+                        seen[key] = entry
+
+                # Step 4: Include employee if current user is latest approver
+                # for ANY parentfield, exclude current employee themselves
+                employee_set = set()
+                for (emp, field), entry in seen.items():
+                    if entry["user"] == frappe.session.user:
+                        employee_set.add(emp)
+
+                employee_list = [
+                    emp for emp in employee_set
+                    if emp != current_employee
+                ]
+
         else:
             return {"success": False, "message": "Invalid view_type"}
 
@@ -500,7 +543,7 @@ def get_tour_requests(
         ]
 
         # -------------------------
-        # Department filter (optional refinement)
+        # Department filter
         # -------------------------
         department = filter_dict.get("department")
 
@@ -511,7 +554,8 @@ def get_tour_requests(
                     "reports_to": current_employee,
                     "department": department
                 },
-                pluck="name"
+                pluck="name",
+                ignore_permissions=True
             )
 
             employee_list = dept_employees or ["__none__"]
@@ -563,9 +607,11 @@ def get_tour_requests(
         from_date = filter_dict.get("from_date") or filter_dict.get("from_date_gte")
         to_date = filter_dict.get("to_date") or filter_dict.get("to_date_lte")
 
-        if from_date and to_date:
-            tour_filters.append(["from_date", "<=", to_date])
+        if from_date:
             tour_filters.append(["to_date", ">=", from_date])
+
+        if to_date:
+            tour_filters.append(["from_date", "<=", to_date])
 
         # -------------------------
         # COUNT
@@ -574,7 +620,8 @@ def get_tour_requests(
             frappe.db.get_list(
                 "Tour Request",
                 filters=tour_filters,
-                pluck="name"
+                pluck="name",
+                ignore_permissions=True
             )
         )
 
@@ -597,7 +644,8 @@ def get_tour_requests(
             ],
             order_by="creation desc",
             limit_start=int(limit_start),
-            limit_page_length=int(limit_page_length)
+            limit_page_length=int(limit_page_length),
+            ignore_permissions=True
         )
 
         for row in records:
@@ -621,8 +669,6 @@ def get_tour_requests(
             "message": str(e),
             "data": []
         }
-    
-
 
 @frappe.whitelist(allow_guest=False)
 def get_workflow_states(workflow_name):
