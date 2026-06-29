@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import getdate, nowdate,formatdate
+from frappe.utils import getdate, nowdate,formatdate,add_days
 from datetime import timedelta  
 from datetime import datetime, date as sys_date
 import frappe,uuid, os, mimetypes, calendar, re
@@ -732,7 +732,32 @@ def get_attendance_calendar(employeeId, date):
             str(row.attendance_date): row
             for row in attendance_data
         }
+        # -----------------------------
+        # FETCH DRAFT LEAVE APPLICATIONS
+        # -----------------------------
+        draft_leave_applications = frappe.get_all(
+            "Leave Application",
+            filters={
+                "employee": employeeId,
+                "docstatus": 0,
+                "from_date": ["<=", end_date],
+                "to_date": [">=", start_date]
+            },
+            fields=[
+                "from_date",
+                "to_date"
+            ]
+        )
 
+        draft_leave_dates = set()
+
+        for leave in draft_leave_applications:
+            current_date = getdate(leave.from_date)
+
+            while current_date <= getdate(leave.to_date):
+                draft_leave_dates.add(str(current_date))
+                current_date = add_days(current_date, 1)
+        
         # -----------------------------
         # LEAVE SHORT CODES
         # -----------------------------
@@ -1088,18 +1113,31 @@ def get_attendance_calendar(employeeId, date):
             # -----------------------------
             # ABSENT FOR PAST DATE
             # -----------------------------
+            # elif (
+            #     date_obj < today
+            #     and not day_data["status"]
+            # ):
+
+            #     day_data["status"] = "A"
+
+            # -----------------------------
+            # DRAFT LEAVE APPLICATION
+            # -----------------------------
             elif (
-                date_obj < today
+                date_str in draft_leave_dates
                 and not day_data["status"]
             ):
+                day_data["status"] = "LNA"
 
-                day_data["status"] = "A"
-            
+            # -----------------------------
+            # NO ATTENDANCE / NO LEAVE
+            # -----------------------------
+            # Keep the status blank.
             # -----------------------------
             # DEFAULT STATUS
             # -----------------------------
-            if not day_data["status"]:
-                day_data["status"] = "LNA"
+            # if not day_data["status"]:
+            #     day_data["status"] = "LNA"
 
             month_data.append(day_data)
         
@@ -1413,10 +1451,10 @@ def attendance_status_list():
         {"status": "Week Off", "color": "#1f2a56", "code": "WO"},     # Dark Blue
         {"status": "Holiday", "color": "#6f7dff", "code": "H"},       # Purple/Blue
         {"status": "Leave Not Approved", "color": "#ffc0cb", "code": "LNA"},  # Light Pink
-        {"status": "Leave Approved", "color": "#9e9e9e", "code": "LA"},       # Grey
+        # {"status": "Leave Approved", "color": "#9e9e9e", "code": "LA"},       # Grey
         {"status": "Half Day", "color": "#ffa500", "code": "HD"}  ,    # Orange
         {"status": "Partially", "color": "#1100ffff", "code": "PR"},      # Brown
-        {"status":"Tour","color":"#6F7FE3","code":"P"}                 #indigo
+        {"status":"Tour","color":"#7fa832","code":"P"}
         
     ]
 
