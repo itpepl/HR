@@ -867,25 +867,25 @@ class TourRequest(Document):
                     new_att.custom_is_penalize         = 1
                     new_att.custom_penalty_leave_type  = "Leave Without Pay"
                     new_att.custom_penalty_leave_count = -1
-                    new_att.custom_remark              = "Tour Request Cancel"
+                    new_att.custom_remark              = ""
                 elif day_info["status"] == "Weekly Off":
                     new_att.status                     = "Weekly Off"
                     new_att.custom_is_penalize         = 0
                     new_att.custom_penalty_leave_type  = ""
                     new_att.custom_penalty_leave_count = ""
-                    new_att.custom_remark              = "On Duty"
+                    new_att.custom_remark              = ""
                 elif day_info["status"] == "Restricted Holiday":
                     new_att.status                     = "Restricted Holiday"
                     new_att.custom_is_penalize         = 0
                     new_att.custom_penalty_leave_type  = ""
                     new_att.custom_penalty_leave_count = ""
-                    new_att.custom_remark              = "On Duty"
+                    new_att.custom_remark              = ""
                 elif day_info["status"] == "Holiday":
                     new_att.status                     = "Holiday"
                     new_att.custom_is_penalize         = 0
                     new_att.custom_penalty_leave_type  = ""
                     new_att.custom_penalty_leave_count = ""
-                    new_att.custom_remark              = "On Duty"
+                    new_att.custom_remark              = ""
 
                 new_att.insert(ignore_permissions=True)
                 new_att.submit()

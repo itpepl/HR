@@ -1416,7 +1416,7 @@ def attendance_status_list():
         {"status": "Leave Approved", "color": "#9e9e9e", "code": "LA"},       # Grey
         {"status": "Half Day", "color": "#ffa500", "code": "HD"}  ,    # Orange
         {"status": "Partially", "color": "#1100ffff", "code": "PR"},      # Brown
-        {"status":"Tour","color":"#6F7FE3","code":"On Duty"} #indigo
+        {"status":"Tour","color":"#6F7FE3","code":"P"}                 #indigo
         
     ]
 
