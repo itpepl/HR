@@ -43,7 +43,12 @@ def get_employee_info(employee_code):
 
     hq_type = employee.custom_head_quarter_type
     location_info = {}
-
+    if not hq_type:
+        return {
+            "status": "failed",
+            "data": {},
+            "message": "Head Quarter Type is not set for this employee."
+        }
     # -------------------------
     # 2. Resolve location based on HQ Type
     # -------------------------
