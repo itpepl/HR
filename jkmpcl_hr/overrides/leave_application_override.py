@@ -194,6 +194,161 @@ def custom_validate_balance_leaves(self):
 #         return remaining_leaves.get("leave_balance") - leaves_pending
 
 
+# @frappe.whitelist()
+# def custom_get_leave_balance_on(
+#     employee: str,
+#     leave_type: str,
+#     date: datetime.date,
+#     to_date: datetime.date | None = None,
+#     consider_all_leaves_in_the_allocation_period: bool = False,
+#     for_consumption: bool = False,
+#     leave_app_id: str | None = None,
+# ):
+#     if not to_date:
+#         to_date = nowdate()
+
+#     date = getdate(date)
+
+#     if leave_type == "Compensatory Off":
+
+#         valid_balance = 0
+#         leave_balance_for_consumption = 0
+
+#         counted_allocations = []
+
+#         # Existing Off-Day Work Request logic
+#         off_day_records = frappe.get_all(
+#             "Off-Day Work Request",
+#             filters={
+#                 "employee": employee,
+#                 "docstatus": 1,
+#                 "comp_off_created": 1,
+#                 "leave_application": ["is", "not set"],
+#             },
+#             fields=["name", "leave_allocation"],
+#         )
+
+#         for rec in off_day_records:
+#             if not rec.leave_allocation:
+#                 continue
+
+#             allocation = frappe.db.get_value(
+#                 "Leave Allocation",
+#                 rec.leave_allocation,
+#                 ["leave_type", "to_date"],
+#                 as_dict=True,
+#             )
+
+#             if not allocation:
+#                 continue
+
+#             # Only Compensatory Off allocations
+#             if allocation.leave_type != "Compensatory Off":
+#                 continue
+
+#             counted_allocations.append(rec.leave_allocation)
+
+#             existing_app = frappe.db.exists(
+#                 "Leave Application",
+#                 {
+#                     "docstatus": 0,
+#                     "custom_off_day_work_request": rec.name,
+#                     "workflow_state": ["!=", "Rejected"],
+#                     "status": ["!=", "Rejected"],
+#                 }
+#             )
+
+#             if existing_app:
+#                 if for_consumption and leave_app_id and existing_app == leave_app_id:
+#                     leave_balance_for_consumption += 1
+#                 continue
+
+#             if allocation.to_date and getdate(allocation.to_date) >= date:
+#                 valid_balance += 1
+#                 leave_balance_for_consumption += 1
+
+#         # Additional allocations (Tour Request / Manual Allocation)
+#         extra_allocations = frappe.get_all(
+#             "Leave Allocation",
+#             filters={
+#                 "employee": employee,
+#                 "leave_type": "Compensatory Off",
+#                 "docstatus": 1,
+#             },
+#             fields=[
+#                 "name",
+#                 "to_date",
+#                 "new_leaves_allocated",
+#                 "total_leaves_allocated",
+#             ],
+#         )
+
+#         for alloc in extra_allocations:
+
+#             # Skip allocations already counted from Off-Day Work Request
+#             if alloc.name in counted_allocations:
+#                 continue
+
+#             if alloc.to_date and getdate(alloc.to_date) >= date:
+
+#                 allocated_days = (
+#                     flt(alloc.new_leaves_allocated)
+#                     or flt(alloc.total_leaves_allocated)
+#                     or 0
+#                 )
+
+#                 valid_balance += allocated_days
+#                 leave_balance_for_consumption += allocated_days
+
+#         if for_consumption:
+#             return {
+#                 "leave_balance": valid_balance,
+#                 "leave_balance_for_consumption": leave_balance_for_consumption,
+#             }
+
+#         return valid_balance
+#     # Regular leave processing
+#     allocation_records = get_leave_allocation_records(employee, date, leave_type)
+#     allocation = allocation_records.get(leave_type, frappe._dict())
+#     end_date = (
+#         allocation.to_date if (allocation and cint(consider_all_leaves_in_the_allocation_period)) else date
+#     )
+    
+#     cf_expiry = get_allocation_expiry_for_cf_leaves(employee, leave_type, to_date, allocation.from_date)
+
+#     leaves_taken = get_leaves_for_period(employee, leave_type, allocation.from_date, end_date)
+#     manually_expired_leaves = get_manually_expired_leaves(
+#         employee, leave_type, allocation.from_date, end_date
+#     )
+#     remaining_leaves = get_remaining_leaves(
+#         allocation, leaves_taken, date, cf_expiry, manually_expired_leaves
+#     )
+
+#     # GET PENDING LEAVES EXCLUDING REJECTED
+#     pending_apps = frappe.get_all(
+#         "Leave Application",
+#         filters={
+#             "employee": employee,
+#             "leave_type": leave_type,
+#             "from_date": ["between", [allocation.from_date, to_date]],
+#             "docstatus": 0,  # Your workflow: only final approved has docstatus=1
+#             "workflow_state": ["!=", "Rejected"],  # Exclude all rejected states
+#             "status": ["!=", "Rejected"],  # Double-check status
+#             "name": ["!=", leave_app_id] if leave_app_id else ["!=", ""]  # Exclude current
+#         },
+#         fields=["total_leave_days"]
+#     )
+    
+#     leaves_pending = sum([app.total_leave_days for app in pending_apps])
+
+#     if for_consumption:
+#         remaining_leaves["leave_balance_for_consumption"] = remaining_leaves.get("leave_balance") - leaves_pending
+#         remaining_leaves["leave_balance"] = remaining_leaves.get("leave_balance") - leaves_pending
+#         return remaining_leaves
+#     else:
+#         return remaining_leaves.get("leave_balance") - leaves_pending
+
+
 @frappe.whitelist()
 def custom_get_leave_balance_on(
     employee: str,
@@ -213,10 +368,9 @@ def custom_get_leave_balance_on(
 
         valid_balance = 0
         leave_balance_for_consumption = 0
-
         counted_allocations = []
 
-        # Existing Off-Day Work Request logic
+        # ── Step 1: Off-Day Work Request logic ──────────────────────────────
         off_day_records = frappe.get_all(
             "Off-Day Work Request",
             filters={
@@ -267,38 +421,45 @@ def custom_get_leave_balance_on(
                 valid_balance += 1
                 leave_balance_for_consumption += 1
 
-        # Additional allocations (Tour Request / Manual Allocation)
+        # ── Step 2: Get all allocation names already linked to any ODWR ─────
+        # (used to exclude them from manual/tour allocations query)
+        linked_allocations_in_odwr = frappe.get_all(
+            "Off-Day Work Request",
+            filters={
+                "employee": employee,
+                "docstatus": 1,
+                "leave_allocation": ["is", "set"],
+            },
+            pluck="leave_allocation",
+        )
+
+        # ── Step 3: Additional allocations (Tour Request / Manual) ───────────
         extra_allocations = frappe.get_all(
             "Leave Allocation",
             filters={
                 "employee": employee,
                 "leave_type": "Compensatory Off",
                 "docstatus": 1,
+                "name": ["not in", linked_allocations_in_odwr or ["__no_match__"]],
+                "to_date": [">=", date],  # Exclude expired allocations
             },
             fields=[
                 "name",
+                "from_date",
                 "to_date",
                 "new_leaves_allocated",
-                "total_leaves_allocated",
             ],
         )
 
         for alloc in extra_allocations:
-
-            # Skip allocations already counted from Off-Day Work Request
+            # Safety net: skip if already counted in Step 1
             if alloc.name in counted_allocations:
                 continue
 
-            if alloc.to_date and getdate(alloc.to_date) >= date:
+            allocated_days = flt(alloc.new_leaves_allocated) or 0
 
-                allocated_days = (
-                    flt(alloc.new_leaves_allocated)
-                    or flt(alloc.total_leaves_allocated)
-                    or 0
-                )
-
-                valid_balance += allocated_days
-                leave_balance_for_consumption += allocated_days
+            valid_balance += allocated_days
+            leave_balance_for_consumption += allocated_days
 
         if for_consumption:
             return {
@@ -307,43 +468,55 @@ def custom_get_leave_balance_on(
             }
 
         return valid_balance
-    # Regular leave processing
+
+    # ── Regular leave processing (non-Compensatory Off) ─────────────────────
     allocation_records = get_leave_allocation_records(employee, date, leave_type)
     allocation = allocation_records.get(leave_type, frappe._dict())
+
     end_date = (
-        allocation.to_date if (allocation and cint(consider_all_leaves_in_the_allocation_period)) else date
+        allocation.to_date
+        if (allocation and cint(consider_all_leaves_in_the_allocation_period))
+        else date
     )
-    
-    cf_expiry = get_allocation_expiry_for_cf_leaves(employee, leave_type, to_date, allocation.from_date)
+
+    cf_expiry = get_allocation_expiry_for_cf_leaves(
+        employee, leave_type, to_date, allocation.from_date
+    )
 
     leaves_taken = get_leaves_for_period(employee, leave_type, allocation.from_date, end_date)
+
     manually_expired_leaves = get_manually_expired_leaves(
         employee, leave_type, allocation.from_date, end_date
     )
+
     remaining_leaves = get_remaining_leaves(
         allocation, leaves_taken, date, cf_expiry, manually_expired_leaves
     )
 
-    # GET PENDING LEAVES EXCLUDING REJECTED
+    # ── Pending leave applications (excluding Rejected) ──────────────────────
     pending_apps = frappe.get_all(
         "Leave Application",
         filters={
             "employee": employee,
             "leave_type": leave_type,
             "from_date": ["between", [allocation.from_date, to_date]],
-            "docstatus": 0,  # Your workflow: only final approved has docstatus=1
-            "workflow_state": ["!=", "Rejected"],  # Exclude all rejected states
-            "status": ["!=", "Rejected"],  # Double-check status
-            "name": ["!=", leave_app_id] if leave_app_id else ["!=", ""]  # Exclude current
+            "docstatus": 0,
+            "workflow_state": ["!=", "Rejected"],
+            "status": ["!=", "Rejected"],
+            "name": ["!=", leave_app_id] if leave_app_id else ["!=", ""],
         },
-        fields=["total_leave_days"]
+        fields=["total_leave_days"],
     )
-    
+
     leaves_pending = sum([app.total_leave_days for app in pending_apps])
 
     if for_consumption:
-        remaining_leaves["leave_balance_for_consumption"] = remaining_leaves.get("leave_balance") - leaves_pending
-        remaining_leaves["leave_balance"] = remaining_leaves.get("leave_balance") - leaves_pending
+        remaining_leaves["leave_balance_for_consumption"] = (
+            remaining_leaves.get("leave_balance") - leaves_pending
+        )
+        remaining_leaves["leave_balance"] = (
+            remaining_leaves.get("leave_balance") - leaves_pending
+        )
         return remaining_leaves
     else:
         return remaining_leaves.get("leave_balance") - leaves_pending
