@@ -723,7 +723,8 @@ def get_attendance_calendar(employeeId, date):
                 "leave_type",
                 "half_day_status",
                 "shift",
-                "leave_application"
+                "leave_application",
+                "custom_remark"
             ]
         )
 
@@ -744,6 +745,7 @@ def get_attendance_calendar(employeeId, date):
             "Sick Leave": "SL",
             "Compensatory Off": "CO",
             "Casual Leave": "CL",
+            "Leave Not Approved":"LNA"
         }
 
         # -----------------------------
@@ -946,7 +948,8 @@ def get_attendance_calendar(employeeId, date):
                 "out_time": None,
                 "working_hours": "00:00",
                 "other_half_status": None,
-                "shift": None
+                "shift": None,
+                "custom_remark": None
             }
 
             # -----------------------------
@@ -1003,124 +1006,85 @@ def get_attendance_calendar(employeeId, date):
             # -----------------------------
             # ATTENDANCE OVERRIDES
             # -----------------------------
+
             if date_str in attendance_map:
 
-                record = attendance_map[
-                    date_str
-                ]
+                record = attendance_map[date_str]
 
                 # PRESENT
-                if (
-                    record.status
-                    == "Present"
-                ):
-
+                if record.status == "Present":
                     day_data["status"] = "P"
 
                 # HALF DAY
-                elif (
-                    record.status
-                    == "Half Day"
-                ):
+                elif record.status == "Half Day":
 
                     short_code = (
-                        leave_map.get(
-                            record.leave_type
-                        )
+                        leave_map.get(record.leave_type)
                         or "HD"
                     )
 
-                    day_data["status"] = (
-                        short_code
-                    )
+                    day_data["status"] = short_code
 
-                    existing = day_data.get(
-                        "other_half_status"
-                    )
+                    existing = day_data.get("other_half_status")
 
-                    if existing in [
-                        "Present",
-                        "Absent"
-                    ]:
-
-                        day_data[
-                            "other_half_status"
-                        ] = existing
-
+                    if existing in ["Present", "Absent"]:
+                        day_data["other_half_status"] = existing
                     else:
-
-                        day_data[
-                            "other_half_status"
-                        ] = "P"
+                        day_data["other_half_status"] = "P"
 
                 # ON LEAVE
-                elif (
-                    record.status
-                    == "On Leave"
-                ):
+                elif record.status == "On Leave":
 
                     short_code = (
-                        leave_map.get(
-                            record.leave_type
-                        )
+                        leave_map.get(record.leave_type)
                         or "L"
                     )
 
-                    day_data["status"] = (
-                        short_code
-                    )
+                    day_data["status"] = short_code
 
-                    # CO DATE
                     if short_code == "CO":
-
-                        day_data[
-                            "working_date_co"
-                        ] = frappe.get_value(
+                        day_data["working_date_co"] = frappe.db.get_value(
                             "Leave Application",
                             record.leave_application,
                             "custom_off_day_date"
                         )
 
                 # ABSENT
-                elif (
-                    record.status
-                    == "Absent"
-                ):
-
+                elif record.status == "Absent":
                     day_data["status"] = "A"
 
                 # PARTIALLY
-                elif (
-                    record.status
-                    == "Partially"
-                ):
-
+                elif record.status == "Partially":
                     day_data["status"] = "PR"
 
+                # WORK FROM HOME
+                elif record.status == "Work From Home":
+                    day_data["status"] = "WFH"
+
+                # WEEKLY OFF
+                elif record.status == "Weekly Off":
+                    day_data["status"] = "WO"
+
+                # RESTRICTED HOLIDAY
+                elif record.status == "Restricted Holiday":
+                    day_data["status"] = "RH"
+
+                # HOLIDAY
+                elif record.status == "Holiday":
+                    day_data["status"] = "H"
+
+                # SUSPENDED
+                elif record.status == "Suspended":
+                    day_data["status"] = "S"
+
                 # COMMON VALUES
-                raw_hours = (
-                    record.working_hours
-                    or 0
-                )
+                raw_hours = record.working_hours or 0
 
-                day_data["in_time"] = (
-                    record.in_time
-                )
-
-                day_data["out_time"] = (
-                    record.out_time
-                )
-
-                day_data["working_hours"] = (
-                    decimal_hours_to_hhmm(
-                        raw_hours
-                    )
-                )
-
-                day_data["shift"] = (
-                    record.shift
-                )
-
+                day_data["in_time"] = record.in_time
+                day_data["out_time"] = record.out_time
+                day_data["working_hours"] = decimal_hours_to_hhmm(raw_hours)
+                day_data["shift"] = record.shift
+                day_data["custom_remark"] = record.custom_remark
             # -----------------------------
             # ABSENT FOR PAST DATE
             # -----------------------------
@@ -1130,9 +1094,15 @@ def get_attendance_calendar(employeeId, date):
             ):
 
                 day_data["status"] = "A"
+            
+            # -----------------------------
+            # DEFAULT STATUS
+            # -----------------------------
+            if not day_data["status"]:
+                day_data["status"] = "LNA"
 
             month_data.append(day_data)
-
+        
         # -----------------------------
         # FINAL RESPONSE
         # -----------------------------
@@ -1445,7 +1415,8 @@ def attendance_status_list():
         {"status": "Leave Not Approved", "color": "#ffc0cb", "code": "LNA"},  # Light Pink
         {"status": "Leave Approved", "color": "#9e9e9e", "code": "LA"},       # Grey
         {"status": "Half Day", "color": "#ffa500", "code": "HD"}  ,    # Orange
-        {"status": "Partially", "color": "#1100ffff", "code": "PR"}      # Brown
+        {"status": "Partially", "color": "#1100ffff", "code": "PR"},      # Brown
+        {"status":"Tour","color":"#6F7FE3","code":"On Duty"} #indigo
         
     ]
 
