@@ -427,6 +427,79 @@ def list(
         }
 
 
+# @frappe.whitelist()
+# def list(
+#     view_type="self",   # self / team
+#     filters=None,
+#     fields=None,
+#     order_by="creation desc",
+#     limit_page_length=None,
+#     limit_start=0,
+# ):
+#     try:
+#         user = frappe.session.user
+
+#         # Parse filters safely
+#         filters = frappe.parse_json(filters) if filters else []
+
+#         if isinstance(filters, dict):
+#             filters = [[k, "=", v] for k, v in filters.items()]
+
+#         # Get logged-in employee
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": user},
+#             "name"
+#         )
+
+#         if not employee:
+#             frappe.throw("Employee not linked with current user")
+
+#         if view_type == "self":
+#             filters.append(["employee", "=", employee])
+
+
+#         elif view_type == "team":
+#             filters.append(["employee", "!=", employee])
+
+#         else:
+#             frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+#         leave_list = frappe.get_list(
+#             "Leave Application",
+#             filters=filters,
+#             fields=fields or [
+#                 "name","employee","employee_name",
+#                 "leave_type","from_date","to_date",
+#                 "status","workflow_state","total_leave_days",
+#                 "leave_approver_name","description",
+#                 "custom_half_day_time","half_day_date",
+#                 "half_day","custom_proof_document"
+#             ],
+#             order_by=order_by,
+#             limit_page_length=limit_page_length,
+#             limit_start=limit_start
+#         )
+#         total_records = frappe.get_list(
+#             "Leave Application",
+#             filters=filters
+#         )
+#         return {
+#             "success": True,
+#             "data": leave_list,
+#             "count": len(leave_list),
+#             "total_count": len(total_records),
+#             "message": "Leave Application List Loaded Successfully!",
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Leave List API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
+
+
 @frappe.whitelist()
 def list(
     view_type="self",   # self / team
@@ -458,7 +531,6 @@ def list(
         if view_type == "self":
             filters.append(["employee", "=", employee])
 
-
         elif view_type == "team":
             filters.append(["employee", "!=", employee])
 
@@ -469,21 +541,106 @@ def list(
             "Leave Application",
             filters=filters,
             fields=fields or [
-                "name","employee","employee_name",
-                "leave_type","from_date","to_date",
-                "status","workflow_state","total_leave_days",
-                "leave_approver_name","description",
-                "custom_half_day_time","half_day_date",
-                "half_day","custom_proof_document"
+                "name", "employee", "employee_name",
+                "leave_type", "from_date", "to_date",
+                "status", "workflow_state", "total_leave_days",
+                "leave_approver_name", "description",
+                "custom_half_day_time", "half_day_date",
+                "half_day", "custom_proof_document",
+                "docstatus",
             ],
             order_by=order_by,
             limit_page_length=limit_page_length,
             limit_start=limit_start
         )
+
         total_records = frappe.get_list(
             "Leave Application",
             filters=filters
         )
+
+        # -------------------------
+        # Detect current user's manager role in team view
+        # -------------------------
+        current_manager_role = None  # 'reporting', 'review', or 'hr'
+
+        if view_type == "team":
+            today = frappe.utils.today()
+
+            role_check = frappe.db.sql("""
+                SELECT DISTINCT parentfield
+                FROM `tabApprover`
+                WHERE user = %(user)s
+                AND effective_from <= %(today)s
+                AND parenttype = 'Employee'
+                AND parentfield IN (
+                    'custom_reporting_manager',
+                    'custom_review_manager',
+                    'custom_hr_manager'
+                )
+            """, {
+                "user": user,
+                "today": today
+            }, pluck="parentfield")
+
+            # Priority: if user has multiple roles, pick the highest level
+            if 'custom_hr_manager' in role_check:
+                current_manager_role = 'hr'
+            elif 'custom_review_manager' in role_check:
+                current_manager_role = 'review'
+            elif 'custom_reporting_manager' in role_check:
+                current_manager_role = 'reporting'
+
+        # -------------------------
+        # Workflow states
+        # ⚠️ Replace with your actual Leave Application workflow state names
+        # -------------------------
+        REPORTING_MGR_APPROVED_STATES = {
+            "Pending Review Manager Approval",
+            "Approved by Reporting Manager",
+            "Approved by Review Manager",
+            "Pending HR Approval",
+            "Approved by HR Manager",
+            "Approved",
+        }
+
+        REVIEW_MGR_APPROVED_STATES = {
+            "Approved by Review Manager",
+            "Pending HR Approval",
+            "Approved by HR Manager",
+            "Approved",
+        }
+
+        # -------------------------
+        # Build final records with enable flag
+        # -------------------------
+        for row in leave_list:
+            if view_type == "team" and current_manager_role:
+                wf = row.get("workflow_state") or ""
+                ds = row.get("docstatus", 0)
+
+                if current_manager_role == "reporting":
+                    # Reporting manager acts first — never enable
+                    row["enable"] = False
+
+                elif current_manager_role == "review":
+                    # enable until reporting manager has approved
+                    row["enable"] = not (
+                        wf in REPORTING_MGR_APPROVED_STATES or ds == 1
+                    )
+
+                elif current_manager_role == "hr":
+                    # enable until review manager has approved
+                    row["enable"] = not (
+                        wf in REVIEW_MGR_APPROVED_STATES or ds == 1
+                    )
+            else:
+                row["enable"] = False
+
+            # Remove docstatus from response if not in original fields
+            if not fields or "docstatus" not in fields:
+                row.pop("docstatus", None)
+
         return {
             "success": True,
             "data": leave_list,
