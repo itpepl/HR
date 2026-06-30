@@ -48,9 +48,98 @@ from frappe.utils import (
 #             "message": error_message,
 #             "data": None
 #         }
+
+
+# @frappe.whitelist()
+# def get_shift_requests(
+#     view_type="self",   # self / team
+#     filters=None,
+#     order_by="from_date desc",
+#     limit_page_length=None,
+#     limit_start=0,
+# ):
+#     try:
+#         user = frappe.session.user
+
+#         # Parse filters safely
+#         filters = frappe.parse_json(filters) if filters else []
+
+#         if isinstance(filters, dict):
+#             filters = [[k, "=", v] for k, v in filters.items()]
+
+#         # Get employee linked with logged-in user
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": user},
+#             "name"
+#         )
+
+#         if not employee:
+#             frappe.throw("Employee not linked with current user")
+
+#         if view_type == "self":
+#             filters.append(["employee", "=", employee])
+
+#         elif view_type == "team":
+#             filters.append(["employee", "!=", employee])
+
+#         else:
+#             frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+#         # 🔹 Total count (without pagination)
+#         total_records = frappe.get_list(
+#             "Shift Request",
+#             filters=filters
+#         )
+
+#         # 🔹 Main records with pagination
+#         records = frappe.get_list(
+#             "Shift Request",
+#             filters=filters,
+#             fields=[
+#                 "name",
+#                 "employee",
+#                 "employee_name",
+#                 "shift_type",
+#                 "from_date",
+#                 "to_date",
+#                 "status",
+#                 "approver",
+#                 "workflow_state",
+#                 "custom_remarks",
+#                 "creation",
+#                 "department",
+#                 "company"
+#             ],
+#             order_by=order_by,
+#             limit_page_length=cint(limit_page_length) if limit_page_length else None,
+#             limit_start=cint(limit_start)
+#         )
+
+#         # Clean HTML from remarks (if any)
+#         for row in records:
+#             if row.get("custom_remarks"):
+#                 row["custom_remarks"] = strip_html(row["custom_remarks"]).strip()
+
+#         return {
+#             "success": True,
+#             "data": records,
+#             "total_records": len(total_records),
+#             "count": len(records),
+#             "message": "Shift Request List Loaded Successfully!"
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Shift Request API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
+
+
 @frappe.whitelist()
 def get_shift_requests(
-    view_type="self",   # self / team
+    view_type="self",
     filters=None,
     order_by="from_date desc",
     limit_page_length=None,
@@ -59,13 +148,11 @@ def get_shift_requests(
     try:
         user = frappe.session.user
 
-        # Parse filters safely
         filters = frappe.parse_json(filters) if filters else []
 
         if isinstance(filters, dict):
             filters = [[k, "=", v] for k, v in filters.items()]
 
-        # Get employee linked with logged-in user
         employee = frappe.db.get_value(
             "Employee",
             {"user_id": user},
@@ -75,22 +162,93 @@ def get_shift_requests(
         if not employee:
             frappe.throw("Employee not linked with current user")
 
+        # -------------------------
+        # TEAM LOGIC
+        # -------------------------
         if view_type == "self":
             filters.append(["employee", "=", employee])
 
         elif view_type == "team":
-            filters.append(["employee", "!=", employee])
+            today = frappe.utils.today()
+
+            # Step 1: Get all employees where current user appears as approver
+            candidate_employees = frappe.db.sql("""
+                SELECT DISTINCT parent
+                FROM `tabApprover`
+                WHERE user = %(user)s
+                AND effective_from <= %(today)s
+                AND parenttype = 'Employee'
+                AND parentfield IN (
+                    'custom_reporting_manager',
+                    'custom_review_manager',
+                    'custom_hr_manager'
+                )
+            """, {
+                "user": user,
+                "today": today
+            }, pluck="parent")
+
+            employee_list = []
+
+            if candidate_employees:
+                placeholders = ", ".join(["%s"] * len(candidate_employees))
+
+                # Step 2: Fetch ALL approver rows for candidate employees
+                all_entries = frappe.db.sql("""
+                    SELECT parent, user, parentfield, effective_from
+                    FROM `tabApprover`
+                    WHERE parent IN ({placeholders})
+                    AND effective_from <= %s
+                    AND parenttype = 'Employee'
+                    AND parentfield IN (
+                        'custom_reporting_manager',
+                        'custom_review_manager',
+                        'custom_hr_manager'
+                    )
+                    ORDER BY parent ASC, parentfield ASC, effective_from DESC
+                """.format(placeholders=placeholders),
+                    tuple(candidate_employees) + (today,),
+                    as_dict=True
+                )
+
+                # Step 3: Per (employee + parentfield), keep only latest row
+                seen = {}
+                for entry in all_entries:
+                    key = (entry["parent"], entry["parentfield"])
+                    if key not in seen:
+                        seen[key] = entry
+
+                # Step 4: Include employee if current user is latest approver
+                # for ANY parentfield, exclude current employee themselves
+                employee_set = set()
+                for (emp, field), entry in seen.items():
+                    if entry["user"] == user:
+                        employee_set.add(emp)
+
+                employee_list = [
+                    emp for emp in employee_set
+                    if emp != employee
+                ]
+
+            if not employee_list:
+                employee_list = ["__none__"]
+
+            filters.append(["employee", "in", employee_list])
 
         else:
             frappe.throw("Invalid view_type. Use 'self' or 'team'.")
 
-        # 🔹 Total count (without pagination)
+        # -------------------------
+        # Total count (without pagination)
+        # -------------------------
         total_records = frappe.get_list(
             "Shift Request",
             filters=filters
         )
 
-        # 🔹 Main records with pagination
+        # -------------------------
+        # Main records with pagination
+        # -------------------------
         records = frappe.get_list(
             "Shift Request",
             filters=filters,
@@ -104,6 +262,7 @@ def get_shift_requests(
                 "status",
                 "approver",
                 "workflow_state",
+                "docstatus",
                 "custom_remarks",
                 "creation",
                 "department",
@@ -114,10 +273,41 @@ def get_shift_requests(
             limit_start=cint(limit_start)
         )
 
-        # Clean HTML from remarks (if any)
+        # -------------------------
+        # Shift Request has no workflow
+        # status field: Approved / Rejected / (empty = Pending)
+        # docstatus: 0 = draft/pending, 1 = submitted, 2 = cancelled
+        #
+        # enable = True  → still pending, manager can act
+        # enable = False → already approved, rejected or cancelled
+        # -------------------------
+        FINAL_STATUSES = {"Approved", "Rejected"}
+
         for row in records:
             if row.get("custom_remarks"):
-                row["custom_remarks"] = strip_html(row["custom_remarks"]).strip()
+                row["custom_remarks"] = strip_html(
+                    row["custom_remarks"]
+                ).strip()
+
+            status_val = row.get("status") or ""
+            docstatus_val = row.get("docstatus", 0)
+
+            if view_type == "self":
+                # Self: enable if not yet actioned
+                row["enable"] = (
+                    status_val not in FINAL_STATUSES
+                    and docstatus_val != 2
+                )
+            elif view_type == "team":
+                # Team: enable if pending and not cancelled
+                row["enable"] = (
+                    status_val not in FINAL_STATUSES
+                    and docstatus_val != 2
+                )
+            else:
+                row["enable"] = False
+
+            row.pop("docstatus", None)
 
         return {
             "success": True,
@@ -133,6 +323,103 @@ def get_shift_requests(
             "success": False,
             "message": str(e)
         }
+
+
+# -------------------------
+# BULK APPROVE / REJECT
+# -------------------------
+@frappe.whitelist()
+def bulk_shift_request_action(names, action):
+    """
+    Bulk approve or reject shift requests.
+
+    Params:
+        names  → JSON list of Shift Request names
+                 e.g. ["SR-0001", "SR-0002"]
+        action → "Approved" or "Rejected"
+    """
+    try:
+        if isinstance(names, str):
+            names = frappe.parse_json(names)
+
+        if not names or not isinstance(names, list):
+            return {
+                "success": False,
+                "message": "No records provided"
+            }
+
+        if action not in ("Approved", "Rejected"):
+            return {
+                "success": False,
+                "message": "Invalid action. Use 'Approved' or 'Rejected'."
+            }
+
+        success_list = []
+        failed_list  = []
+
+        for name in names:
+            try:
+                doc = frappe.get_doc("Shift Request", name)
+
+                # Skip already actioned documents
+                if doc.status in ("Approved", "Rejected"):
+                    failed_list.append({
+                        "name": name,
+                        "reason": f"Already {doc.status}"
+                    })
+                    continue
+
+                # Skip cancelled documents
+                if doc.docstatus == 2:
+                    failed_list.append({
+                        "name": name,
+                        "reason": "Document is cancelled"
+                    })
+                    continue
+
+                doc.status = action
+                doc.flags.skip_approver_validation = True
+                doc.save(ignore_permissions=True)
+
+                # Submit if still in draft
+                if doc.docstatus == 0:
+                    doc.submit()
+
+                success_list.append(name)
+
+            except Exception as e:
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    f"Bulk Shift Request Action Error - {name}"
+                )
+                failed_list.append({
+                    "name": name,
+                    "reason": str(e)
+                })
+
+        return {
+            "success": True,
+            "message": (
+                f"{len(success_list)} record(s) {action} successfully."
+                + (
+                    f" {len(failed_list)} failed."
+                    if failed_list else ""
+                )
+            ),
+            "success_list": success_list,
+            "failed_list": failed_list
+        }
+
+    except Exception as e:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Bulk Shift Request Action Error"
+        )
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
 
 # @frappe.whitelist()
 # def create_shift_request(data):
