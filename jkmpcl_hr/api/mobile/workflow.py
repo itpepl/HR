@@ -46,7 +46,7 @@ def apply_workflow_action(doctype, docname, action):
         }
     
 
-@frappe.whitelist(methods=["POST"])
+@frappe.whitelist(methods=["POST"],allow_guest=False)
 def bulk_workflow_action(doctype, docnames, action):
     """
     Bulk Approve/Reject API
@@ -83,7 +83,17 @@ def bulk_workflow_action(doctype, docnames, action):
 
     frappe.db.commit()
 
+    if failed:
+        msg = (
+            f"{len(success)} document(s) {action.lower()}d successfully. "
+            f"{len(failed)} document(s) failed."
+        )
+    else:
+        msg = f"All selected documents were {action.lower()}d successfully."
+
     return {
+        "status": "success" if not failed else "partial_success",
+        "message": msg,
         "success": success,
         "failed": failed
     }
