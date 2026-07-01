@@ -1450,11 +1450,11 @@ def attendance_status_list():
         {"status": "Absent", "color": "#dc3545", "code": "A"},        # Red
         {"status": "Week Off", "color": "#1f2a56", "code": "WO"},     # Dark Blue
         {"status": "Holiday", "color": "#6f7dff", "code": "H"},       # Purple/Blue
-        {"status": "Leave Not Approved", "color": "#ffc0cb", "code": "LNA"},  # Light Pink
+        {"status": "Leave Not Approved", "color": "#F88379", "code": "LNA"},  #  Pink
         # {"status": "Leave Approved", "color": "#9e9e9e", "code": "LA"},       # Grey
         {"status": "Half Day", "color": "#ffa500", "code": "HD"}  ,    # Orange
         {"status": "Partially", "color": "#1100ffff", "code": "PR"},      # Brown
-        {"status":"Tour","color":"#7fa832","code":"P"}
+        {"status":"Tour","color":"#9e9e9e","code":"P"} # Grey
         
     ]
 
