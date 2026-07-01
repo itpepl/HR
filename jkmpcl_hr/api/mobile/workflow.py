@@ -153,12 +153,12 @@ def bulk_workflow_action(doctype, docnames, action):
 
     if success:
         return {
-            "status": True,
+            "success": True,
             "message": f"{len(success)} document(s) {action.lower()}d successfully.",
             # "success": success,
         }
 
     return {
-        "status": False,
+        "success": False,
         "message": f"No documents were {action.lower()}d successfully."
     }
