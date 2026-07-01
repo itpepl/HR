@@ -645,7 +645,7 @@ def list(
             "success": True,
             "data": leave_list,
             "count": len(leave_list),
-            "total_count": len(total_records),
+            "total_records": len(total_records),
             "message": "Leave Application List Loaded Successfully!",
         }
 
