@@ -471,6 +471,8 @@ def bulk_shift_request_action(names, action):
             success.append(name)
 
         except Exception:
+            frappe.clear_messages()
+            frappe.local.response.pop("_server_messages", None)
             frappe.log_error(
                 frappe.get_traceback(),
                 f"Bulk Shift Request Action Error - {name}"
