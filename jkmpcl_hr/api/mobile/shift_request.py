@@ -328,98 +328,164 @@ def get_shift_requests(
 # -------------------------
 # BULK APPROVE / REJECT
 # -------------------------
+# @frappe.whitelist()
+# def bulk_shift_request_action(names, action):
+#     """
+#     Bulk approve or reject shift requests.
+
+#     Params:
+#         names  → JSON list of Shift Request names
+#                  e.g. ["SR-0001", "SR-0002"]
+#         action → "Approved" or "Rejected"
+#     """
+#     try:
+#         if isinstance(names, str):
+#             names = frappe.parse_json(names)
+
+#         if not names or not isinstance(names, list):
+#             return {
+#                 "success": False,
+#                 "message": "No records provided"
+#             }
+
+#         if action not in ("Approved", "Rejected"):
+#             return {
+#                 "success": False,
+#                 "message": "Invalid action. Use 'Approved' or 'Rejected'."
+#             }
+
+#         success_list = []
+#         failed_list  = []
+
+#         for name in names:
+#             try:
+#                 doc = frappe.get_doc("Shift Request", name)
+
+#                 # Skip already actioned documents
+#                 if doc.status in ("Approved", "Rejected"):
+#                     failed_list.append({
+#                         "name": name,
+#                         "reason": f"Already {doc.status}"
+#                     })
+#                     continue
+
+#                 # Skip cancelled documents
+#                 if doc.docstatus == 2:
+#                     failed_list.append({
+#                         "name": name,
+#                         "reason": "Document is cancelled"
+#                     })
+#                     continue
+
+#                 doc.status = action
+#                 doc.flags.skip_approver_validation = True
+#                 doc.save(ignore_permissions=True)
+
+#                 # Submit if still in draft
+#                 if doc.docstatus == 0:
+#                     doc.submit()
+
+#                 success_list.append(name)
+
+#             except Exception as e:
+#                 frappe.log_error(
+#                     frappe.get_traceback(),
+#                     f"Bulk Shift Request Action Error - {name}"
+#                 )
+#                 failed_list.append({
+#                     "name": name,
+#                     "reason": str(e)
+#                 })
+
+#         return {
+#             "success": True,
+#             "message": (
+#                 f"{len(success_list)} record(s) {action} successfully."
+#                 + (
+#                     f" {len(failed_list)} failed."
+#                     if failed_list else ""
+#                 )
+#             ),
+#             "success_list": success_list,
+#             "failed_list": failed_list
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(
+#             frappe.get_traceback(),
+#             "Bulk Shift Request Action Error"
+#         )
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
+
+
 @frappe.whitelist()
 def bulk_shift_request_action(names, action):
     """
-    Bulk approve or reject shift requests.
+    Bulk Approve/Reject Shift Requests
 
-    Params:
-        names  → JSON list of Shift Request names
-                 e.g. ["SR-0001", "SR-0002"]
-        action → "Approved" or "Rejected"
+    Args:
+        names: JSON list of Shift Request names
+        action: "Approved" or "Rejected"
     """
-    try:
-        if isinstance(names, str):
-            names = frappe.parse_json(names)
 
-        if not names or not isinstance(names, list):
-            return {
-                "success": False,
-                "message": "No records provided"
-            }
+    if isinstance(names, str):
+        names = frappe.parse_json(names)
 
-        if action not in ("Approved", "Rejected"):
-            return {
-                "success": False,
-                "message": "Invalid action. Use 'Approved' or 'Rejected'."
-            }
-
-        success_list = []
-        failed_list  = []
-
-        for name in names:
-            try:
-                doc = frappe.get_doc("Shift Request", name)
-
-                # Skip already actioned documents
-                if doc.status in ("Approved", "Rejected"):
-                    failed_list.append({
-                        "name": name,
-                        "reason": f"Already {doc.status}"
-                    })
-                    continue
-
-                # Skip cancelled documents
-                if doc.docstatus == 2:
-                    failed_list.append({
-                        "name": name,
-                        "reason": "Document is cancelled"
-                    })
-                    continue
-
-                doc.status = action
-                doc.flags.skip_approver_validation = True
-                doc.save(ignore_permissions=True)
-
-                # Submit if still in draft
-                if doc.docstatus == 0:
-                    doc.submit()
-
-                success_list.append(name)
-
-            except Exception as e:
-                frappe.log_error(
-                    frappe.get_traceback(),
-                    f"Bulk Shift Request Action Error - {name}"
-                )
-                failed_list.append({
-                    "name": name,
-                    "reason": str(e)
-                })
-
-        return {
-            "success": True,
-            "message": (
-                f"{len(success_list)} record(s) {action} successfully."
-                + (
-                    f" {len(failed_list)} failed."
-                    if failed_list else ""
-                )
-            ),
-            "success_list": success_list,
-            "failed_list": failed_list
-        }
-
-    except Exception as e:
-        frappe.log_error(
-            frappe.get_traceback(),
-            "Bulk Shift Request Action Error"
-        )
+    if not names or not isinstance(names, list):
         return {
             "success": False,
-            "message": str(e)
+            "message": "No records provided."
         }
 
+    if action not in ("Approved", "Rejected"):
+        return {
+            "success": False,
+            "message": "Invalid action. Use 'Approved' or 'Rejected'."
+        }
+
+    success = []
+
+    for name in names:
+        try:
+            doc = frappe.get_doc("Shift Request", name)
+
+            # Skip cancelled documents
+            if doc.docstatus == 2:
+                continue
+
+            # Skip already processed documents
+            if doc.status in ("Approved", "Rejected"):
+                continue
+
+            doc.status = action
+            doc.flags.skip_approver_validation = True
+            doc.save(ignore_permissions=True)
+
+            # Submit if draft
+            if doc.docstatus == 0:
+                doc.submit()
+
+            success.append(name)
+
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Bulk Shift Request Action Error - {name}"
+            )
+
+    if success:
+        return {
+            "success": True,
+            "message": f"{len(success)} document(s) {action.lower()} successfully."
+        }
+
+    return {
+        "success": False,
+        "message": f"No documents were {action.lower()} successfully."
+    }
 
 # @frappe.whitelist()
 # def create_shift_request(data):
