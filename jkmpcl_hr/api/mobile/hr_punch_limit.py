@@ -197,7 +197,7 @@ def get_employee_info(employee_code):
         return {
             "status": "failed",
             "data": {},
-            "message": "Head Quarter Type is not set for this employee."
+            "message": f"Head Quarter Type is not mapped for this employee"
         }
 
     # -------------------------
@@ -212,7 +212,7 @@ def get_employee_info(employee_code):
             return {
                 "status": "failed",
                 "data": {},
-                "message": f"Employee {employee_code} has HQ Type '{hq_type}' but no Warehouse is linked."
+                "message": f"Wearhouse is not mapped for this employee"
             }
 
         warehouse = frappe.get_doc("Warehouse", warehouse_name)
@@ -244,7 +244,7 @@ def get_employee_info(employee_code):
             return {
                 "status": "failed",
                 "data": {},
-                "message": f"Employee {employee_code} has HQ Type 'MPP' but no Supplier is linked."
+                "message": f"Supplier is not mapped for this employee"
             }
 
         supplier = frappe.get_doc("Supplier", supplier_name)
