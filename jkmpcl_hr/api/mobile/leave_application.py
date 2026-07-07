@@ -364,67 +364,67 @@ def get_user_for_cc(emp_id):
         }
 
 from frappe.model.workflow import get_transitions
-@frappe.whitelist()
-def list(
-    filters=None,
-    or_filters=None,
-    fields=["name","employee","leave_type","from_date","to_date","status","workflow_state","total_leave_days","leave_approver_name","workflow_state","description","custom_half_day_time","half_day_date","half_day","custom_proof_document"],
-    order_by=None,
-    limit_page_length=0,
-    limit_start=0,
-):
-    try:
-        employee = frappe.db.get_value(
-            "Employee",
-            {"user_id": frappe.session.user},
-            "name"
-        )
+# @frappe.whitelist()
+# def list(
+#     filters=None,
+#     or_filters=None,
+#     fields=["name","employee","leave_type","from_date","to_date","status","workflow_state","total_leave_days","leave_approver_name","workflow_state","description","custom_half_day_time","half_day_date","half_day","custom_proof_document"],
+#     order_by=None,
+#     limit_page_length=0,
+#     limit_start=0,
+# ):
+#     try:
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": frappe.session.user},
+#             "name"
+#         )
 
-        if not employee:
-            frappe.throw("Employee not linked with current user")
+#         if not employee:
+#             frappe.throw("Employee not linked with current user")
 
-        employee_list = [employee]
+#         employee_list = [employee]
 
-        filters = frappe.parse_json(filters) if filters else []
+#         filters = frappe.parse_json(filters) if filters else []
 
-        if isinstance(filters, dict):
-            filters = [[k, "=", v] for k, v in filters.items()]
+#         if isinstance(filters, dict):
+#             filters = [[k, "=", v] for k, v in filters.items()]
 
-        filters.append(["employee", "in", employee_list])
+#         filters.append(["employee", "in", employee_list])
 
-        parsed_fields = frappe.parse_json(fields)
+#         parsed_fields = frappe.parse_json(fields)
 
-        if "employee" not in parsed_fields:
-            parsed_fields.append("employee")
+#         if "employee" not in parsed_fields:
+#             parsed_fields.append("employee")
 
-        leave_application_list_raw = frappe.get_list(
-            "Leave Application",
-            filters=filters,
-            or_filters=or_filters,
-            fields=parsed_fields,
-            order_by=order_by,
-            limit_page_length=limit_page_length,
-            limit_start=limit_start
-        )
+#         leave_application_list_raw = frappe.get_list(
+#             "Leave Application",
+#             filters=filters,
+#             or_filters=or_filters,
+#             fields=parsed_fields,
+#             order_by=order_by,
+#             limit_page_length=limit_page_length,
+#             limit_start=limit_start
+#         )
 
-        total_count = len(leave_application_list_raw)
+#         total_count = len(leave_application_list_raw)
 
-    except Exception as e:
-        frappe.log_error("Error While Getting Leave Application List", str(e))
-        frappe.clear_messages()
-        frappe.local.response["message"] = {
-            "success": False,
-            "message": str(e),
-            "data": None
-        }
+#     except Exception as e:
+#         frappe.log_error("Error While Getting Leave Application List", str(e))
+#         frappe.clear_messages()
+#         frappe.local.response["message"] = {
+#             "success": False,
+#             "message": str(e),
+#             "data": None
+#         }
 
-    else:
-        frappe.local.response["message"] = {
-            "success": True,
-            "message": "Leave Application List Loaded Successfully!",
-            "data": leave_application_list_raw,
-            "count": total_count
-        }
+#     else:
+#         frappe.local.response["message"] = {
+#             "success": True,
+#             "message": "Leave Application List Loaded Successfully!",
+#             "data": leave_application_list_raw,
+#             "count": total_count
+#         }
 
 
 # @frappe.whitelist()
@@ -637,6 +637,17 @@ def list(
             else:
                 row["enable"] = False
 
+        # -------------------------
+        # Sort so enable=True rows appear first.
+        # Python's sort is stable, so within each group (True/False)
+        # rows keep the relative order from the original order_by.
+        # -------------------------
+        leave_list = sorted(leave_list, key=lambda r: not r["enable"])
+
+        # -------------------------
+        # Clean up response fields
+        # -------------------------
+        for row in leave_list:
             # Remove docstatus from response if not in original fields
             if not fields or "docstatus" not in fields:
                 row.pop("docstatus", None)
@@ -655,7 +666,6 @@ def list(
             "success": False,
             "message": str(e)
         }
-
 
 
 from jkmpcl_hr.py.utils import get_emp_reporting_manager
