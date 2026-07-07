@@ -1,45 +1,95 @@
+
+import json
+
 import frappe
 import firebase_admin
+from firebase_admin import credentials, messaging
 
-from firebase_admin import credentials
 
-
-def send_fcm_notification(token, title, body, data=None):
-    """
-    Send a push notification using Firebase Cloud Messaging.
-
-    Args:
-        token (str): Device FCM registration token.
-        title (str): Notification title.
-        body (str): Notification body.
-        data (dict): Optional custom payload.
-
-    Returns:
-        dict: Result information.
-    """
+def initialize_firebase():
+    """Initialize Firebase Admin SDK."""
 
     settings = frappe.get_single("Firebase Settings")
 
     if not settings.enable:
         frappe.throw("Firebase Notifications are disabled.")
-    
 
-    project_id = settings.project_id
-    service_account_json = settings.service_account_json
-    cred = credentials.Certificate(
-        service_account_json
+    if not settings.service_account_json:
+        frappe.throw("Service Account JSON is missing in Firebase Settings.")
+
+    try:
+        service_account = json.loads(settings.service_account_json)
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Invalid Firebase Service Account JSON"
+        )
+        frappe.throw("Invalid Firebase Service Account JSON.")
+
+    # Fix escaped newlines in private key
+    if service_account.get("private_key"):
+        service_account["private_key"] = service_account["private_key"].replace(
+            "\\n",
+            "\n"
         )
 
-    # TODO:
-    # 1. Parse the service_account_json.
-    # 2. Authenticate with Firebase using the official Google authentication library.
-    # 3. Obtain an OAuth access token.
-    # 4. Build the Firebase HTTP v1 request payload.
-    # 5. POST to:
-    #    https://fcm.googleapis.com/v1/projects/{project_id}/messages:send
-    # 6. Handle the response and errors.
-    firebase_admin.initialize_app(cred)
-    return {
-        "success": False,
-        "message": "Firebase integration not yet implemented."
-    }
+    # Initialize only once
+    if not firebase_admin._apps:
+        try:
+            cred = credentials.Certificate(service_account)
+            firebase_admin.initialize_app(cred)
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                "Firebase Initialization Error"
+            )
+            raise
+
+
+def send_fcm_notification(token, title, body, data=None):
+    """
+    Send FCM push notification.
+
+    Args:
+        token (str): Device FCM token
+        title (str): Notification title
+        body (str): Notification body
+        data (dict): Optional custom payload
+    """
+
+    if not token:
+        return {
+            "success": False,
+            "message": "FCM token is missing."
+        }
+
+    initialize_firebase()
+
+    try:
+        message = messaging.Message(
+            token=token,
+            # notification=messaging.Notification(
+            #     title=title,
+            #     body=body,
+            # ),
+            data={str(k): str(v) for k, v in (data or {}).items()},
+        )
+
+        response = messaging.send(message)
+
+        return {
+            "success": True,
+            "message": "Notification sent successfully.",
+            "message_id": response,
+        }
+
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Firebase Send Notification Error"
+        )
+
+        return {
+            "success": False,
+            "message": "Failed to send notification."
+        }
