@@ -182,7 +182,10 @@ doc_events = {
             "jkmpcl_hr.py.scheduler_method.on_leave_application_approved",
         ],
         "before_submit":"jkmpcl_hr.py.leave_application.before_submit",
-        "on_update":"jkmpcl_hr.py.leave_application.on_update",
+        "on_update":[
+            "jkmpcl_hr.py.leave_application.on_update",
+            "jkmpcl_hr.api.mobile.workflow_notification.workflow_notification"
+        ],
         "on_update_after_submit": "jkmpcl_hr.py.scheduler_method.on_leave_application_approved",
     },
     "Holiday List": {
@@ -192,10 +195,12 @@ doc_events = {
         "on_submit":"jkmpcl_hr.py.employee_transfer.on_submit"
     },
     "Attendance Request": {
-        "validate": "jkmpcl_hr.py.api.block_suspended_employee"
+        "validate": "jkmpcl_hr.py.api.block_suspended_employee",
+        "on_update": "jkmpcl_hr.api.mobile.workflow_notification.workflow_notification"
     },
     "Off-Day Work Request": {
-        "validate": "jkmpcl_hr.py.api.block_suspended_employee"
+        "validate": "jkmpcl_hr.py.api.block_suspended_employee",
+        "on_update": "jkmpcl_hr.api.mobile.workflow_notification.workflow_notification"
     },
     "Shift Assignment": {
         "validate": "jkmpcl_hr.py.api.block_suspended_employee"
@@ -209,7 +214,8 @@ doc_events = {
             "jkmpcl_hr.py.api.block_suspended_employee"
         ],
         "on_submit": "jkmpcl_hr.py.shift_request.on_submit",
-        "before_submit": "jkmpcl_hr.py.api.block_suspended_employee"
+        "before_submit": "jkmpcl_hr.py.api.block_suspended_employee",
+        "on_update": "jkmpcl_hr.api.mobile.workflow_notification.workflow_notification"
     },
     "Travel Request":{
         "validate":"jkmpcl_hr.py.travel_request.validate"
@@ -228,7 +234,13 @@ doc_events = {
     },
     "Warehouse":{
         "validate":"jkmpcl_hr.py.warehouse.validate"
-    }
+    },
+    "Tour Request": {
+        "on_update": "jkmpcl_hr.api.mobile.workflow_notification.workflow_notification"
+    },
+    # "Salary Structure Assignment":{
+    #     "validate":"jkmpcl_hr.py.salary_structure_assignment.calculate_leave_encashment_per_day"
+    # }
 
 # 	"*": {
 # 		"on_update": "method",
