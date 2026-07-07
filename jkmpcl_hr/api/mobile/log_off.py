@@ -7,7 +7,10 @@ def logout():
     try:
         # ? Get the current session user
         user = frappe.session.user
+        employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
 
+        if employee:
+            frappe.db.set_value("Employee",employee,"custom_fcm_token","")
         # ? Clear session data
         frappe.local.login_manager.logout()
         frappe.db.commit()
