@@ -1399,6 +1399,20 @@ def get_tour_requests(
         # -------------------------
         # TEAM LOGIC
         # -------------------------
+        # employee_role_map: for TEAM view, maps each employee -> the set
+        # of roles ('reporting' / 'review' / 'hr') the CURRENT logged-in
+        # user holds specifically FOR THAT EMPLOYEE. This replaces a
+        # single global "current_manager_role" variable, which was wrong:
+        # a user can be the reporting manager for one employee and the
+        # HR manager for a completely different employee at the same
+        # time. Using one global role for the whole request meant rows
+        # for employees where you're the reporting manager could
+        # incorrectly get evaluated against HR's rules (or vice versa),
+        # producing enable=False even on rows that were genuinely your
+        # turn to act on.
+        # -------------------------
+        employee_role_map = {}
+
         if view_type == "self":
             employee_list = [current_employee]
 
@@ -1445,22 +1459,48 @@ def get_tour_requests(
                     as_dict=True
                 )
 
-                # Step 3: Per (employee + parentfield), keep only latest row
-                seen = {}
+                # Step 3: Per (employee + parentfield), find the MAX
+                # effective_from date. Note: we do NOT pick a single
+                # "winner" row here — if two rows share the exact same
+                # effective_from (e.g. during a manager handover on the
+                # same day), SQL row order for ties is not guaranteed,
+                # so blindly keeping "the first row seen" can silently
+                # drop the current user's row and keep someone else's
+                # instead. Instead we track the max date per group, and
+                # in Step 4 treat EVERYONE tied at that max date as a
+                # valid current approver.
+                max_effective_from = {}
                 for entry in all_entries:
                     key = (entry["parent"], entry["parentfield"])
-                    if key not in seen:
-                        seen[key] = entry
+                    if (
+                        key not in max_effective_from
+                        or entry["effective_from"] > max_effective_from[key]
+                    ):
+                        max_effective_from[key] = entry["effective_from"]
 
-                # Step 4: Include employee if current user is latest approver
-                # for ANY parentfield, exclude current employee themselves
-                employee_set = set()
-                for (emp, field), entry in seen.items():
-                    if entry["user"] == frappe.session.user:
-                        employee_set.add(emp)
+                # Step 4: For each employee, record EVERY role (parentfield)
+                # for which the current user is tied for the most recent
+                # effective_from date. An employee can appear with multiple
+                # roles if the current user is, e.g., both their reporting
+                # manager AND their review manager.
+                role_field_map = {
+                    "custom_reporting_manager": "reporting",
+                    "custom_review_manager": "review",
+                    "custom_hr_manager": "hr",
+                }
+
+                for entry in all_entries:
+                    key = (entry["parent"], entry["parentfield"])
+                    if (
+                        entry["effective_from"] == max_effective_from[key]
+                        and entry["user"] == frappe.session.user
+                    ):
+                        employee_role_map.setdefault(
+                            entry["parent"], set()
+                        ).add(role_field_map[entry["parentfield"]])
 
                 employee_list = [
-                    emp for emp in employee_set
+                    emp for emp in employee_role_map
                     if emp != current_employee
                 ]
 
@@ -1494,6 +1534,11 @@ def get_tour_requests(
             )
 
             employee_list = dept_employees or ["__none__"]
+
+            # Direct reports fetched via reports_to imply a reporting-manager
+            # relationship, so tag them accordingly for the enable logic.
+            for emp in employee_list:
+                employee_role_map.setdefault(emp, set()).add("reporting")
 
             tour_filters = [
                 ["employee", "in", employee_list]
@@ -1584,51 +1629,14 @@ def get_tour_requests(
         )
 
         # -------------------------
-        # Detect current user's manager role in team view
-        # -------------------------
-        current_manager_role = None  # 'reporting', 'review', or 'hr'
-
-        if view_type == "team":
-            today = frappe.utils.today()
-
-            role_check = frappe.db.sql("""
-                SELECT DISTINCT parentfield
-                FROM `tabApprover`
-                WHERE user = %(user)s
-                AND effective_from <= %(today)s
-                AND parenttype = 'Employee'
-                AND parentfield IN (
-                    'custom_reporting_manager',
-                    'custom_review_manager',
-                    'custom_hr_manager'
-                )
-            """, {
-                "user": frappe.session.user,
-                "today": today
-            }, pluck="parentfield")
-
-            # Priority: if user has multiple roles, pick the highest level
-            if 'custom_hr_manager' in role_check:
-                current_manager_role = 'hr'
-            elif 'custom_review_manager' in role_check:
-                current_manager_role = 'review'
-            elif 'custom_reporting_manager' in role_check:
-                current_manager_role = 'reporting'
-
-        # -------------------------
         # Workflow states
-        # ⚠️ IMPORTANT: These must match your Workflow doctype's exact
-        # "State" column values character-for-character (see Workflow
-        # transition table). Verify by running:
+        # ⚠️ Must match the exact "State" values in your Workflow doctype.
+        # Verify with:
         #   frappe.db.get_list("Tour Request", pluck="workflow_state", limit_page_length=0)
-        # or checking a real record in the desk UI. A mismatch here will
-        # silently break the enable flag again.
         # -------------------------
         PENDING_STATE = "Pending"
         REPORTING_MGR_APPROVED_STATE = "Approved by Reporting Manager"
         REVIEW_MGR_APPROVED_STATE = "Approved by Review Manager"
-        # Final state after HR approval, e.g. "Approved by HR" / "Approved"
-        # (not required for the enable logic below, listed for reference)
 
         # -------------------------
         # Build final records with status + enable flag
@@ -1659,31 +1667,24 @@ def get_tour_requests(
             if is_cancelled or is_rejected:
                 row["enable"] = False
 
-            elif view_type == "team" and current_manager_role:
-                if current_manager_role == "reporting":
-                    # Reporting manager acts first — enabled ONLY while the
-                    # request is freshly Pending and not yet submitted/acted on.
-                    row["enable"] = (wf == PENDING_STATE and ds == 0)
+            elif view_type == "team":
+                # Look up the role(s) the CURRENT user holds specifically
+                # for THIS row's employee (not a single global role).
+                roles = employee_role_map.get(row["employee"], set())
 
-                elif current_manager_role == "review":
-                    # Enabled ONLY once the reporting manager has approved
-                    # (i.e. request is sitting exactly at that state), and not
-                    # yet finalized.
-                    row["enable"] = (
-                        wf == REPORTING_MGR_APPROVED_STATE and ds == 0
-                    )
+                enable = False
 
-                elif current_manager_role == "hr":
-                    # Enabled ONLY once the review manager has approved
-                    # (i.e. request is sitting exactly at that state), and not
-                    # yet finalized. This is the fix for HR seeing enable=True
-                    # before the reporting/review manager has approved.
-                    row["enable"] = (
-                        wf == REVIEW_MGR_APPROVED_STATE and ds == 0
-                    )
+                if "reporting" in roles and wf == PENDING_STATE:
+                    enable = True
 
-                else:
-                    row["enable"] = False
+                if "review" in roles and wf == REPORTING_MGR_APPROVED_STATE:
+                    enable = True
+
+                if "hr" in roles and wf == REVIEW_MGR_APPROVED_STATE:
+                    enable = True
+
+                row["enable"] = enable
+
             else:
                 row["enable"] = False
 
@@ -1706,7 +1707,6 @@ def get_tour_requests(
             "message": str(e),
             "data": []
         }
-
 @frappe.whitelist(allow_guest=False)
 def get_workflow_states(workflow_name):
     """
