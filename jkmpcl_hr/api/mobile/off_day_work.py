@@ -639,15 +639,11 @@ def get_off_day_work_list(
         )
 
         # -------------------------
-        # Workflow has only 3 states:
-        # Pending → Approved / Rejected
-        # enable = True only when Pending (still actionable)
-        # enable = False when Approved or Rejected (final states)
+        # Workflow state values: Pending / Approved / Rejected
+        # enable = True only when workflow_state is "Pending"
         # -------------------------
-        FINAL_STATES = {"Approved", "Rejected"}
-
         for row in records:
-            row["enable"] = row.get("workflow_state") not in FINAL_STATES
+            row["enable"] = (row.get("workflow_state") == "Pending")
 
         return {
             "success": True,
@@ -663,7 +659,7 @@ def get_off_day_work_list(
             "success": False,
             "message": str(e)
         }
-        
+      
 @frappe.whitelist(allow_guest=False)
 def get_off_day_work_detail(name):
 

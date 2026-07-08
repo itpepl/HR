@@ -137,6 +137,194 @@ from frappe.utils import (
 #         }
 
 
+# @frappe.whitelist()
+# def get_shift_requests(
+#     view_type="self",
+#     filters=None,
+#     order_by="from_date desc",
+#     limit_page_length=None,
+#     limit_start=0,
+# ):
+#     try:
+#         user = frappe.session.user
+
+#         filters = frappe.parse_json(filters) if filters else []
+
+#         if isinstance(filters, dict):
+#             filters = [[k, "=", v] for k, v in filters.items()]
+
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": user},
+#             "name"
+#         )
+
+#         if not employee:
+#             frappe.throw("Employee not linked with current user")
+
+#         # -------------------------
+#         # TEAM LOGIC
+#         # -------------------------
+#         if view_type == "self":
+#             filters.append(["employee", "=", employee])
+
+#         elif view_type == "team":
+#             today = frappe.utils.today()
+
+#             # Step 1: Get all employees where current user appears as approver
+#             candidate_employees = frappe.db.sql("""
+#                 SELECT DISTINCT parent
+#                 FROM `tabApprover`
+#                 WHERE user = %(user)s
+#                 AND effective_from <= %(today)s
+#                 AND parenttype = 'Employee'
+#                 AND parentfield IN (
+#                     'custom_reporting_manager',
+#                     'custom_review_manager',
+#                     'custom_hr_manager'
+#                 )
+#             """, {
+#                 "user": user,
+#                 "today": today
+#             }, pluck="parent")
+
+#             employee_list = []
+
+#             if candidate_employees:
+#                 placeholders = ", ".join(["%s"] * len(candidate_employees))
+
+#                 # Step 2: Fetch ALL approver rows for candidate employees
+#                 all_entries = frappe.db.sql("""
+#                     SELECT parent, user, parentfield, effective_from
+#                     FROM `tabApprover`
+#                     WHERE parent IN ({placeholders})
+#                     AND effective_from <= %s
+#                     AND parenttype = 'Employee'
+#                     AND parentfield IN (
+#                         'custom_reporting_manager',
+#                         'custom_review_manager',
+#                         'custom_hr_manager'
+#                     )
+#                     ORDER BY parent ASC, parentfield ASC, effective_from DESC
+#                 """.format(placeholders=placeholders),
+#                     tuple(candidate_employees) + (today,),
+#                     as_dict=True
+#                 )
+
+#                 # Step 3: Per (employee + parentfield), keep only latest row
+#                 seen = {}
+#                 for entry in all_entries:
+#                     key = (entry["parent"], entry["parentfield"])
+#                     if key not in seen:
+#                         seen[key] = entry
+
+#                 # Step 4: Include employee if current user is latest approver
+#                 # for ANY parentfield, exclude current employee themselves
+#                 employee_set = set()
+#                 for (emp, field), entry in seen.items():
+#                     if entry["user"] == user:
+#                         employee_set.add(emp)
+
+#                 employee_list = [
+#                     emp for emp in employee_set
+#                     if emp != employee
+#                 ]
+
+#             if not employee_list:
+#                 employee_list = ["__none__"]
+
+#             filters.append(["employee", "in", employee_list])
+
+#         else:
+#             frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+#         # -------------------------
+#         # Total count (without pagination)
+#         # -------------------------
+#         total_records = frappe.get_list(
+#             "Shift Request",
+#             filters=filters
+#         )
+
+#         # -------------------------
+#         # Main records with pagination
+#         # -------------------------
+#         records = frappe.get_list(
+#             "Shift Request",
+#             filters=filters,
+#             fields=[
+#                 "name",
+#                 "employee",
+#                 "employee_name",
+#                 "shift_type",
+#                 "from_date",
+#                 "to_date",
+#                 "status",
+#                 "approver",
+#                 "workflow_state",
+#                 "docstatus",
+#                 "custom_remarks",
+#                 "creation",
+#                 "department",
+#                 "company"
+#             ],
+#             order_by=order_by,
+#             limit_page_length=cint(limit_page_length) if limit_page_length else None,
+#             limit_start=cint(limit_start)
+#         )
+
+#         # -------------------------
+#         # Shift Request has no workflow
+#         # status field: Approved / Rejected / (empty = Pending)
+#         # docstatus: 0 = draft/pending, 1 = submitted, 2 = cancelled
+#         #
+#         # enable = True  → still pending, manager can act
+#         # enable = False → already approved, rejected or cancelled
+#         # -------------------------
+#         FINAL_STATUSES = {"Approved", "Rejected"}
+
+#         for row in records:
+#             if row.get("custom_remarks"):
+#                 row["custom_remarks"] = strip_html(
+#                     row["custom_remarks"]
+#                 ).strip()
+
+#             status_val = row.get("status") or ""
+#             docstatus_val = row.get("docstatus", 0)
+
+#             if view_type == "self":
+#                 # Self: enable if not yet actioned
+#                 row["enable"] = (
+#                     status_val not in FINAL_STATUSES
+#                     and docstatus_val != 2
+#                 )
+#             elif view_type == "team":
+#                 # Team: enable if pending and not cancelled
+#                 row["enable"] = (
+#                     status_val not in FINAL_STATUSES
+#                     and docstatus_val != 2
+#                 )
+#             else:
+#                 row["enable"] = False
+
+#             row.pop("docstatus", None)
+
+#         return {
+#             "success": True,
+#             "data": records,
+#             "total_records": len(total_records),
+#             "count": len(records),
+#             "message": "Shift Request List Loaded Successfully!"
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Shift Request API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
+
+
 @frappe.whitelist()
 def get_shift_requests(
     view_type="self",
@@ -171,7 +359,6 @@ def get_shift_requests(
         elif view_type == "team":
             today = frappe.utils.today()
 
-            # Step 1: Get all employees where current user appears as approver
             candidate_employees = frappe.db.sql("""
                 SELECT DISTINCT parent
                 FROM `tabApprover`
@@ -193,7 +380,6 @@ def get_shift_requests(
             if candidate_employees:
                 placeholders = ", ".join(["%s"] * len(candidate_employees))
 
-                # Step 2: Fetch ALL approver rows for candidate employees
                 all_entries = frappe.db.sql("""
                     SELECT parent, user, parentfield, effective_from
                     FROM `tabApprover`
@@ -211,15 +397,12 @@ def get_shift_requests(
                     as_dict=True
                 )
 
-                # Step 3: Per (employee + parentfield), keep only latest row
                 seen = {}
                 for entry in all_entries:
                     key = (entry["parent"], entry["parentfield"])
                     if key not in seen:
                         seen[key] = entry
 
-                # Step 4: Include employee if current user is latest approver
-                # for ANY parentfield, exclude current employee themselves
                 employee_set = set()
                 for (emp, field), entry in seen.items():
                     if entry["user"] == user:
@@ -275,14 +458,11 @@ def get_shift_requests(
 
         # -------------------------
         # Shift Request has no workflow
-        # status field: Approved / Rejected / (empty = Pending)
-        # docstatus: 0 = draft/pending, 1 = submitted, 2 = cancelled
+        # status field: Draft / Approved / Rejected
         #
-        # enable = True  → still pending, manager can act
-        # enable = False → already approved, rejected or cancelled
+        # enable = True  → status is "Draft"
+        # enable = False → anything else (Approved, Rejected, etc.)
         # -------------------------
-        FINAL_STATUSES = {"Approved", "Rejected"}
-
         for row in records:
             if row.get("custom_remarks"):
                 row["custom_remarks"] = strip_html(
@@ -290,22 +470,9 @@ def get_shift_requests(
                 ).strip()
 
             status_val = row.get("status") or ""
-            docstatus_val = row.get("docstatus", 0)
 
-            if view_type == "self":
-                # Self: enable if not yet actioned
-                row["enable"] = (
-                    status_val not in FINAL_STATUSES
-                    and docstatus_val != 2
-                )
-            elif view_type == "team":
-                # Team: enable if pending and not cancelled
-                row["enable"] = (
-                    status_val not in FINAL_STATUSES
-                    and docstatus_val != 2
-                )
-            else:
-                row["enable"] = False
+            # enable = True only when status is "Draft"
+            row["enable"] = (status_val == "Draft")
 
             row.pop("docstatus", None)
 
@@ -323,7 +490,6 @@ def get_shift_requests(
             "success": False,
             "message": str(e)
         }
-
 
 # -------------------------
 # BULK APPROVE / REJECT
