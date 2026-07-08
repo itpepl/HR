@@ -418,589 +418,6 @@ def get_status(workflow_state, docstatus):
     else:
         return "Draft"
 
-# @frappe.whitelist()
-# def get_tour_requests(
-#     view_type="self",
-#     filters=None,
-#     limit_page_length=20,
-#     limit_start=0
-# ):
-#     try:
-
-#         # -------------------------
-#         # Parse filters
-#         # -------------------------
-#         filters = frappe.parse_json(filters) if filters else []
-
-#         filter_dict = {}
-
-#         if isinstance(filters, dict):
-#             filters = [[k, "=", v] for k, v in filters.items()]
-
-#         if isinstance(filters, list):
-#             for item in filters:
-#                 if isinstance(item, (list, tuple)) and len(item) >= 3:
-#                     field, op, value = item[0], item[1], item[2]
-
-#                     if op == "=":
-#                         filter_dict[field] = value
-#                     elif op == ">=":
-#                         filter_dict[field + "_gte"] = value
-#                     elif op == "<=":
-#                         filter_dict[field + "_lte"] = value
-
-#         # -------------------------
-#         # Current Employee
-#         # -------------------------
-#         current_employee = frappe.db.get_value(
-#             "Employee",
-#             {"user_id": frappe.session.user},
-#             "name"
-#         )
-
-#         if not current_employee:
-#             return {"success": False, "message": "Employee not found", "data": []}
-
-#         # -------------------------
-#         # TEAM LOGIC
-#         # -------------------------
-#         if view_type == "self":
-#             employee_list = [current_employee]
-
-#         elif view_type == "team":
-#             today = frappe.utils.today()
-
-#             # Step 1: Get all employees where current user appears as approver
-#             candidate_employees = frappe.db.sql("""
-#                 SELECT DISTINCT parent
-#                 FROM `tabApprover`
-#                 WHERE user = %(user)s
-#                 AND effective_from <= %(today)s
-#                 AND parenttype = 'Employee'
-#                 AND parentfield IN (
-#                     'custom_reporting_manager',
-#                     'custom_review_manager',
-#                     'custom_hr_manager'
-#                 )
-#             """, {
-#                 "user": frappe.session.user,
-#                 "today": today
-#             }, pluck="parent")
-
-#             employee_list = []
-
-#             if candidate_employees:
-#                 placeholders = ", ".join(["%s"] * len(candidate_employees))
-
-#                 # Step 2: Fetch ALL approver rows for candidate employees
-#                 all_entries = frappe.db.sql("""
-#                     SELECT parent, user, parentfield, effective_from
-#                     FROM `tabApprover`
-#                     WHERE parent IN ({placeholders})
-#                     AND effective_from <= %s
-#                     AND parenttype = 'Employee'
-#                     AND parentfield IN (
-#                         'custom_reporting_manager',
-#                         'custom_review_manager',
-#                         'custom_hr_manager'
-#                     )
-#                     ORDER BY parent ASC, parentfield ASC, effective_from DESC
-#                 """.format(placeholders=placeholders),
-#                     tuple(candidate_employees) + (today,),
-#                     as_dict=True
-#                 )
-
-#                 # Step 3: Per (employee + parentfield), keep only latest row
-#                 seen = {}
-#                 for entry in all_entries:
-#                     key = (entry["parent"], entry["parentfield"])
-#                     if key not in seen:
-#                         seen[key] = entry
-
-#                 # Step 4: Include employee if current user is latest approver
-#                 # for ANY parentfield, exclude current employee themselves
-#                 employee_set = set()
-#                 for (emp, field), entry in seen.items():
-#                     if entry["user"] == frappe.session.user:
-#                         employee_set.add(emp)
-
-#                 employee_list = [
-#                     emp for emp in employee_set
-#                     if emp != current_employee
-#                 ]
-
-#         else:
-#             return {"success": False, "message": "Invalid view_type"}
-
-#         if not employee_list:
-#             employee_list = ["__none__"]
-
-#         # -------------------------
-#         # Base filters
-#         # -------------------------
-#         tour_filters = [
-#             ["employee", "in", employee_list]
-#         ]
-
-#         # -------------------------
-#         # Department filter
-#         # -------------------------
-#         department = filter_dict.get("department")
-
-#         if department and view_type == "team":
-#             dept_employees = frappe.db.get_list(
-#                 "Employee",
-#                 filters={
-#                     "reports_to": current_employee,
-#                     "department": department
-#                 },
-#                 pluck="name",
-#                 ignore_permissions=True
-#             )
-
-#             employee_list = dept_employees or ["__none__"]
-
-#             tour_filters = [
-#                 ["employee", "in", employee_list]
-#             ]
-
-#         # -------------------------
-#         # Employee override
-#         # -------------------------
-#         employee_filter = filter_dict.get("employee")
-
-#         if employee_filter:
-#             if view_type == "self" and employee_filter != current_employee:
-#                 return {
-#                     "success": False,
-#                     "message": "You can only view your own data"
-#                 }
-
-#             tour_filters = [["employee", "=", employee_filter]]
-
-#         # -------------------------
-#         # Status filter
-#         # -------------------------
-#         status = filter_dict.get("status")
-
-#         if status:
-#             if status == "Approved":
-#                 tour_filters.append(["docstatus", "=", 1])
-
-#             elif status == "Cancelled":
-#                 tour_filters.append(["docstatus", "=", 2])
-
-#             elif status in ["Open", "Draft"]:
-#                 tour_filters.append(["docstatus", "=", 0])
-#                 tour_filters.append(["workflow_state", "not like", "%Reject%"])
-
-#             elif status == "Rejected":
-#                 tour_filters.append(["docstatus", "=", 0])
-#                 tour_filters.append(["workflow_state", "like", "%Reject%"])
-
-#             else:
-#                 tour_filters.append(["workflow_state", "=", status])
-
-#         # -------------------------
-#         # Date filter
-#         # -------------------------
-#         from_date = filter_dict.get("from_date") or filter_dict.get("from_date_gte")
-#         to_date = filter_dict.get("to_date") or filter_dict.get("to_date_lte")
-
-#         if from_date:
-#             tour_filters.append(["to_date", ">=", from_date])
-
-#         if to_date:
-#             tour_filters.append(["from_date", "<=", to_date])
-
-#         # -------------------------
-#         # COUNT
-#         # -------------------------
-#         total_records = len(
-#             frappe.db.get_list(
-#                 "Tour Request",
-#                 filters=tour_filters,
-#                 pluck="name",
-#                 ignore_permissions=True
-#             )
-#         )
-
-#         # -------------------------
-#         # DATA
-#         # -------------------------
-#         records = frappe.db.get_list(
-#             "Tour Request",
-#             filters=tour_filters,
-#             fields=[
-#                 "name",
-#                 "employee",
-#                 "employee_name",
-#                 "from_date",
-#                 "to_date",
-#                 "purpose_of_travel",
-#                 "workflow_state",
-#                 "docstatus",
-#                 "creation",
-#             ],
-#             order_by="creation desc",
-#             limit_start=int(limit_start),
-#             limit_page_length=int(limit_page_length),
-#             ignore_permissions=True
-#         )
-
-#         for row in records:
-#             row["status"] = get_status(row["workflow_state"], row["docstatus"])
-#             row.pop("docstatus", None)
-
-#         return {
-#             "success": True,
-#             "message": "Tour Requests fetched successfully",
-#             "total_records": total_records,
-#             "returned_records": len(records),
-#             "data": records,
-#             "view_type": view_type,
-#             "applied_filters": filter_dict
-#         }
-
-#     except Exception as e:
-#         frappe.log_error(frappe.get_traceback(), "Tour API Error")
-#         return {
-#             "success": False,
-#             "message": str(e),
-#             "data": []
-#         }
-
-
-# @frappe.whitelist()
-# def get_tour_requests(
-#     view_type="self",
-#     filters=None,
-#     limit_page_length=20,
-#     limit_start=0
-# ):
-#     try:
-
-#         # -------------------------
-#         # Parse filters
-#         # -------------------------
-#         filters = frappe.parse_json(filters) if filters else []
-
-#         filter_dict = {}
-
-#         if isinstance(filters, dict):
-#             filters = [[k, "=", v] for k, v in filters.items()]
-
-#         if isinstance(filters, list):
-#             for item in filters:
-#                 if isinstance(item, (list, tuple)) and len(item) >= 3:
-#                     field, op, value = item[0], item[1], item[2]
-
-#                     if op == "=":
-#                         filter_dict[field] = value
-#                     elif op == ">=":
-#                         filter_dict[field + "_gte"] = value
-#                     elif op == "<=":
-#                         filter_dict[field + "_lte"] = value
-
-#         # -------------------------
-#         # Current Employee
-#         # -------------------------
-#         current_employee = frappe.db.get_value(
-#             "Employee",
-#             {"user_id": frappe.session.user},
-#             "name"
-#         )
-
-#         if not current_employee:
-#             return {"success": False, "message": "Employee not found", "data": []}
-
-#         # -------------------------
-#         # TEAM LOGIC
-#         # -------------------------
-#         if view_type == "self":
-#             employee_list = [current_employee]
-
-#         elif view_type == "team":
-#             today = frappe.utils.today()
-
-#             # Step 1: Get all employees where current user appears as approver
-#             candidate_employees = frappe.db.sql("""
-#                 SELECT DISTINCT parent
-#                 FROM `tabApprover`
-#                 WHERE user = %(user)s
-#                 AND effective_from <= %(today)s
-#                 AND parenttype = 'Employee'
-#                 AND parentfield IN (
-#                     'custom_reporting_manager',
-#                     'custom_review_manager',
-#                     'custom_hr_manager'
-#                 )
-#             """, {
-#                 "user": frappe.session.user,
-#                 "today": today
-#             }, pluck="parent")
-
-#             employee_list = []
-
-#             if candidate_employees:
-#                 placeholders = ", ".join(["%s"] * len(candidate_employees))
-
-#                 # Step 2: Fetch ALL approver rows for candidate employees
-#                 all_entries = frappe.db.sql("""
-#                     SELECT parent, user, parentfield, effective_from
-#                     FROM `tabApprover`
-#                     WHERE parent IN ({placeholders})
-#                     AND effective_from <= %s
-#                     AND parenttype = 'Employee'
-#                     AND parentfield IN (
-#                         'custom_reporting_manager',
-#                         'custom_review_manager',
-#                         'custom_hr_manager'
-#                     )
-#                     ORDER BY parent ASC, parentfield ASC, effective_from DESC
-#                 """.format(placeholders=placeholders),
-#                     tuple(candidate_employees) + (today,),
-#                     as_dict=True
-#                 )
-
-#                 # Step 3: Per (employee + parentfield), keep only latest row
-#                 seen = {}
-#                 for entry in all_entries:
-#                     key = (entry["parent"], entry["parentfield"])
-#                     if key not in seen:
-#                         seen[key] = entry
-
-#                 # Step 4: Include employee if current user is latest approver
-#                 # for ANY parentfield, exclude current employee themselves
-#                 employee_set = set()
-#                 for (emp, field), entry in seen.items():
-#                     if entry["user"] == frappe.session.user:
-#                         employee_set.add(emp)
-
-#                 employee_list = [
-#                     emp for emp in employee_set
-#                     if emp != current_employee
-#                 ]
-
-#         else:
-#             return {"success": False, "message": "Invalid view_type"}
-
-#         if not employee_list:
-#             employee_list = ["__none__"]
-
-#         # -------------------------
-#         # Base filters
-#         # -------------------------
-#         tour_filters = [
-#             ["employee", "in", employee_list]
-#         ]
-
-#         # -------------------------
-#         # Department filter
-#         # -------------------------
-#         department = filter_dict.get("department")
-
-#         if department and view_type == "team":
-#             dept_employees = frappe.db.get_list(
-#                 "Employee",
-#                 filters={
-#                     "reports_to": current_employee,
-#                     "department": department
-#                 },
-#                 pluck="name",
-#                 ignore_permissions=True
-#             )
-
-#             employee_list = dept_employees or ["__none__"]
-
-#             tour_filters = [
-#                 ["employee", "in", employee_list]
-#             ]
-
-#         # -------------------------
-#         # Employee override
-#         # -------------------------
-#         employee_filter = filter_dict.get("employee")
-
-#         if employee_filter:
-#             if view_type == "self" and employee_filter != current_employee:
-#                 return {
-#                     "success": False,
-#                     "message": "You can only view your own data"
-#                 }
-
-#             tour_filters = [["employee", "=", employee_filter]]
-
-#         # -------------------------
-#         # Status filter
-#         # -------------------------
-#         status = filter_dict.get("status")
-
-#         if status:
-#             if status == "Approved":
-#                 tour_filters.append(["docstatus", "=", 1])
-
-#             elif status == "Cancelled":
-#                 tour_filters.append(["docstatus", "=", 2])
-
-#             elif status in ["Open", "Draft"]:
-#                 tour_filters.append(["docstatus", "=", 0])
-#                 tour_filters.append(["workflow_state", "not like", "%Reject%"])
-
-#             elif status == "Rejected":
-#                 tour_filters.append(["docstatus", "=", 0])
-#                 tour_filters.append(["workflow_state", "like", "%Reject%"])
-
-#             else:
-#                 tour_filters.append(["workflow_state", "=", status])
-
-#         # -------------------------
-#         # Date filter
-#         # -------------------------
-#         from_date = filter_dict.get("from_date") or filter_dict.get("from_date_gte")
-#         to_date = filter_dict.get("to_date") or filter_dict.get("to_date_lte")
-
-#         if from_date:
-#             tour_filters.append(["to_date", ">=", from_date])
-
-#         if to_date:
-#             tour_filters.append(["from_date", "<=", to_date])
-
-#         # -------------------------
-#         # COUNT
-#         # -------------------------
-#         total_records = len(
-#             frappe.db.get_list(
-#                 "Tour Request",
-#                 filters=tour_filters,
-#                 pluck="name",
-#                 ignore_permissions=True
-#             )
-#         )
-
-#         # -------------------------
-#         # DATA
-#         # -------------------------
-#         records = frappe.db.get_list(
-#             "Tour Request",
-#             filters=tour_filters,
-#             fields=[
-#                 "name",
-#                 "employee",
-#                 "employee_name",
-#                 "from_date",
-#                 "to_date",
-#                 "purpose_of_travel",
-#                 "workflow_state",
-#                 "docstatus",
-#                 "creation",
-#             ],
-#             order_by="creation desc",
-#             limit_start=int(limit_start),
-#             limit_page_length=int(limit_page_length),
-#             ignore_permissions=True
-#         )
-
-#         # -------------------------
-#         # Detect current user's manager role in team view
-#         # -------------------------
-#         current_manager_role = None  # 'reporting', 'review', or 'hr'
-
-#         if view_type == "team":
-#             today = frappe.utils.today()
-
-#             role_check = frappe.db.sql("""
-#                 SELECT DISTINCT parentfield
-#                 FROM `tabApprover`
-#                 WHERE user = %(user)s
-#                 AND effective_from <= %(today)s
-#                 AND parenttype = 'Employee'
-#                 AND parentfield IN (
-#                     'custom_reporting_manager',
-#                     'custom_review_manager',
-#                     'custom_hr_manager'
-#                 )
-#             """, {
-#                 "user": frappe.session.user,
-#                 "today": today
-#             }, pluck="parentfield")
-
-#             # Priority: if user has multiple roles, pick the highest level
-#             if 'custom_hr_manager' in role_check:
-#                 current_manager_role = 'hr'
-#             elif 'custom_review_manager' in role_check:
-#                 current_manager_role = 'review'
-#             elif 'custom_reporting_manager' in role_check:
-#                 current_manager_role = 'reporting'
-
-#         # -------------------------
-#         # Workflow states
-#         # ⚠️ Replace with your actual workflow state names
-#         # -------------------------
-#         REPORTING_MGR_APPROVED_STATES = {
-#             "Pending Review Manager Approval",
-#             "Approved by Reporting Manager",
-#             "Approved by Review Manager",
-#             "Pending HR Approval",
-#             "Approved by HR Manager",
-#             "Approved",
-#         }
-
-#         REVIEW_MGR_APPROVED_STATES = {
-#             "Approved by Review Manager",
-#             "Pending HR Approval",
-#             "Approved by HR Manager",
-#             "Approved",
-#         }
-
-#         # -------------------------
-#         # Build final records with status + enable flag
-#         # -------------------------
-#         for row in records:
-#             row["status"] = get_status(row["workflow_state"], row["docstatus"])
-
-#             if view_type == "team" and current_manager_role:
-#                 wf = row["workflow_state"]
-#                 ds = row["docstatus"]
-
-#                 if current_manager_role == "reporting":
-#                     # Reporting manager acts first — never enable
-#                     row["enable"] = False
-
-#                 elif current_manager_role == "review":
-#                     # Disabled until reporting manager has approved
-#                     row["enable"] = not (
-#                         wf in REPORTING_MGR_APPROVED_STATES or ds == 1
-#                     )
-
-#                 elif current_manager_role == "hr":
-#                     # enable until review manager has approved
-#                     row["enable"] = not (
-#                         wf in REVIEW_MGR_APPROVED_STATES or ds == 1
-#                     )
-#             else:
-#                 row["enable"] = False
-
-#             row.pop("docstatus", None)
-
-#         return {
-#             "success": True,
-#             "message": "Tour Requests fetched successfully",
-#             "total_records": total_records,
-#             "returned_records": len(records),
-#             "data": records,
-#             "view_type": view_type,
-#             "applied_filters": filter_dict
-#         }
-
-#     except Exception as e:
-#         frappe.log_error(frappe.get_traceback(), "Tour API Error")
-#         return {
-#             "success": False,
-#             "message": str(e),
-#             "data": []
-#         }
-
 
 # @frappe.whitelist()
 # def get_tour_requests(
@@ -1396,9 +813,9 @@ def get_tour_requests(
         if not current_employee:
             return {"success": False, "message": "Employee not found", "data": []}
 
-        # -------------------------
-        # TEAM LOGIC
-        # -------------------------
+
+        employee_role_map = {}
+
         if view_type == "self":
             employee_list = [current_employee]
 
@@ -1445,22 +862,35 @@ def get_tour_requests(
                     as_dict=True
                 )
 
-                # Step 3: Per (employee + parentfield), keep only latest row
-                seen = {}
+
+                max_effective_from = {}
                 for entry in all_entries:
                     key = (entry["parent"], entry["parentfield"])
-                    if key not in seen:
-                        seen[key] = entry
+                    if (
+                        key not in max_effective_from
+                        or entry["effective_from"] > max_effective_from[key]
+                    ):
+                        max_effective_from[key] = entry["effective_from"]
 
-                # Step 4: Include employee if current user is latest approver
-                # for ANY parentfield, exclude current employee themselves
-                employee_set = set()
-                for (emp, field), entry in seen.items():
-                    if entry["user"] == frappe.session.user:
-                        employee_set.add(emp)
+
+                role_field_map = {
+                    "custom_reporting_manager": "reporting",
+                    "custom_review_manager": "review",
+                    "custom_hr_manager": "hr",
+                }
+
+                for entry in all_entries:
+                    key = (entry["parent"], entry["parentfield"])
+                    if (
+                        entry["effective_from"] == max_effective_from[key]
+                        and entry["user"] == frappe.session.user
+                    ):
+                        employee_role_map.setdefault(
+                            entry["parent"], set()
+                        ).add(role_field_map[entry["parentfield"]])
 
                 employee_list = [
-                    emp for emp in employee_set
+                    emp for emp in employee_role_map
                     if emp != current_employee
                 ]
 
@@ -1494,6 +924,11 @@ def get_tour_requests(
             )
 
             employee_list = dept_employees or ["__none__"]
+
+            # Direct reports fetched via reports_to imply a reporting-manager
+            # relationship, so tag them accordingly for the enable logic.
+            for emp in employee_list:
+                employee_role_map.setdefault(emp, set()).add("reporting")
 
             tour_filters = [
                 ["employee", "in", employee_list]
@@ -1583,52 +1018,9 @@ def get_tour_requests(
             ignore_permissions=True
         )
 
-        # -------------------------
-        # Detect current user's manager role in team view
-        # -------------------------
-        current_manager_role = None  # 'reporting', 'review', or 'hr'
-
-        if view_type == "team":
-            today = frappe.utils.today()
-
-            role_check = frappe.db.sql("""
-                SELECT DISTINCT parentfield
-                FROM `tabApprover`
-                WHERE user = %(user)s
-                AND effective_from <= %(today)s
-                AND parenttype = 'Employee'
-                AND parentfield IN (
-                    'custom_reporting_manager',
-                    'custom_review_manager',
-                    'custom_hr_manager'
-                )
-            """, {
-                "user": frappe.session.user,
-                "today": today
-            }, pluck="parentfield")
-
-            # Priority: if user has multiple roles, pick the highest level
-            if 'custom_hr_manager' in role_check:
-                current_manager_role = 'hr'
-            elif 'custom_review_manager' in role_check:
-                current_manager_role = 'review'
-            elif 'custom_reporting_manager' in role_check:
-                current_manager_role = 'reporting'
-
-        # -------------------------
-        # Workflow states
-        # ⚠️ IMPORTANT: These must match your Workflow doctype's exact
-        # "State" column values character-for-character (see Workflow
-        # transition table). Verify by running:
-        #   frappe.db.get_list("Tour Request", pluck="workflow_state", limit_page_length=0)
-        # or checking a real record in the desk UI. A mismatch here will
-        # silently break the enable flag again.
-        # -------------------------
         PENDING_STATE = "Pending"
         REPORTING_MGR_APPROVED_STATE = "Approved by Reporting Manager"
         REVIEW_MGR_APPROVED_STATE = "Approved by Review Manager"
-        # Final state after HR approval, e.g. "Approved by HR" / "Approved"
-        # (not required for the enable logic below, listed for reference)
 
         # -------------------------
         # Build final records with status + enable flag
@@ -1640,50 +1032,31 @@ def get_tour_requests(
             ds = row["docstatus"]
             display_status = row["status"] or ""
 
-            # -------------------------
-            # Terminal states are never actionable
-            # -------------------------
-            # docstatus: 0 = Draft, 1 = Submitted, 2 = Cancelled (Frappe standard)
-            # A cancelled document (ds == 2) means the request was withdrawn/
-            # cancelled — no approver acted on it at that point, so there is
-            # nothing "pending" to enable. Same for a rejected request: the
-            # flow has ended, no further action possible.
-            #
-            # NOTE: we check the *computed* display_status (from get_status())
-            # rather than only the raw workflow_state, because get_status()
-            # may map several raw workflow_state values onto a "Rejected by
-            # ..." label that doesn't literally contain "Reject" itself.
+    
             is_cancelled = ds == 2 or "Cancel" in display_status
             is_rejected = "Reject" in wf or "Reject" in display_status
 
             if is_cancelled or is_rejected:
                 row["enable"] = False
 
-            elif view_type == "team" and current_manager_role:
-                if current_manager_role == "reporting":
-                    # Reporting manager acts first — enabled ONLY while the
-                    # request is freshly Pending and not yet submitted/acted on.
-                    row["enable"] = (wf == PENDING_STATE and ds == 0)
+            elif view_type == "team":
+                # Look up the role(s) the CURRENT user holds specifically
+                # for THIS row's employee (not a single global role).
+                roles = employee_role_map.get(row["employee"], set())
 
-                elif current_manager_role == "review":
-                    # Enabled ONLY once the reporting manager has approved
-                    # (i.e. request is sitting exactly at that state), and not
-                    # yet finalized.
-                    row["enable"] = (
-                        wf == REPORTING_MGR_APPROVED_STATE and ds == 0
-                    )
+                enable = False
 
-                elif current_manager_role == "hr":
-                    # Enabled ONLY once the review manager has approved
-                    # (i.e. request is sitting exactly at that state), and not
-                    # yet finalized. This is the fix for HR seeing enable=True
-                    # before the reporting/review manager has approved.
-                    row["enable"] = (
-                        wf == REVIEW_MGR_APPROVED_STATE and ds == 0
-                    )
+                if "reporting" in roles and wf == PENDING_STATE:
+                    enable = True
 
-                else:
-                    row["enable"] = False
+                if "review" in roles and wf == REPORTING_MGR_APPROVED_STATE:
+                    enable = True
+
+                if "hr" in roles and wf == REVIEW_MGR_APPROVED_STATE:
+                    enable = True
+
+                row["enable"] = enable
+
             else:
                 row["enable"] = False
 
@@ -1706,7 +1079,6 @@ def get_tour_requests(
             "message": str(e),
             "data": []
         }
-
 @frappe.whitelist(allow_guest=False)
 def get_workflow_states(workflow_name):
     """
