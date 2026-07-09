@@ -535,6 +535,14 @@ def get_off_day_work_list(
             frappe.throw("Employee not linked with current user")
 
         # -------------------------
+        # Per-employee role map: employee -> 'reporting' / 'review' / 'hr'
+        # (which approver role, if any, the logged-in user holds for that
+        # employee). Built once here and reused later to decide `enable`
+        # per row, instead of enabling for every approver level at once.
+        # -------------------------
+        employee_role_map = {}
+
+        # -------------------------
         # TEAM LOGIC
         # -------------------------
         if view_type == "self":
@@ -590,17 +598,27 @@ def get_off_day_work_list(
                     if key not in seen:
                         seen[key] = entry
 
-                # Step 4: Include employee if current user is latest approver
-                # for ANY parentfield, exclude current employee themselves
-                employee_set = set()
+                # Step 4: Build role map for employees where current user is
+                # the latest approver — keep employee AND which parentfield
+                # (role) they hold, instead of collapsing to just a set of
+                # employees. Priority per employee: hr > review > reporting,
+                # same convention used in the Leave Application API.
+                roles_by_employee = {}
                 for (emp, field), entry in seen.items():
                     if entry["user"] == user:
-                        employee_set.add(emp)
+                        roles_by_employee.setdefault(emp, set()).add(field)
 
-                employee_list = [
-                    emp for emp in employee_set
-                    if emp != employee
-                ]
+                for emp, fields_found in roles_by_employee.items():
+                    if emp == employee:
+                        continue  # exclude current employee themselves
+                    if 'custom_hr_manager' in fields_found:
+                        employee_role_map[emp] = 'hr'
+                    elif 'custom_review_manager' in fields_found:
+                        employee_role_map[emp] = 'review'
+                    elif 'custom_reporting_manager' in fields_found:
+                        employee_role_map[emp] = 'reporting'
+
+                employee_list = [*employee_role_map.keys()]
 
             if not employee_list:
                 employee_list = ["__none__"]
@@ -623,6 +641,7 @@ def get_off_day_work_list(
             filters=filters,
             fields=[
                 "name",
+                "employee",
                 "date",
                 "workflow_state",
                 "docstatus",
@@ -639,11 +658,20 @@ def get_off_day_work_list(
         )
 
         # -------------------------
-        # Workflow state values: Pending / Approved / Rejected
-        # enable = True only when workflow_state is "Pending"
+        # enable logic:
+        # - Only the reporting manager should be able to act while the
+        #   request is "Pending". Review manager / HR manager never get
+        #   enable=True at this stage (per current business requirement).
+        # - For "self" view there is no approver role, so always False.
         # -------------------------
         for row in records:
-            row["enable"] = (row.get("workflow_state") == "Pending")
+            row_role = employee_role_map.get(row.get("employee")) if view_type == "team" else None
+
+            row["enable"] = (
+                view_type == "team"
+                and row_role == "reporting"
+                and row.get("workflow_state") == "Pending"
+            )
 
         return {
             "success": True,
@@ -658,8 +686,10 @@ def get_off_day_work_list(
         return {
             "success": False,
             "message": str(e)
-        }
-      
+        } 
+
+
+
 @frappe.whitelist(allow_guest=False)
 def get_off_day_work_detail(name):
 

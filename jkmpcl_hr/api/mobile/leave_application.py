@@ -499,7 +499,6 @@ from frappe.model.workflow import get_transitions
 #             "message": str(e)
 #         }
 
-
 @frappe.whitelist()
 def list(
     view_type="self",   # self / team
@@ -559,42 +558,7 @@ def list(
             filters=filters
         )
 
-        # -------------------------
-        # Detect current user's manager role in team view
-        # -------------------------
-        current_manager_role = None  # 'reporting', 'review', or 'hr'
-
-        if view_type == "team":
-            today = frappe.utils.today()
-
-            role_check = frappe.db.sql("""
-                SELECT DISTINCT parentfield
-                FROM `tabApprover`
-                WHERE user = %(user)s
-                AND effective_from <= %(today)s
-                AND parenttype = 'Employee'
-                AND parentfield IN (
-                    'custom_reporting_manager',
-                    'custom_review_manager',
-                    'custom_hr_manager'
-                )
-            """, {
-                "user": user,
-                "today": today
-            }, pluck="parentfield")
-
-            # Priority: if user has multiple roles, pick the highest level
-            if 'custom_hr_manager' in role_check:
-                current_manager_role = 'hr'
-            elif 'custom_review_manager' in role_check:
-                current_manager_role = 'review'
-            elif 'custom_reporting_manager' in role_check:
-                current_manager_role = 'reporting'
-
-        # -------------------------
-        # Workflow states
-        # ⚠️ Replace with your actual Leave Application workflow state names
-        # -------------------------
+     
         REPORTING_MGR_APPROVED_STATES = {
             "Pending Review Manager Approval",
             "Approved by Reporting Manager",
@@ -611,25 +575,70 @@ def list(
             "Approved",
         }
 
-        # -------------------------
-        # Build final records with enable flag
-        # -------------------------
+        
+        employee_role_map = {}  # employee -> 'reporting' / 'review' / 'hr'
+
+        if view_type == "team":
+            today = frappe.utils.today()
+
+            employees_in_list = [*{row["employee"] for row in leave_list if row.get("employee")}]
+
+            if employees_in_list:
+                role_rows = frappe.db.sql("""
+                    SELECT parent AS employee, parentfield
+                    FROM `tabApprover`
+                    WHERE user = %(user)s
+                    AND effective_from <= %(today)s
+                    AND parenttype = 'Employee'
+                    AND parentfield IN (
+                        'custom_reporting_manager',
+                        'custom_review_manager',
+                        'custom_hr_manager'
+                    )
+                    AND parent IN %(employees)s
+                """, {
+                    "user": user,
+                    "today": today,
+                    "employees": employees_in_list
+                }, as_dict=True)
+
+                # Group parentfields found per employee
+                roles_by_employee = {}
+                for r in role_rows:
+                    roles_by_employee.setdefault(r["employee"], set()).add(r["parentfield"])
+
+                # Priority per employee: hr > review > reporting
+                for emp, fields_found in roles_by_employee.items():
+                    if 'custom_hr_manager' in fields_found:
+                        employee_role_map[emp] = 'hr'
+                    elif 'custom_review_manager' in fields_found:
+                        employee_role_map[emp] = 'review'
+                    elif 'custom_reporting_manager' in fields_found:
+                        employee_role_map[emp] = 'reporting'
+
+       
         for row in leave_list:
-            if view_type == "team" and current_manager_role:
+            row_role = employee_role_map.get(row.get("employee")) if view_type == "team" else None
+
+            if row_role:
                 wf = row.get("workflow_state") or ""
                 ds = row.get("docstatus", 0)
 
-                if current_manager_role == "reporting":
-                    # Reporting manager acts first — never enable
-                    row["enable"] = False
+                if row_role == "reporting":
+                    # Reporting manager acts first — enable while it's still
+                    # pending their own approval; disable once they've
+                    # already approved it (or it's submitted).
+                    row["enable"] = not (
+                        wf in REPORTING_MGR_APPROVED_STATES or ds == 1
+                    )
 
-                elif current_manager_role == "review":
+                elif row_role == "review":
                     # enable until reporting manager has approved
                     row["enable"] = not (
                         wf in REPORTING_MGR_APPROVED_STATES or ds == 1
                     )
 
-                elif current_manager_role == "hr":
+                elif row_role == "hr":
                     # enable until review manager has approved
                     row["enable"] = not (
                         wf in REVIEW_MGR_APPROVED_STATES or ds == 1
@@ -637,16 +646,10 @@ def list(
             else:
                 row["enable"] = False
 
-        # -------------------------
-        # Sort so enable=True rows appear first.
-        # Python's sort is stable, so within each group (True/False)
-        # rows keep the relative order from the original order_by.
-        # -------------------------
+       
         leave_list = sorted(leave_list, key=lambda r: not r["enable"])
 
-        # -------------------------
-        # Clean up response fields
-        # -------------------------
+       
         for row in leave_list:
             # Remove docstatus from response if not in original fields
             if not fields or "docstatus" not in fields:
@@ -666,8 +669,6 @@ def list(
             "success": False,
             "message": str(e)
         }
-
-
 
 # @frappe.whitelist()
 # def list(
