@@ -558,7 +558,7 @@ def list(
             filters=filters
         )
 
-     
+        # States that exist ONLY once the reporting manager has approved
         REPORTING_MGR_APPROVED_STATES = {
             "Pending Review Manager Approval",
             "Approved by Reporting Manager",
@@ -568,6 +568,7 @@ def list(
             "Approved",
         }
 
+        # States that exist ONLY once the review manager has approved
         REVIEW_MGR_APPROVED_STATES = {
             "Approved by Review Manager",
             "Pending HR Approval",
@@ -575,7 +576,9 @@ def list(
             "Approved",
         }
 
-        
+        # Final state - fully approved, nothing left for HR to do
+        FULLY_APPROVED_STATE = "Approved"
+
         employee_role_map = {}  # employee -> 'reporting' / 'review' / 'hr'
 
         if view_type == "team":
@@ -616,7 +619,6 @@ def list(
                     elif 'custom_reporting_manager' in fields_found:
                         employee_role_map[emp] = 'reporting'
 
-       
         for row in leave_list:
             row_role = employee_role_map.get(row.get("employee")) if view_type == "team" else None
 
@@ -633,23 +635,28 @@ def list(
                     )
 
                 elif row_role == "review":
-                    # enable until reporting manager has approved
-                    row["enable"] = not (
-                        wf in REPORTING_MGR_APPROVED_STATES or ds == 1
+                    # Review manager acts second — enable ONLY after the
+                    # reporting manager has approved, and until the review
+                    # manager has approved it themselves (or it's submitted).
+                    row["enable"] = (
+                        wf in REPORTING_MGR_APPROVED_STATES
+                        and wf not in REVIEW_MGR_APPROVED_STATES
+                        and ds != 1
                     )
 
                 elif row_role == "hr":
-                    # enable until review manager has approved
-                    row["enable"] = not (
-                        wf in REVIEW_MGR_APPROVED_STATES or ds == 1
+                    # HR manager acts last — enable ONLY after the review
+                    # manager has approved, and until fully approved/submitted.
+                    row["enable"] = (
+                        wf in REVIEW_MGR_APPROVED_STATES
+                        and wf != FULLY_APPROVED_STATE
+                        and ds != 1
                     )
             else:
                 row["enable"] = False
 
-       
         leave_list = sorted(leave_list, key=lambda r: not r["enable"])
 
-       
         for row in leave_list:
             # Remove docstatus from response if not in original fields
             if not fields or "docstatus" not in fields:
