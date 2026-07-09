@@ -1,9 +1,37 @@
-
 import frappe
 from frappe.utils import get_first_day, get_last_day, today, add_days
 from frappe import _
 from frappe.utils import now
+from frappe.utils.file_manager import save_file
+import os
 
+
+def save_checkin_photo(doctype, docname):
+    """
+    Reads uploaded image from request.files (multipart/form-data)
+    and attaches it to the given document's standard Attachments list.
+    Expects the file to be sent with key 'image' in the form-data.
+    Returns the file_url if an image was attached, else None.
+    """
+    if not frappe.request.files:
+        return None
+
+    file_obj = frappe.request.files.get("image")
+    if not file_obj:
+        return None
+
+    content = file_obj.read()
+    filename = file_obj.filename or f"{docname}_photo.jpg"
+
+    file_doc = save_file(
+        fname=filename,
+        content=content,
+        dt=doctype,
+        dn=docname,
+        is_private=0,
+    )
+
+    return file_doc.file_url
 
 
 @frappe.whitelist()
@@ -31,6 +59,9 @@ def check_in(employeeId, latitude=None, longitude=None,):
         attendance.insert()
         frappe.db.commit()
 
+        # Attach uploaded image (if any) to this Employee Checkin's Attachments
+        photo_url = save_checkin_photo("Employee Checkin", attendance.name)
+
         frappe.logger().info(f"Check-in record created successfully: {attendance.name}")
 
     except Exception as e:
@@ -53,7 +84,8 @@ def check_in(employeeId, latitude=None, longitude=None,):
                 "check_in_time": attendance.check_in,
                 "latitude": latitude,
                 "longitude": longitude,
-                "log_type": "IN"
+                "log_type": "IN",
+                "photo": photo_url,
             },
         }
 
@@ -99,6 +131,9 @@ def check_out(employeeId, latitude=None, longitude=None):
         check_out_record.insert()
         frappe.db.commit()
 
+        # Attach uploaded image (if any) to this Employee Checkin's Attachments
+        photo_url = save_checkin_photo("Employee Checkin", check_out_record.name)
+
         frappe.logger().info(f"Check-out record created successfully: {check_out_record.name}")
 
     except Exception as e:
@@ -122,7 +157,8 @@ def check_out(employeeId, latitude=None, longitude=None):
                 # "latitude": latitude,
                 # "longitude": longitude,
                 "log_type": "OUT",
-                "related_check_in": last_checkin
+                "related_check_in": last_checkin,
+                "photo": photo_url,
             }
         }
 

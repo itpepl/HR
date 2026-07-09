@@ -12,6 +12,347 @@ from frappe.utils import (
     date_diff,
     formatdate
 )
+
+
+# @frappe.whitelist()
+# def get_manual_punches(
+#     view_type="self",
+#     filters=None,
+#     order_by="creation desc",
+#     limit_page_length=None,
+#     limit_start=0,
+# ):
+#     try:
+#         user = frappe.session.user
+
+#         filters = frappe.parse_json(filters) if filters else []
+
+#         if isinstance(filters, dict):
+#             filters = [[k, "=", v] for k, v in filters.items()]
+
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": user},
+#             "name"
+#         )
+
+#         if not employee:
+#             frappe.throw("Employee not linked with current user")
+
+#         if view_type == "self":
+#             filters.append(["employee", "=", employee])
+
+#         elif view_type == "team":
+#             filters.append(["employee", "!=", employee])
+
+#         else:
+#             frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+#         # Total Count (without pagination)
+#         total_records = frappe.get_list(
+#             "Attendance Request",
+#             filters=filters
+#         )
+
+#         records = frappe.get_list(
+#             "Attendance Request",
+#             filters=filters,
+#             fields=[
+#                 "name",
+#                 "employee",
+#                 "employee_name",
+#                 "from_date",
+#                 "to_date",
+#                 "explanation",
+#                 "reason",
+#                 "custom_punch_type",
+#                 "custom_in_time",
+#                 "custom_out_time",
+#                 "workflow_state",
+#                 "custom_note",
+#                 "creation",
+#                 "department",
+#                 "company",
+#                 "branch",
+#                 "shift"
+#             ],
+#             order_by=order_by,
+#             limit_page_length=cint(limit_page_length) if limit_page_length else None,
+#             limit_start=cint(limit_start)
+#         )
+
+#         for row in records:
+#             if row.get("custom_note"):
+#                 row["custom_note"] = strip_html(row["custom_note"]).strip()
+
+#         return {
+#             "success": True,
+#             "data": records,
+#             "total_records": len(total_records),   # total matching records
+#             "count": len(records),            # current page count
+#             "message": "Manual Punch List Loaded Successfully!"
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Manual Punch List API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
+
+# @frappe.whitelist()
+# def get_manual_punches(
+#     view_type="self",
+#     filters=None,
+#     order_by="creation desc",
+#     limit_page_length=None,
+#     limit_start=0,
+# ):
+#     try:
+#         user = frappe.session.user
+
+#         filters = frappe.parse_json(filters) if filters else []
+
+#         if isinstance(filters, dict):
+#             filters = [[k, "=", v] for k, v in filters.items()]
+
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": user},
+#             "name"
+#         )
+
+#         if not employee:
+#             frappe.throw("Employee not linked with current user")
+
+#         # -------------------------
+#         # TEAM LOGIC
+#         # -------------------------
+#         if view_type == "self":
+#             filters.append(["employee", "=", employee])
+
+#         elif view_type == "team":
+#             today = frappe.utils.today()
+
+#             # Step 1: Get all employees where current user appears as approver
+#             candidate_employees = frappe.db.sql("""
+#                 SELECT DISTINCT parent
+#                 FROM `tabApprover`
+#                 WHERE user = %(user)s
+#                 AND effective_from <= %(today)s
+#                 AND parenttype = 'Employee'
+#                 AND parentfield IN (
+#                     'custom_reporting_manager',
+#                     'custom_review_manager',
+#                     'custom_hr_manager'
+#                 )
+#             """, {
+#                 "user": user,
+#                 "today": today
+#             }, pluck="parent")
+
+#             employee_list = []
+
+#             if candidate_employees:
+#                 placeholders = ", ".join(["%s"] * len(candidate_employees))
+
+#                 # Step 2: Fetch ALL approver rows for candidate employees
+#                 all_entries = frappe.db.sql("""
+#                     SELECT parent, user, parentfield, effective_from
+#                     FROM `tabApprover`
+#                     WHERE parent IN ({placeholders})
+#                     AND effective_from <= %s
+#                     AND parenttype = 'Employee'
+#                     AND parentfield IN (
+#                         'custom_reporting_manager',
+#                         'custom_review_manager',
+#                         'custom_hr_manager'
+#                     )
+#                     ORDER BY parent ASC, parentfield ASC, effective_from DESC
+#                 """.format(placeholders=placeholders),
+#                     tuple(candidate_employees) + (today,),
+#                     as_dict=True
+#                 )
+
+#                 # Step 3: Per (employee + parentfield), keep only latest row
+#                 seen = {}
+#                 for entry in all_entries:
+#                     key = (entry["parent"], entry["parentfield"])
+#                     if key not in seen:
+#                         seen[key] = entry
+
+#                 # Step 4: Include employee if current user is latest approver
+#                 # for ANY parentfield, exclude current employee themselves
+#                 employee_set = set()
+#                 for (emp, field), entry in seen.items():
+#                     if entry["user"] == user:
+#                         employee_set.add(emp)
+
+#                 employee_list = [
+#                     emp for emp in employee_set
+#                     if emp != employee
+#                 ]
+
+#             if not employee_list:
+#                 employee_list = ["__none__"]
+
+#             filters.append(["employee", "in", employee_list])
+
+#         else:
+#             frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+#         # -------------------------
+#         # Total Count (without pagination)
+#         # -------------------------
+#         total_records = frappe.get_list(
+#             "Attendance Request",
+#             filters=filters
+#         )
+
+#         records = frappe.get_list(
+#             "Attendance Request",
+#             filters=filters,
+#             fields=[
+#                 "name",
+#                 "employee",
+#                 "employee_name",
+#                 "from_date",
+#                 "to_date",
+#                 "explanation",
+#                 "reason",
+#                 "custom_punch_type",
+#                 "custom_in_time",
+#                 "custom_out_time",
+#                 "workflow_state",
+#                 "docstatus",
+#                 "custom_note",
+#                 "creation",
+#                 "department",
+#                 "company",
+#                 "branch",
+#                 "shift"
+#             ],
+#             order_by=order_by,
+#             limit_page_length=cint(limit_page_length) if limit_page_length else None,
+#             limit_start=cint(limit_start)
+#         )
+
+#         # -------------------------
+#         # Detect current user's manager role in team view
+#         # -------------------------
+#         current_manager_role = None  # 'reporting', 'review', 'hr'
+
+#         if view_type == "team":
+#             today = frappe.utils.today()
+
+#             role_check = frappe.db.sql("""
+#                 SELECT DISTINCT parentfield
+#                 FROM `tabApprover`
+#                 WHERE user = %(user)s
+#                 AND effective_from <= %(today)s
+#                 AND parenttype = 'Employee'
+#                 AND parentfield IN (
+#                     'custom_reporting_manager',
+#                     'custom_review_manager',
+#                     'custom_hr_manager'
+#                 )
+#             """, {
+#                 "user": user,
+#                 "today": today
+#             }, pluck="parentfield")
+
+#             if 'custom_hr_manager' in role_check:
+#                 current_manager_role = 'hr'
+#             elif 'custom_review_manager' in role_check:
+#                 current_manager_role = 'review'
+#             elif 'custom_reporting_manager' in role_check:
+#                 current_manager_role = 'reporting'
+
+#         # -------------------------
+#         # Workflow states from screenshot
+#         #
+#         # Reporting Manager acts on  → Pending
+#         # Review Manager acts on     → Approved by Reporting Manager
+#         # HR acts on                 → Approved by Review Manager
+#         # CEO acts on                → Approved by HR
+#         #
+#         # Final states (no action possible)
+#         # -------------------------
+#         FINAL_STATES = {
+#             "Final Approved",
+#             "Rejected",
+#             "Rejected by Reporting Manager",
+#             "Rejected by Review Manager",
+#             "Rejected by HR",
+#         }
+
+#         # States that mean Reporting Manager has approved
+#         REPORTING_MGR_APPROVED_STATES = {
+#             "Approved by Reporting Manager",
+#             "Approved by Review Manager",
+#             "Approved by HR",
+#             "Final Approved",
+#         }
+
+#         # States that mean Review Manager has approved
+#         REVIEW_MGR_APPROVED_STATES = {
+#             "Approved by Review Manager",
+#             "Approved by HR",
+#             "Final Approved",
+#         }
+
+#         # -------------------------
+#         # Build response
+#         # -------------------------
+#         for row in records:
+#             if row.get("custom_note"):
+#                 row["custom_note"] = strip_html(row["custom_note"]).strip()
+
+#             wf = row.get("workflow_state") or ""
+#             ds = row.get("docstatus", 0)
+
+#             if view_type == "self":
+#                 # Self view: enable if not in a final state
+#                 row["enable"] = wf not in FINAL_STATES
+
+#             elif view_type == "team" and current_manager_role:
+
+#                 if current_manager_role == "reporting":
+#                     # Reporting manager acts on Pending only
+#                     row["enable"] = wf == "Pending"
+
+#                 elif current_manager_role == "review":
+#                     # Enable only if reporting manager has approved
+#                     row["enable"] = wf in REPORTING_MGR_APPROVED_STATES
+
+#                 elif current_manager_role == "hr":
+#                     # Enable only if review manager has approved
+#                     row["enable"] = wf in REVIEW_MGR_APPROVED_STATES
+
+#                 else:
+#                     row["enable"] = False
+#             else:
+#                 row["enable"] = False
+
+#             # Remove docstatus from response
+#             row.pop("docstatus", None)
+
+#         return {
+#             "success": True,
+#             "data": records,
+#             "total_records": len(total_records),
+#             "count": len(records),
+#             "message": "Manual Punch List Loaded Successfully!"
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Manual Punch List API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
+
+
 @frappe.whitelist()
 def get_manual_punches(
     view_type="self",
@@ -37,20 +378,93 @@ def get_manual_punches(
         if not employee:
             frappe.throw("Employee not linked with current user")
 
+        is_ceo = "CEO" in frappe.get_roles(user)
+
+        # employee_name -> set of roles the current user holds for that employee
+        # e.g. {"PE0556: Maitry": {"reporting"}, "0002: Aman Gupta": {"hr", "ceo"}}
+        employee_roles = {}
+
         if view_type == "self":
             filters.append(["employee", "=", employee])
 
         elif view_type == "team":
-            filters.append(["employee", "!=", employee])
+            today = frappe.utils.today()
+
+            # Step 1: employees where current user appears as an approver (any role)
+            candidate_employees = frappe.db.sql("""
+                SELECT DISTINCT parent
+                FROM `tabApprover`
+                WHERE user = %(user)s
+                AND effective_from <= %(today)s
+                AND parenttype = 'Employee'
+                AND parentfield IN (
+                    'custom_reporting_manager',
+                    'custom_review_manager',
+                    'custom_hr_manager'
+                )
+            """, {
+                "user": user,
+                "today": today
+            }, pluck="parent")
+
+            if candidate_employees:
+                placeholders = ", ".join(["%s"] * len(candidate_employees))
+
+                # Step 2: fetch ALL approver rows for candidate employees
+                all_entries = frappe.db.sql("""
+                    SELECT parent, user, parentfield, effective_from
+                    FROM `tabApprover`
+                    WHERE parent IN ({placeholders})
+                    AND effective_from <= %s
+                    AND parenttype = 'Employee'
+                    AND parentfield IN (
+                        'custom_reporting_manager',
+                        'custom_review_manager',
+                        'custom_hr_manager'
+                    )
+                    ORDER BY parent ASC, parentfield ASC, effective_from DESC
+                """.format(placeholders=placeholders),
+                    tuple(candidate_employees) + (today,),
+                    as_dict=True
+                )
+
+                # Step 3: per (employee, parentfield) keep only the latest row
+                seen = {}
+                for entry in all_entries:
+                    key = (entry["parent"], entry["parentfield"])
+                    if key not in seen:
+                        seen[key] = entry
+
+                # Step 4: record which role(s) the current user holds, PER EMPLOYEE
+                role_map = {
+                    "custom_reporting_manager": "reporting",
+                    "custom_review_manager": "review",
+                    "custom_hr_manager": "hr",
+                }
+                for (emp, field), entry in seen.items():
+                    if entry["user"] == user and emp != employee:
+                        employee_roles.setdefault(emp, set()).add(role_map[field])
+
+            # CEO applies to every employee, on top of any approver-based role
+            if is_ceo:
+                all_employees = frappe.get_list(
+                    "Employee",
+                    filters=[["name", "!=", employee]],
+                    pluck="name",
+                )
+                for emp in all_employees:
+                    employee_roles.setdefault(emp, set()).add("ceo")
+
+            employee_list = list(employee_roles.keys()) or ["__none__"]
+            filters.append(["employee", "in", employee_list])
 
         else:
             frappe.throw("Invalid view_type. Use 'self' or 'team'.")
 
+        # -------------------------
         # Total Count (without pagination)
-        total_records = frappe.get_list(
-            "Attendance Request",
-            filters=filters
-        )
+        # -------------------------
+        total_records = frappe.db.count("Attendance Request", filters=filters)
 
         records = frappe.get_list(
             "Attendance Request",
@@ -67,6 +481,7 @@ def get_manual_punches(
                 "custom_in_time",
                 "custom_out_time",
                 "workflow_state",
+                "docstatus",
                 "custom_note",
                 "creation",
                 "department",
@@ -79,15 +494,82 @@ def get_manual_punches(
             limit_start=cint(limit_start)
         )
 
+        # -------------------------
+        # Final states (no action possible)
+        # -------------------------
+        FINAL_STATES = {
+            "Final Approved",
+            "Rejected",
+            "Rejected by Reporting Manager",
+            "Rejected by Review Manager",
+            "Rejected by HR",
+        }
+
+        # -------------------------
+        # Path helpers - matches the workflow's transition Conditions exactly
+        # -------------------------
+        def is_hr_direct_path(reason, punch_type, note):
+            # Approved by Reporting Manager -> Approved by HR -> (CEO) -> Final Approved
+            return reason == "Miss Punch" and (
+                punch_type == "Both" or bool(note)
+            )
+
+        def is_review_path(reason, punch_type, note):
+            # Approved by Reporting Manager -> Approved by Review Manager -> (HR) -> Final Approved
+            return (
+                reason == "Miss Punch" and punch_type != "Both" and not note
+            ) or reason == "System Error"
+
+        # -------------------------
+        # Build response
+        # -------------------------
         for row in records:
             if row.get("custom_note"):
                 row["custom_note"] = strip_html(row["custom_note"]).strip()
 
+            wf = row.get("workflow_state") or ""
+            reason = row.get("reason") or ""
+            punch_type = row.get("custom_punch_type") or ""
+            note = row.get("custom_note") or ""
+
+            if view_type == "self":
+                row["enable"] = wf not in FINAL_STATES
+
+            elif view_type == "team":
+                roles = employee_roles.get(row.get("employee"), set())
+                enable = False
+
+                if "reporting" in roles and wf == "Pending":
+                    enable = True
+
+                if "review" in roles and wf == "Approved by Reporting Manager" \
+                        and is_review_path(reason, punch_type, note):
+                    enable = True
+
+                if "hr" in roles:
+                    if wf == "Approved by Reporting Manager" \
+                            and is_hr_direct_path(reason, punch_type, note):
+                        enable = True
+                    if wf == "Approved by Review Manager" \
+                            and is_review_path(reason, punch_type, note):
+                        enable = True
+
+                if "ceo" in roles and wf == "Approved by HR" \
+                        and is_hr_direct_path(reason, punch_type, note):
+                    enable = True
+
+                row["enable"] = enable
+
+            else:
+                row["enable"] = False
+
+            row.pop("docstatus", None)
+
         return {
             "success": True,
             "data": records,
-            "total_records": len(total_records),   # total matching records
-            "count": len(records),            # current page count
+            "total_records": total_records,
+            "count": len(records),
             "message": "Manual Punch List Loaded Successfully!"
         }
 
@@ -97,7 +579,7 @@ def get_manual_punches(
             "success": False,
             "message": str(e)
         }
-
+     
 
 @frappe.whitelist(allow_guest=False)
 def create_manual_punch(data):

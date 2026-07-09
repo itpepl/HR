@@ -364,68 +364,140 @@ def get_user_for_cc(emp_id):
         }
 
 from frappe.model.workflow import get_transitions
-@frappe.whitelist()
-def list(
-    filters=None,
-    or_filters=None,
-    fields=["name","employee","leave_type","from_date","to_date","status","workflow_state","total_leave_days","leave_approver_name","workflow_state","description","custom_half_day_time","half_day_date","half_day","custom_proof_document"],
-    order_by=None,
-    limit_page_length=0,
-    limit_start=0,
-):
-    try:
-        employee = frappe.db.get_value(
-            "Employee",
-            {"user_id": frappe.session.user},
-            "name"
-        )
+# @frappe.whitelist()
+# def list(
+#     filters=None,
+#     or_filters=None,
+#     fields=["name","employee","leave_type","from_date","to_date","status","workflow_state","total_leave_days","leave_approver_name","workflow_state","description","custom_half_day_time","half_day_date","half_day","custom_proof_document"],
+#     order_by=None,
+#     limit_page_length=0,
+#     limit_start=0,
+# ):
+#     try:
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": frappe.session.user},
+#             "name"
+#         )
 
-        if not employee:
-            frappe.throw("Employee not linked with current user")
+#         if not employee:
+#             frappe.throw("Employee not linked with current user")
 
-        employee_list = [employee]
+#         employee_list = [employee]
 
-        filters = frappe.parse_json(filters) if filters else []
+#         filters = frappe.parse_json(filters) if filters else []
 
-        if isinstance(filters, dict):
-            filters = [[k, "=", v] for k, v in filters.items()]
+#         if isinstance(filters, dict):
+#             filters = [[k, "=", v] for k, v in filters.items()]
 
-        filters.append(["employee", "in", employee_list])
+#         filters.append(["employee", "in", employee_list])
 
-        parsed_fields = frappe.parse_json(fields)
+#         parsed_fields = frappe.parse_json(fields)
 
-        if "employee" not in parsed_fields:
-            parsed_fields.append("employee")
+#         if "employee" not in parsed_fields:
+#             parsed_fields.append("employee")
 
-        leave_application_list_raw = frappe.get_list(
-            "Leave Application",
-            filters=filters,
-            or_filters=or_filters,
-            fields=parsed_fields,
-            order_by=order_by,
-            limit_page_length=limit_page_length,
-            limit_start=limit_start
-        )
+#         leave_application_list_raw = frappe.get_list(
+#             "Leave Application",
+#             filters=filters,
+#             or_filters=or_filters,
+#             fields=parsed_fields,
+#             order_by=order_by,
+#             limit_page_length=limit_page_length,
+#             limit_start=limit_start
+#         )
 
-        total_count = len(leave_application_list_raw)
+#         total_count = len(leave_application_list_raw)
 
-    except Exception as e:
-        frappe.log_error("Error While Getting Leave Application List", str(e))
-        frappe.clear_messages()
-        frappe.local.response["message"] = {
-            "success": False,
-            "message": str(e),
-            "data": None
-        }
+#     except Exception as e:
+#         frappe.log_error("Error While Getting Leave Application List", str(e))
+#         frappe.clear_messages()
+#         frappe.local.response["message"] = {
+#             "success": False,
+#             "message": str(e),
+#             "data": None
+#         }
 
-    else:
-        frappe.local.response["message"] = {
-            "success": True,
-            "message": "Leave Application List Loaded Successfully!",
-            "data": leave_application_list_raw,
-            "count": total_count
-        }
+#     else:
+#         frappe.local.response["message"] = {
+#             "success": True,
+#             "message": "Leave Application List Loaded Successfully!",
+#             "data": leave_application_list_raw,
+#             "count": total_count
+#         }
 
+
+# @frappe.whitelist()
+# def list(
+#     view_type="self",   # self / team
+#     filters=None,
+#     fields=None,
+#     order_by="creation desc",
+#     limit_page_length=None,
+#     limit_start=0,
+# ):
+#     try:
+#         user = frappe.session.user
+
+#         # Parse filters safely
+#         filters = frappe.parse_json(filters) if filters else []
+
+#         if isinstance(filters, dict):
+#             filters = [[k, "=", v] for k, v in filters.items()]
+
+#         # Get logged-in employee
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": user},
+#             "name"
+#         )
+
+#         if not employee:
+#             frappe.throw("Employee not linked with current user")
+
+#         if view_type == "self":
+#             filters.append(["employee", "=", employee])
+
+
+#         elif view_type == "team":
+#             filters.append(["employee", "!=", employee])
+
+#         else:
+#             frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+#         leave_list = frappe.get_list(
+#             "Leave Application",
+#             filters=filters,
+#             fields=fields or [
+#                 "name","employee","employee_name",
+#                 "leave_type","from_date","to_date",
+#                 "status","workflow_state","total_leave_days",
+#                 "leave_approver_name","description",
+#                 "custom_half_day_time","half_day_date",
+#                 "half_day","custom_proof_document"
+#             ],
+#             order_by=order_by,
+#             limit_page_length=limit_page_length,
+#             limit_start=limit_start
+#         )
+#         total_records = frappe.get_list(
+#             "Leave Application",
+#             filters=filters
+#         )
+#         return {
+#             "success": True,
+#             "data": leave_list,
+#             "count": len(leave_list),
+#             "total_count": len(total_records),
+#             "message": "Leave Application List Loaded Successfully!",
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Leave List API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
 
 @frappe.whitelist()
 def list(
@@ -458,7 +530,6 @@ def list(
         if view_type == "self":
             filters.append(["employee", "=", employee])
 
-
         elif view_type == "team":
             filters.append(["employee", "!=", employee])
 
@@ -469,26 +540,133 @@ def list(
             "Leave Application",
             filters=filters,
             fields=fields or [
-                "name","employee","employee_name",
-                "leave_type","from_date","to_date",
-                "status","workflow_state","total_leave_days",
-                "leave_approver_name","description",
-                "custom_half_day_time","half_day_date",
-                "half_day","custom_proof_document"
+                "name", "employee", "employee_name",
+                "leave_type", "from_date", "to_date",
+                "status", "workflow_state", "total_leave_days",
+                "leave_approver_name", "description",
+                "custom_half_day_time", "half_day_date",
+                "half_day", "custom_proof_document",
+                "docstatus",
             ],
             order_by=order_by,
             limit_page_length=limit_page_length,
             limit_start=limit_start
         )
+
         total_records = frappe.get_list(
             "Leave Application",
             filters=filters
         )
+
+        # States that exist ONLY once the reporting manager has approved
+        REPORTING_MGR_APPROVED_STATES = {
+            "Pending Review Manager Approval",
+            "Approved by Reporting Manager",
+            "Approved by Review Manager",
+            "Pending HR Approval",
+            "Approved by HR Manager",
+            "Approved",
+        }
+
+        # States that exist ONLY once the review manager has approved
+        REVIEW_MGR_APPROVED_STATES = {
+            "Approved by Review Manager",
+            "Pending HR Approval",
+            "Approved by HR Manager",
+            "Approved",
+        }
+
+        # Final state - fully approved, nothing left for HR to do
+        FULLY_APPROVED_STATE = "Approved"
+
+        employee_role_map = {}  # employee -> 'reporting' / 'review' / 'hr'
+
+        if view_type == "team":
+            today = frappe.utils.today()
+
+            employees_in_list = [*{row["employee"] for row in leave_list if row.get("employee")}]
+
+            if employees_in_list:
+                role_rows = frappe.db.sql("""
+                    SELECT parent AS employee, parentfield
+                    FROM `tabApprover`
+                    WHERE user = %(user)s
+                    AND effective_from <= %(today)s
+                    AND parenttype = 'Employee'
+                    AND parentfield IN (
+                        'custom_reporting_manager',
+                        'custom_review_manager',
+                        'custom_hr_manager'
+                    )
+                    AND parent IN %(employees)s
+                """, {
+                    "user": user,
+                    "today": today,
+                    "employees": employees_in_list
+                }, as_dict=True)
+
+                # Group parentfields found per employee
+                roles_by_employee = {}
+                for r in role_rows:
+                    roles_by_employee.setdefault(r["employee"], set()).add(r["parentfield"])
+
+                # Priority per employee: hr > review > reporting
+                for emp, fields_found in roles_by_employee.items():
+                    if 'custom_hr_manager' in fields_found:
+                        employee_role_map[emp] = 'hr'
+                    elif 'custom_review_manager' in fields_found:
+                        employee_role_map[emp] = 'review'
+                    elif 'custom_reporting_manager' in fields_found:
+                        employee_role_map[emp] = 'reporting'
+
+        for row in leave_list:
+            row_role = employee_role_map.get(row.get("employee")) if view_type == "team" else None
+
+            if row_role:
+                wf = row.get("workflow_state") or ""
+                ds = row.get("docstatus", 0)
+
+                if row_role == "reporting":
+                    # Reporting manager acts first — enable while it's still
+                    # pending their own approval; disable once they've
+                    # already approved it (or it's submitted).
+                    row["enable"] = not (
+                        wf in REPORTING_MGR_APPROVED_STATES or ds == 1
+                    )
+
+                elif row_role == "review":
+                    # Review manager acts second — enable ONLY after the
+                    # reporting manager has approved, and until the review
+                    # manager has approved it themselves (or it's submitted).
+                    row["enable"] = (
+                        wf in REPORTING_MGR_APPROVED_STATES
+                        and wf not in REVIEW_MGR_APPROVED_STATES
+                        and ds != 1
+                    )
+
+                elif row_role == "hr":
+                    # HR manager acts last — enable ONLY after the review
+                    # manager has approved, and until fully approved/submitted.
+                    row["enable"] = (
+                        wf in REVIEW_MGR_APPROVED_STATES
+                        and wf != FULLY_APPROVED_STATE
+                        and ds != 1
+                    )
+            else:
+                row["enable"] = False
+
+        leave_list = sorted(leave_list, key=lambda r: not r["enable"])
+
+        for row in leave_list:
+            # Remove docstatus from response if not in original fields
+            if not fields or "docstatus" not in fields:
+                row.pop("docstatus", None)
+
         return {
             "success": True,
             "data": leave_list,
             "count": len(leave_list),
-            "total_count": len(total_records),
+            "total_records": len(total_records),
             "message": "Leave Application List Loaded Successfully!",
         }
 
@@ -499,8 +677,182 @@ def list(
             "message": str(e)
         }
 
+# @frappe.whitelist()
+# def list(
+#     view_type="self",   # self / team
+#     filters=None,
+#     fields=None,
+#     order_by=None,
+#     limit_page_length=None,
+#     limit_start=0,
+# ):
+#     try:
+#         user = frappe.session.user
 
+#         # Parse filters safely
+#         filters = frappe.parse_json(filters) if filters else []
 
+#         if isinstance(filters, dict):
+#             filters = [[k, "=", v] for k, v in filters.items()]
+
+#         # Get logged-in employee
+#         employee = frappe.db.get_value(
+#             "Employee",
+#             {"user_id": user},
+#             "name"
+#         )
+
+#         if not employee:
+#             frappe.throw("Employee not linked with current user")
+
+#         if view_type == "self":
+#             filters.append(["employee", "=", employee])
+
+#         elif view_type == "team":
+#             filters.append(["employee", "!=", employee])
+
+#         else:
+#             frappe.throw("Invalid view_type. Use 'self' or 'team'.")
+
+#         # -------------------------
+#         # IMPORTANT: fetch ALL matching records here (no DB-level
+#         # pagination). We need the full set so we can sort by
+#         # `enable` globally, THEN paginate. If we paginate at the
+#         # DB level first, each page only sees its own raw slice and
+#         # true/false rows get mixed together per page.
+#         # -------------------------
+#         leave_list = frappe.get_list(
+#             "Leave Application",
+#             filters=filters,
+#             fields=fields or [
+#                 "name", "employee", "employee_name",
+#                 "leave_type", "from_date", "to_date",
+#                 "status", "workflow_state", "total_leave_days",
+#                 "leave_approver_name", "description",
+#                 "custom_half_day_time", "half_day_date",
+#                 "half_day", "custom_proof_document",
+#                 "docstatus",
+#             ],
+#             order_by=order_by or "creation desc",
+#         )
+
+#         total_records = len(leave_list)
+
+#         # -------------------------
+#         # Detect current user's manager role in team view
+#         # -------------------------
+#         current_manager_role = None  # 'reporting', 'review', or 'hr'
+
+#         if view_type == "team":
+#             today = frappe.utils.today()
+
+#             role_check = frappe.db.sql("""
+#                 SELECT DISTINCT parentfield
+#                 FROM `tabApprover`
+#                 WHERE user = %(user)s
+#                 AND effective_from <= %(today)s
+#                 AND parenttype = 'Employee'
+#                 AND parentfield IN (
+#                     'custom_reporting_manager',
+#                     'custom_review_manager',
+#                     'custom_hr_manager'
+#                 )
+#             """, {
+#                 "user": user,
+#                 "today": today
+#             }, pluck="parentfield")
+
+#             # Priority: if user has multiple roles, pick the highest level
+#             if 'custom_hr_manager' in role_check:
+#                 current_manager_role = 'hr'
+#             elif 'custom_review_manager' in role_check:
+#                 current_manager_role = 'review'
+#             elif 'custom_reporting_manager' in role_check:
+#                 current_manager_role = 'reporting'
+
+#         # -------------------------
+#         # Workflow states
+#         # ⚠️ Replace with your actual Leave Application workflow state names
+#         # -------------------------
+#         REPORTING_MGR_APPROVED_STATES = {
+#             "Pending Review Manager Approval",
+#             "Approved by Reporting Manager",
+#             "Approved by Review Manager",
+#             "Pending HR Approval",
+#             "Approved by HR Manager",
+#             "Approved",
+#         }
+
+#         REVIEW_MGR_APPROVED_STATES = {
+#             "Approved by Review Manager",
+#             "Pending HR Approval",
+#             "Approved by HR Manager",
+#             "Approved",
+#         }
+
+#         # -------------------------
+#         # Build final records with enable flag
+#         # -------------------------
+#         for row in leave_list:
+#             if view_type == "team" and current_manager_role:
+#                 wf = row.get("workflow_state") or ""
+#                 ds = row.get("docstatus", 0)
+
+#                 if current_manager_role == "reporting":
+#                     row["enable"] = False
+
+#                 elif current_manager_role == "review":
+#                     row["enable"] = not (
+#                         wf in REPORTING_MGR_APPROVED_STATES or ds == 1
+#                     )
+
+#                 elif current_manager_role == "hr":
+#                     row["enable"] = not (
+#                         wf in REVIEW_MGR_APPROVED_STATES or ds == 1
+#                     )
+#             else:
+#                 row["enable"] = False
+
+#         # -------------------------
+#         # Sort GLOBALLY so all enable=True rows come before all
+#         # enable=False rows, across the entire result set (not just
+#         # within a page). Stable sort keeps relative order from
+#         # order_by within each True/False group.
+#         # -------------------------
+#         leave_list = sorted(leave_list, key=lambda r: not r["enable"])
+
+#         # -------------------------
+#         # Apply pagination AFTER sorting, on the globally sorted list
+#         # -------------------------
+#         if limit_page_length:
+#             limit_start = int(limit_start or 0)
+#             limit_page_length = int(limit_page_length)
+#             paginated_list = leave_list[limit_start: limit_start + limit_page_length]
+#         else:
+#             paginated_list = leave_list
+
+#         # -------------------------
+#         # Clean up response fields
+#         # -------------------------
+#         for row in paginated_list:
+#             if not fields or "docstatus" not in fields:
+#                 row.pop("docstatus", None)
+
+#         return {
+#             "success": True,
+#             "data": paginated_list,
+#             "count": len(paginated_list),
+#             "total_records": total_records,
+#             "message": "Leave Application List Loaded Successfully!",
+#         }
+
+#     except Exception as e:
+#         frappe.log_error(frappe.get_traceback(), "Leave List API Error")
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
+    
 from jkmpcl_hr.py.utils import get_emp_reporting_manager
 
 from frappe.utils import today, getdate
