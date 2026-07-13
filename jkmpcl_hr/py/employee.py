@@ -2,7 +2,7 @@ import frappe
 from calendar import monthrange
 from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day, add_months, month_diff, flt
 from jkmpcl_hr.py.utils import get_emp_reporting_manager
-
+from frappe import _
 # import calendar
 from datetime import date,datetime
 from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
@@ -74,6 +74,30 @@ def validate(doc, event):
     # -------------------------------------------------
     if doc.custom_suspended_from_date:
         handle_suspension_log(doc)
+
+    # -------------------------------------------------
+    # HQ Type Handle Function
+    # -------------------------------------------------    
+    
+    validate_geofence_settings(doc)
+
+def validate_geofence_settings(doc):
+
+    # Geofence is enabled -> HQ Type is mandatory
+    if not doc.custom_head_quarter_type:
+        frappe.throw(_("Please select Head Quarter Type."))
+
+    # Plant / MCC / BMC -> Warehouse is mandatory
+    if doc.custom_head_quarter_type in ("Plant", "MCC", "BMC"):
+        if not doc.custom_warehouse:
+            frappe.throw(_("Please select Warehouse."))
+        doc.custom_supplier = None
+
+    # MPP -> Supplier is mandatory
+    elif doc.custom_head_quarter_type == "MPP":
+        if not doc.custom_supplier:
+            frappe.throw(_("Please select Supplier."))
+        doc.custom_warehouse = None
 
 
 # =====================================================
