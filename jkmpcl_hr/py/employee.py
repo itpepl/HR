@@ -1,6 +1,6 @@
 import frappe
 from calendar import monthrange
-from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day, add_months, month_diff, flt
+from frappe.utils import getdate, today,add_days,now_datetime, get_last_day, get_first_day, add_months, month_diff, flt,add_years
 from jkmpcl_hr.py.utils import get_emp_reporting_manager
 from frappe import _
 # import calendar
@@ -80,7 +80,24 @@ def validate(doc, event):
     # -------------------------------------------------    
     
     validate_geofence_settings(doc)
+    set_date_of_retirement(doc)
 
+def set_date_of_retirement(doc):
+    if not doc.date_of_birth:
+        return
+
+    retirement_age = frappe.db.get_single_value("HR Settings", "retirement_age")
+
+    if not retirement_age:
+        frappe.throw(
+            _("Please set <b>Retirement Age (In Years)</b> in <b>HR Settings</b>.")
+        )
+
+    doc.date_of_retirement = add_years(
+        doc.date_of_birth,
+        int(retirement_age)
+    )
+    
 def validate_geofence_settings(doc):
 
     # Geofence is enabled -> HQ Type is mandatory
