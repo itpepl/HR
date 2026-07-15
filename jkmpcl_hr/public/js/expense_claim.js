@@ -53,7 +53,27 @@ frappe.ui.form.on('Expense Claim', {
 
     custom_period_of_leave_to: function (frm) {
         calculate_lta_days(frm);
-    }
+    },
+    onload: function (frm) {
+		erpnext.accounts.dimensions.setup_dimension_filters(frm, frm.doctype);
+
+		if (frm.doc.docstatus == 0) {
+			return frappe.call({
+				method: "hrms.hr.doctype.leave_application.leave_application.get_mandatory_approval",
+				args: {
+					doctype: frm.doc.doctype,
+				},
+				callback: function (r) {
+					if (!r.exc && r.message) {
+						frm.toggle_reqd("expense_approver", false);
+					}
+				},
+			});
+		}
+
+		frm.trigger("update_fields_label");
+		frm.trigger("update_child_fields_label");
+	},
 
 });
 
