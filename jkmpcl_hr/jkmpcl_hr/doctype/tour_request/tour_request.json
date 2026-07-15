@@ -11,12 +11,13 @@
   "employee_name",
   "purpose_of_travel",
   "no_of_days",
+  "amended_from",
   "column_break_egn7",
+  "branch",
   "travel_request_date",
   "from_date",
   "to_date",
-  "comp_off_created",
-  "amended_from"
+  "comp_off_created"
  ],
  "fields": [
   {
@@ -97,13 +98,19 @@
    "fieldtype": "Check",
    "hidden": 1,
    "label": "Comp off Created"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-23 09:53:26.408320",
+ "modified": "2026-07-14 17:10:45.953552",
  "modified_by": "Administrator",
  "module": "JKMPCL HR",
  "name": "Tour Request",
