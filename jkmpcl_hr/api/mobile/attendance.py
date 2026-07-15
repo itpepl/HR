@@ -1074,6 +1074,10 @@ def get_attendance_calendar(employeeId, date):
                             "custom_off_day_date"
                         )
 
+                # # LNA
+                # elif record.status == "Absent" and date_str in draft_leave_dates:
+                #     day_data["status"] = "LNA"
+    
                 # ABSENT
                 elif record.status == "Absent":
                     day_data["status"] = "A"
