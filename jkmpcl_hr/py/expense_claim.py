@@ -450,7 +450,6 @@ def share_expense_claim(doc,method):
         # CEO
         if (
             frappe.session.user != "Administrator"
-            and doc.branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu"
         ):
             users.update(get_role_users("CEO"))
 
@@ -461,7 +460,6 @@ def share_expense_claim(doc,method):
         # GAO
         if (
             frappe.session.user != "Administrator"
-            and doc.branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar"
         ):
             users.update(get_role_users("GAO"))
 
