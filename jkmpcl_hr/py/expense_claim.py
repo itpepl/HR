@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import getdate, date_diff, cint,today
+from frappe.utils import getdate, date_diff, cint,today,add_days
 from calendar import isleap
 from datetime import timedelta
 from jkmpcl_hr.py.utils import  get_emp_hr_manager, get_ceo_user, get_emp_review_manager
@@ -259,11 +259,18 @@ def validate(self, method):
     from_date = getdate(self.custom_period_of_leave_from)
     to_date = getdate(self.custom_period_of_leave_to)
     today_date = getdate(today())
+    min_allowed_date = add_days(today_date, -30)
 
     # From Date cannot be in the future
     if from_date > today_date:
         frappe.throw(
             "Period Of Leave (From) cannot be greater than today's date."
+        )
+
+    # From Date cannot be older than 30 days
+    if from_date < min_allowed_date:
+        frappe.throw(
+            f"Period Of Leave (From) cannot be earlier than {min_allowed_date.strftime('%d-%m-%Y')}. You can only apply for the last 30 days."
         )
 
     # To Date cannot be before From Date
