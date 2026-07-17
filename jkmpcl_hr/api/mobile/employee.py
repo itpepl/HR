@@ -30,7 +30,8 @@ def get_employee_details(email):
                 "company_email",
                 "shift_request_approver",
                 "designation",
-                "custom_attendance_source"
+                "custom_attendance_source",
+                "final_confirmation_date"
             ],
         )
 
@@ -111,7 +112,8 @@ def get_employee_details(email):
                 "date_of_joining": employee.get("date_of_joining", "N/A"),
                 # "shift_request_approver": employee.get("shift_request_approver", "N/A"),
                 "shift_request_approver" : get_emp_reporting_manager(employee_name),
-                "custom_attendance_source":employee.get("custom_attendance_source","N/A")
+                "custom_attendance_source":employee.get("custom_attendance_source","N/A"),
+                "final_confirmation_date":employee.get("final_confirmation_date", "N/A")
 
             },
             "contact_info": {
