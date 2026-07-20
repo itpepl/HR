@@ -136,8 +136,18 @@ def compute_lta_day_breakdown(employee_doc, period_from, period_to):
             leave_day_type.setdefault(d, leave.leave_type)
             d += timedelta(days=1)
 
+    holiday_list = frappe.db.get_value(
+        "Holiday List Assignment",
+        {"assigned_to": employee_doc.name},
+        "holiday_list",
+        order_by="from_date desc",
+    )
+
+    if not holiday_list:
+        holiday_list = employee_doc.holiday_list
+
     holiday_dates = set()
-    if employee_doc.holiday_list:
+    if holiday_list:
         holidays = frappe.get_all(
             "Holiday",
             filters={"parent": employee_doc.holiday_list},

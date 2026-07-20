@@ -32,34 +32,38 @@ def get_role_users(role):
         )
     ]
 
-def share_employee_advance(doc,method):
-    old_doc = doc.get_doc_before_save()
+BRANCH_ROLE_MAP = {
+    "Jammu and Kashmir Milk Producers Co-operative Ltd Satwari Jammu": "CEO",
+    "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar": "GAO",
+}
 
-    if not old_doc or old_doc.workflow_state == doc.workflow_state:
-        return
-    
-    if doc.workflow_state == "Approved by Reporting Manager":
-      users = set()
+def get_branch(doc):
+    return frappe.db.get_value("Employee", doc.employee, "branch")
 
-      print("\n\nEntered condition for Approved by Reporting Manager\n\n")
+def get_approver_users(doc):
+    """Users who should approve, based on the employee's branch."""
+    branch = get_branch(doc)
+    role = BRANCH_ROLE_MAP.get(branch)
 
-      # CEO
-      if (
-        frappe.session.user != "Administrator"
-      ):
-        users.update(get_role_users("CEO"))
+    if not role:
+        frappe.log_error(
+            title="Advance Approval: Unmapped Branch",
+            message=f"No CEO/GAO role mapped for branch '{branch}' on {doc.doctype} {doc.name}",
+        )
+        return set()
 
-      # PCI
-      if frappe.session.user != "Administrator":
-          users.update(get_role_users("PCI"))
+    role_users = get_role_users(role)
 
-      # GAO
-      if (
-        frappe.session.user != "Administrator"
-      ):
-        users.update(get_role_users("GAO"))
+    # keep this filter in case a role has users spread across branches
+    filtered_users = frappe.get_all(
+        "User",
+        filters={"name": ["in", role_users], "custom_branch": branch},
+        pluck="name",
+    )
+    return set(filtered_users)
 
-      for user in users:
+def share_with_users(doc, users):
+    for user in users:
         frappe.share.add_docshare(
             doc.doctype,
             doc.name,
@@ -71,3 +75,24 @@ def share_employee_advance(doc,method):
             share=1,
             flags={"ignore_share_permission": True},
         )
+
+def share_advance_doc(doc, method=None):
+    old_doc = doc.get_doc_before_save()
+    if not (old_doc and old_doc.workflow_state):
+        return
+    if old_doc.workflow_state == doc.workflow_state:
+        return
+    if frappe.session.user == "Administrator":
+        return
+
+    users = set()
+
+    if doc.workflow_state == "Approved by Reporting Manager":
+        users.update(get_role_users("PCI"))
+
+    elif doc.workflow_state in ("Approve By PCI", "CEO/GAO Approval"):
+        if doc.advance_amount >= 10000:
+            users.update(get_approver_users(doc))
+
+    if users:
+        share_with_users(doc, users)
