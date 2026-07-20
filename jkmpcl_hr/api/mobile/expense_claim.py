@@ -468,7 +468,7 @@ def get_lta_fiscal_period(employee_code=None, expense_claim=None):
             )
 
             if not employee:
-                frappe.throw(_("Employee not found for the logged-in user."))
+                frappe.throw(("Employee not found for the logged-in user."))
 
         today = getdate()
 
