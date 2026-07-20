@@ -51,7 +51,8 @@ doctype_js = {
                 "HR Settings":"public/js/hr_settings.js",
                 "Leave Application":"public/js/leave_application.js",
                 "Leave Allocation": "public/js/leave_allocation.js",
-                "Expense Claim":"public/js/expense_claim.js"
+                "Expense Claim":"public/js/expense_claim.js",
+                "Employee Advance": "public/js/employee_advance.js",
             }
 # doctype_list_js = {"doctype" : "public/js/attendance_request_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -240,6 +241,10 @@ doc_events = {
     "Tour Request": {
         "on_update": "jkmpcl_hr.api.mobile.workflow_notification.workflow_notification"
     },
+    "Employee Advance": {
+        "before_insert":"jkmpcl_hr.py.employee_advance.before_insert",
+        "on_update":"jkmpcl_hr.py.employee_advance.share_employee_advance"
+    }
     # "Salary Structure Assignment":{
     #     "validate":"jkmpcl_hr.py.salary_structure_assignment.calculate_leave_encashment_per_day"
     # }
