@@ -243,13 +243,13 @@ def validate(self, method):
 
     employee = frappe.get_doc("Employee", self.employee)
 
-    if employee.employment_type != "Confirmed":
+    if employee.employment_type != "Confirmed" and self.custom_expense_claim_type == "LTA":
         frappe.throw("Only Confirmed employees can apply for LTA.")
 
     if employee.status == "Suspended":
         frappe.throw("Suspended employees are not allowed to apply for LTA.")
 
-    if not employee.final_confirmation_date:
+    if not employee.final_confirmation_date and self.custom_expense_claim_type == "LTA":
         frappe.throw("Employee Final Confirmation Date is missing.")
 
     confirmation_date = getdate(employee.final_confirmation_date)
@@ -266,8 +266,8 @@ def validate(self, method):
         "HR Settings", "custom_lta_sanctioned_days"
     )
 
-    if not self.custom_period_of_leave_from or not self.custom_period_of_leave_to:
-        frappe.throw("Period Of Leave (From and To) is required for LTA claim.")
+    # if not self.custom_period_of_leave_from or not self.custom_period_of_leave_to and self.custom_expense_claim_type == "LTA":
+    #     frappe.throw("Period Of Leave (From and To) is required for LTA claim.")
 
     from_date = getdate(self.custom_period_of_leave_from)
     to_date = getdate(self.custom_period_of_leave_to)
@@ -341,7 +341,7 @@ def validate(self, method):
     total_days = breakdown["total_days"]
     claim_year = period_to.year
 
-    if int(total_days) < int(self.custom_availed_or_sanctioned_no_of_days):
+    if int(total_days) < int(self.custom_availed_or_sanctioned_no_of_days) and self.custom_expense_claim_type == "LTA":
         frappe.throw(
             f"Minimum {self.custom_availed_or_sanctioned_no_of_days} continuous days "
             f"(Leave + Holiday + Weekoff) are required for LTA."
@@ -359,7 +359,7 @@ def validate(self, method):
 
     monthly_basic = salary[0].base or 0
 
-    if monthly_basic <= 0:
+    if monthly_basic <= 0 and self.custom_expense_claim_type == "LTA":
         frappe.throw("Monthly Basic Salary must be greater than 0.")
 
     # ---- LTA Claim Count Validation ----
