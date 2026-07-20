@@ -187,7 +187,7 @@ def employee_advance_list(
                     # Either CEO or GAO can close it out
                     enable = "CEO" in user_roles or "GAO" in user_roles
  
-            row["enable"] = enable
+            row["enable"] = False
  
         advance_list = sorted(advance_list, key=lambda r: not r["enable"])
  
@@ -208,7 +208,7 @@ def employee_advance_list(
                 "advance_amount": d.get("advance_amount"),
                 "status": d.get("workflow_state") or d.get("status"),
                 "posting_date": formatdate(d.get("posting_date"), "dd-MM-yyyy") if d.get("posting_date") else "",
-                "enable": d.get("enable"),
+                "enable": False,
             })
  
         return {
