@@ -243,7 +243,7 @@ doc_events = {
     },
     "Employee Advance": {
         "before_insert":"jkmpcl_hr.py.employee_advance.before_insert",
-        "on_update":"jkmpcl_hr.py.employee_advance.share_employee_advance"
+        "on_update":"jkmpcl_hr.py.employee_advance.share_advance_doc"
     }
     # "Salary Structure Assignment":{
     #     "validate":"jkmpcl_hr.py.salary_structure_assignment.calculate_leave_encashment_per_day"
