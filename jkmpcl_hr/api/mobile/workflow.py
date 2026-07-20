@@ -1,50 +1,106 @@
 import frappe
 from frappe.model.workflow import get_workflow
 from frappe.model.workflow import apply_workflow
+from frappe.utils import flt
+
+
+# @frappe.whitelist()
+# def get_workflow_actions_for_doc(doctype, docname):
+#     from frappe.model.workflow import get_transitions
+
+#     doc = frappe.get_doc(doctype, docname)
+
+#     transitions = get_transitions(doc)
+
+#     return transitions
+
 
 @frappe.whitelist()
-def get_workflow_actions_for_doc(doctype, docname):
+def get_workflow_actions_for_doc(doctype, docname, advance_amount=None):
     from frappe.model.workflow import get_transitions
 
     doc = frappe.get_doc(doctype, docname)
+
+    # Only for Employee Advance
+    if doctype == "Employee Advance" and advance_amount:
+        doc.db_set("advance_amount", frappe.utils.flt(advance_amount))
 
     transitions = get_transitions(doc)
 
     return transitions
 
 
+# @frappe.whitelist()
+# def apply_workflow_action(doctype, docname, action):
+#     try:
+#         from frappe.model.workflow import apply_workflow
+
+#         doc = frappe.get_doc(doctype, docname)
+
+#         apply_workflow(doc, action)
+
+#         frappe.db.commit()
+
+#         if action == "Reject":
+#             return {
+#                 "success": True,
+#                 "message": f"Request Rejected",
+#                 "workflow_state": doc.workflow_state
+#             }
+
+#         else:
+#             return {
+#                 "success": True,
+#                 "message": f"{action} applied successfully",
+#                 "workflow_state": doc.workflow_state
+#             }
+
+#     except Exception as e:
+#         frappe.db.rollback()
+#         return {
+#             "success": False,
+#             "message": str(e)
+#         }
+
 @frappe.whitelist()
-def apply_workflow_action(doctype, docname, action):
+def apply_workflow_action(doctype, docname, action, advance_amount=None):
     try:
         from frappe.model.workflow import apply_workflow
 
         doc = frappe.get_doc(doctype, docname)
 
-        apply_workflow(doc, action)
+        # Update advance amount only for Employee Advance
+        if (
+            doctype == "Employee Advance"
+            and advance_amount not in (None, "", "null")
+        ):
+            doc.advance_amount = flt(advance_amount)
+            doc.save(ignore_permissions=True)
+
+        # Apply workflow
+        doc = apply_workflow(doc, action)
 
         frappe.db.commit()
 
         if action == "Reject":
             return {
                 "success": True,
-                "message": f"Request Rejected",
+                "message": "Request Rejected",
                 "workflow_state": doc.workflow_state
             }
 
-        else:
-            return {
-                "success": True,
-                "message": f"{action} applied successfully",
-                "workflow_state": doc.workflow_state
-            }
+        return {
+            "success": True,
+            "message": f"{action} applied successfully",
+            "workflow_state": doc.workflow_state
+        }
 
     except Exception as e:
         frappe.db.rollback()
         return {
             "success": False,
             "message": str(e)
-        }
-    
+        }    
 
 # @frappe.whitelist(methods=["POST"],allow_guest=False)
 # def bulk_workflow_action(doctype, docnames, action):
