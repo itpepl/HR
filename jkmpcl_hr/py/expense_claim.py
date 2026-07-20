@@ -111,6 +111,104 @@ def get_fiscal_periods(employee, expense_claim=None):
 # =====================================================
 # Shared: CL / PL / PH / WO breakdown for a period
 # =====================================================
+# def compute_lta_day_breakdown(employee_doc, period_from, period_to):
+#     period_from = getdate(period_from)
+#     period_to = getdate(period_to)
+
+#     leave_applications = frappe.get_all(
+#         "Leave Application",
+#         filters={
+#             "employee": employee_doc.name,
+#             "status": "Approved",
+#             "docstatus": 1,
+#             "leave_type": ["in", ["Casual Leave", "Privilege Leave"]]
+#         },
+#         fields=["name", "from_date", "to_date", "leave_type"]
+#     )
+
+#     leave_day_type = {}
+#     for leave in leave_applications:
+#         leave_from = getdate(leave.from_date)
+#         leave_to = getdate(leave.to_date)
+#         d = max(leave_from, period_from)
+#         end = min(leave_to, period_to)
+#         while d <= end:
+#             leave_day_type.setdefault(d, leave.leave_type)
+#             d += timedelta(days=1)
+
+#     holiday_dates = set()
+#     if employee_doc.holiday_list:
+#         holidays = frappe.get_all(
+#             "Holiday",
+#             filters={"parent": employee_doc.holiday_list},
+#             fields=["holiday_date"]
+#         )
+#         holiday_dates = {getdate(h.holiday_date) for h in holidays}
+
+#     day_type = {}
+#     d = period_from
+#     while d <= period_to:
+#         if d in leave_day_type:
+#             day_type[d] = "CL" if leave_day_type[d] == "Casual Leave" else "PL"
+#         elif d in holiday_dates:
+#             day_type[d] = "PH"
+#         elif d.weekday() in [5, 6]:
+#             day_type[d] = "WO"
+#         d += timedelta(days=1)
+
+#     covered_dates = sorted(day_type.keys())
+
+#     max_streak = 0
+#     current_streak = 0
+#     streak_start = None
+#     best_start = None
+#     best_end = None
+#     prev_date = None
+
+#     for dt in covered_dates:
+#         if prev_date is not None and (dt - prev_date).days == 1:
+#             current_streak += 1
+#         else:
+#             streak_start = dt
+#             current_streak = 1
+
+#         if current_streak > max_streak:
+#             max_streak = current_streak
+#             best_start = streak_start
+#             best_end = dt
+
+#         prev_date = dt
+
+#     cl_count = pl_count = ph_count = wo_count = 0
+
+#     if best_start and best_end:
+#         d = best_start
+#         while d <= best_end:
+#             t = day_type[d]
+#             if t == "CL":
+#                 cl_count += 1
+#             elif t == "PL":
+#                 pl_count += 1
+#             elif t == "PH":
+#                 ph_count += 1
+#             elif t == "WO":
+#                 wo_count += 1
+#             d += timedelta(days=1)
+
+#     total_days = cl_count + pl_count + ph_count + wo_count
+
+#     return {
+#         "cl_count": cl_count,
+#         "pl_count": pl_count,
+#         "ph_count": ph_count,
+#         "wo_count": wo_count,
+#         "total_days": total_days,
+#     }
+
+
+# =====================================================
+# Shared: CL / PL / PH / WO breakdown for a period
+# =====================================================
 def compute_lta_day_breakdown(employee_doc, period_from, period_to):
     period_from = getdate(period_from)
     period_to = getdate(period_to)
@@ -123,17 +221,25 @@ def compute_lta_day_breakdown(employee_doc, period_from, period_to):
             "docstatus": 1,
             "leave_type": ["in", ["Casual Leave", "Privilege Leave"]]
         },
-        fields=["name", "from_date", "to_date", "leave_type"]
+        fields=["name", "from_date", "to_date", "leave_type", "half_day", "half_day_date"]
     )
 
     leave_day_type = {}
+    half_day_dates = set()
+
     for leave in leave_applications:
         leave_from = getdate(leave.from_date)
         leave_to = getdate(leave.to_date)
         d = max(leave_from, period_from)
         end = min(leave_to, period_to)
+
         while d <= end:
-            leave_day_type.setdefault(d, leave.leave_type)
+            # Mark half-day dates separately — they should NOT be counted as
+            # full CL/PL days, but should still keep continuity intact.
+            if cint(leave.half_day) and leave.half_day_date and getdate(leave.half_day_date) == d:
+                half_day_dates.add(d)
+            else:
+                leave_day_type.setdefault(d, leave.leave_type)
             d += timedelta(days=1)
 
     holiday_dates = set()
@@ -145,6 +251,7 @@ def compute_lta_day_breakdown(employee_doc, period_from, period_to):
         )
         holiday_dates = {getdate(h.holiday_date) for h in holidays}
 
+    # ---- Classify EVERY day in the period ----
     day_type = {}
     d = period_from
     while d <= period_to:
@@ -154,57 +261,98 @@ def compute_lta_day_breakdown(employee_doc, period_from, period_to):
             day_type[d] = "PH"
         elif d.weekday() in [5, 6]:
             day_type[d] = "WO"
+        elif d in half_day_dates:
+            # Half day: keeps continuity (bridges the streak) but is NOT
+            # counted in CL/PL/PH/WO totals, and does not count toward
+            # the LTA "total days" requirement.
+            day_type[d] = "HD"
+        else:
+            day_type[d] = "WD"  # ordinary working day
         d += timedelta(days=1)
 
-    covered_dates = sorted(day_type.keys())
+    # ---- Full-period counts (used for display: CL/PL/PH/WO/Total) ----
+    cl_count = pl_count = ph_count = wo_count = wd_count = 0
+    for t in day_type.values():
+        if t == "CL":
+            cl_count += 1
+        elif t == "PL":
+            pl_count += 1
+        elif t == "PH":
+            ph_count += 1
+        elif t == "WO":
+            wo_count += 1
+        elif t == "WD":
+            wd_count += 1
+        # HD -> intentionally not counted anywhere
+
+    total_days = cl_count + pl_count + ph_count + wo_count  # HD excluded entirely
+
+    # ---- Longest continuous streak (used only for LTA eligibility check) ----
+    # HD days are treated as "transparent" — they don't break the streak,
+    # but they also don't extend/count it. Only CL/PL/PH/WO days increment
+    # the streak length; consecutive HD days are simply skipped over.
+    covered_dates = sorted(dt for dt, t in day_type.items() if t not in ("WD", "HD"))
 
     max_streak = 0
     current_streak = 0
     streak_start = None
     best_start = None
     best_end = None
-    prev_date = None
+    prev_counted_date = None
 
-    for dt in covered_dates:
-        if prev_date is not None and (dt - prev_date).days == 1:
-            current_streak += 1
+    d = period_from
+    while d <= period_to:
+        t = day_type[d]
+
+        if t == "HD":
+            # bridge day — do nothing, don't reset, don't count
+            d += timedelta(days=1)
+            continue
+
+        if t == "WD":
+            # real break in continuity
+            current_streak = 0
+            prev_counted_date = None
+            d += timedelta(days=1)
+            continue
+
+        # t is CL/PL/PH/WO
+        if prev_counted_date is not None:
+            # check if only HD days sit between prev_counted_date and d
+            gap_days = (d - prev_counted_date).days
+            bridged = all(
+                day_type.get(prev_counted_date + timedelta(days=i)) == "HD"
+                for i in range(1, gap_days)
+            ) if gap_days > 1 else (gap_days == 1)
+
+            if bridged:
+                current_streak += 1
+            else:
+                streak_start = d
+                current_streak = 1
         else:
-            streak_start = dt
+            streak_start = d
             current_streak = 1
 
         if current_streak > max_streak:
             max_streak = current_streak
             best_start = streak_start
-            best_end = dt
+            best_end = d
 
-        prev_date = dt
-
-    cl_count = pl_count = ph_count = wo_count = 0
-
-    if best_start and best_end:
-        d = best_start
-        while d <= best_end:
-            t = day_type[d]
-            if t == "CL":
-                cl_count += 1
-            elif t == "PL":
-                pl_count += 1
-            elif t == "PH":
-                ph_count += 1
-            elif t == "WO":
-                wo_count += 1
-            d += timedelta(days=1)
-
-    total_days = cl_count + pl_count + ph_count + wo_count
+        prev_counted_date = d
+        d += timedelta(days=1)
 
     return {
         "cl_count": cl_count,
         "pl_count": pl_count,
         "ph_count": ph_count,
         "wo_count": wo_count,
+        "wd_count": wd_count,
         "total_days": total_days,
+        "max_continuous_streak": max_streak,
+        "streak_start": best_start,
+        "streak_end": best_end,
     }
-
 
 # =====================================================
 # Whitelisted: Called from JS on Period Of Leave change
@@ -271,19 +419,19 @@ def validate(self, method):
         )
 
     # From Date cannot be older than 30 days
-    if from_date < min_allowed_date:
+    if from_date < min_allowed_date and self.custom_expense_claim_type == "LTA":
         frappe.throw(
             f"Period Of Leave (From) cannot be earlier than {min_allowed_date.strftime('%d-%m-%Y')}. You can only apply for the last 30 days."
         )
 
     # To Date cannot be before From Date
-    if to_date < from_date:
+    if to_date < from_date and self.custom_expense_claim_type == "LTA":
         frappe.throw(
             "Period Of Leave (To) cannot be earlier than Period Of Leave (From)."
         )
 
     # To Date cannot be in the future
-    if to_date > today_date:
+    if to_date > today_date and self.custom_expense_claim_type == "LTA":
         frappe.throw(
             f"Period Of Leave (To) cannot be greater than today's date ({today_date.strftime('%d-%m-%Y')}). Please select today's date or an earlier date."
         )
@@ -291,10 +439,10 @@ def validate(self, method):
     period_from = getdate(self.custom_period_of_leave_from)
     period_to = getdate(self.custom_period_of_leave_to)
 
-    if period_from > period_to:
+    if period_from > period_to and self.custom_expense_claim_type == "LTA":
         frappe.throw("Period Of Leave From date cannot be after the To date.")
 
-    if period_from < confirmation_date:
+    if period_from < confirmation_date and self.custom_expense_claim_type == "LTA":
         frappe.throw(
             "Period Of Leave cannot start before the employee's Final Confirmation Date."
         )
@@ -331,11 +479,11 @@ def validate(self, method):
     total_days = breakdown["total_days"]
     claim_year = period_to.year
 
-    if int(total_days) < int(self.custom_availed_or_sanctioned_no_of_days) and self.custom_expense_claim_type == "LTA":
-        frappe.throw(
-            f"Minimum {self.custom_availed_or_sanctioned_no_of_days} continuous days "
-            f"(Leave + Holiday + Weekoff) are required for LTA."
-        )
+    if int(breakdown["max_continuous_streak"]) < int(self.custom_availed_or_sanctioned_no_of_days) and self.custom_expense_claim_type == "LTA":
+            frappe.throw(
+                f"Minimum {self.custom_availed_or_sanctioned_no_of_days} continuous days "
+                f"(Leave + Holiday + Weekoff) are required for LTA."
+            )
 
     # ---- Salary Structure Assignment ----
     salary = frappe.db.sql("""
