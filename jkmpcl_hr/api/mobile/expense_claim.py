@@ -157,6 +157,11 @@ def list(
         if isinstance(filters, dict):
             filters = [[k, "=", v] for k, v in filters.items()]
 
+        # Convert status filter to workflow_state
+        for f in filters:
+            if len(f) >= 3 and f[0] == "status":
+                f[0] = "workflow_state"
+
         employee = frappe.db.get_value(
             "Employee",
             {"user_id": user},
