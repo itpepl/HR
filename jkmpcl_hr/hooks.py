@@ -227,7 +227,8 @@ doc_events = {
     },
     "Expense Claim":{
         "validate":"jkmpcl_hr.py.expense_claim.validate",
-        "on_update":"jkmpcl_hr.py.expense_claim.share_expense_claim"
+        "on_update":"jkmpcl_hr.py.expense_claim.share_expense_claim",
+        "on_submit":"jkmpcl_hr.py.expense_claim.on_submit",
     },
     "HR Settings":{
         "validate":"jkmpcl_hr.py.hr_settings.validate"
