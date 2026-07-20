@@ -195,7 +195,8 @@ def execute(filters=None):
                 if availed_prev_end is not None:
                     availed_till_last_mth += get_leave_days_in_period(
                         leave_from, leave_to,
-                        opening_date, availed_prev_end
+                        opening_date, availed_prev_end,
+                        half_day=leave.half_day
                     )
 
                 # Availed Current Month
@@ -204,7 +205,8 @@ def execute(filters=None):
                 # approved leaves for later in the current month are counted.
                 availed_current_mth += get_leave_days_in_period(
                     leave_from, leave_to,
-                    from_date, to_date_full_mth        # ← KEY FIX
+                    from_date, to_date_full_mth,        # ← KEY FIX
+                    half_day=leave.half_day
                 )
 
             # ── Derived columns ───────────────────────────────────────────────
@@ -233,7 +235,7 @@ def execute(filters=None):
 # HELPER: LEAVE DAYS IN PERIOD (cross-month pro-rating)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_leave_days_in_period(leave_from, leave_to, report_from, report_to):
+def get_leave_days_in_period(leave_from, leave_to, report_from, report_to, half_day=False):
     """
     Return the number of calendar days of a leave application that fall
     within [report_from, report_to].
@@ -244,14 +246,20 @@ def get_leave_days_in_period(leave_from, leave_to, report_from, report_to):
     leave 29-Jun → 02-Jul, window 01-Jun → 30-Jun  : 2 days  (29, 30 Jun)
     leave 29-Jun → 02-Jul, window 01-Jul → 31-Jul  : 2 days  (01, 02 Jul)
     leave 29-Jun → 02-Jul, window 01-Jun → 26-Jun  : 0 days  ← old bug
+    half-day leave on 15-Jun                       : 0.5 day
     """
     start = max(leave_from, report_from)
     end   = min(leave_to,   report_to)
 
     if start > end:
         return 0.0
+    
+    days = (end - start).days + 1
 
-    return float((end - start).days + 1)
+    if half_day:
+        return 0.5
+
+    return days
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -275,7 +283,8 @@ def get_leave_applications(fetch_from, fetch_to):
             leave_type,
             from_date,
             to_date,
-            total_leave_days
+            total_leave_days,
+            half_day
         FROM `tabLeave Application`
         WHERE
             docstatus = 1

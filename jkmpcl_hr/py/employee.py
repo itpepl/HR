@@ -1018,7 +1018,7 @@ def update_cl_and_sl_after_confirmation(doc):
                 "from_date": confirmation_date or next_month_start,
                 "to_date": fy_end,
                 "custom_opening_balance_on_confirmed": remaining_sl_balance,
-                "new_leaves_allocated": round(new_sl),
+                "new_leaves_allocated": round(new_sl, 2),
                 "custom_last_allocation_date": confirmation_date,
                 "description": "Auto SL allocation after confirmation"
             })
