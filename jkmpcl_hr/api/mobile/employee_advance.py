@@ -114,6 +114,10 @@ def employee_advance_list(filters=None):
         data.append({
             "name": d.name,
             "employee": d.employee,
+            "employee_name":d.employee_name,
+            "custom_hq":d.custom_hq,
+            "department":d.department,
+            "custom_designation":d.custom_designation,
             "from_date": formatdate(d.custom_from_date, "dd-MM-yyyy") if d.custom_from_date else "",
             "to_date": formatdate(d.custom_to_date, "dd-MM-yyyy") if d.custom_to_date else "",
             "places_to_be_visited": d.custom_places_to_be_visited,

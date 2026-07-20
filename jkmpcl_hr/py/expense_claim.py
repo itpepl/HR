@@ -219,7 +219,8 @@ def get_lta_leave_details(employee, period_from, period_to):
     )
     return breakdown
 
-
+def on_submit(self,method):
+    self.approval_status = "Approved"
 # =====================================================
 # validate() — server-side safety net (client can't be trusted)
 # =====================================================
@@ -227,6 +228,8 @@ def validate(self, method):
 
     if not self.employee:
         return
+    
+    self.payable_account = "Payroll Payable - JKMPCL"
 
     employee = frappe.get_doc("Employee", self.employee)
 
@@ -364,7 +367,7 @@ def validate(self, method):
             existing_claim_count += 1
 
     if existing_claim_count >= cint(lta_limit):
-        frappe.msgprint(f"Claim Year : {claim_year}\nExisting Count : {existing_claim_count}")
+        # frappe.msgprint(f"Claim Year : {claim_year}\nExisting Count : {existing_claim_count}")
         frappe.throw(f"Only {lta_limit} LTA claim(s) are allowed for year {claim_year}.")
 
     # ---- LTA Entitlement Calculation ----
