@@ -9,6 +9,7 @@ def before_insert(doc, method):
 
 def validate(doc, method):
     validate_dates_not_in_past(doc)
+    doc.advance_account = "Debtors - JKMPCL"
 
 def validate_dates_not_in_past(doc):
     today_date = getdate(today())
@@ -39,6 +40,15 @@ BRANCH_ROLE_MAP = {
 
 def get_branch(doc):
     return frappe.db.get_value("Employee", doc.employee, "branch")
+
+def get_role_users_by_branch(role, branch):
+    """Users with the given role, restricted to the given branch."""
+    role_users = get_role_users(role)
+    return set(frappe.get_all(
+        "User",
+        filters={"name": ["in", role_users], "custom_branch": branch},
+        pluck="name",
+    ))
 
 def get_approver_users(doc):
     """Users who should approve, based on the employee's branch."""
@@ -86,11 +96,24 @@ def share_advance_doc(doc, method=None):
         return
 
     users = set()
+    branch = get_branch(doc)
 
     if doc.workflow_state == "Approved by Reporting Manager":
-        users.update(get_role_users("PCI"))
+        # PCI needs to review next - restrict to PCI users of this employee's branch
+        if branch:
+            users.update(get_role_users_by_branch("PCI", branch))
+        else:
+            frappe.log_error(
+                title="Advance Approval: Missing Branch",
+                message=f"No branch found for employee on {doc.doctype} {doc.name}",
+            )
+            frappe.error_log(
+                title="Advance Approval: Missing Branch",
+                message=f"No branch found for employee on {doc.doctype} {doc.name}",
+            )
 
-    elif doc.workflow_state in ("Approve By PCI", "CEO/GAO Approval"):
+    elif doc.workflow_state == "Approve By PCI":
+        # Already approved by PCI - if amount crosses threshold, CEO/GAO also need access
         if doc.advance_amount >= 10000:
             users.update(get_approver_users(doc))
 

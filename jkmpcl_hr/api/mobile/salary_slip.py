@@ -23,7 +23,8 @@ def salary_slip_list():
     salary_slips = frappe.get_all(
         "Salary Slip",
         filters={
-            "employee": employee
+            "employee": employee,
+            "docstatus": 1
         },
         fields=[
             "name",

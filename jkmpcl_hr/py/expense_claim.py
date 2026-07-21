@@ -524,9 +524,15 @@ def validate(self, method):
         if getdate(claim.custom_period_of_leave_to).year == claim_year:
             existing_claim_count += 1
 
-    if existing_claim_count >= cint(lta_limit):
-        # frappe.msgprint(f"Claim Year : {claim_year}\nExisting Count : {existing_claim_count}")
-        frappe.throw(f"Only {lta_limit} LTA claim(s) are allowed for year {claim_year}.")
+    if (
+        self.custom_expense_claim_type == "LTA"
+        and existing_claim_count >= cint(lta_limit)
+    ):
+        frappe.throw(
+            ("Only {0} LTA claim(s) are allowed for the year {1}.").format(
+                lta_limit, claim_year
+            )
+        )
 
     # ---- LTA Entitlement Calculation ----
     total_days_in_year = 366 if isleap(claim_year) else 365
