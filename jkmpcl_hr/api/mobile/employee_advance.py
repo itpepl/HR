@@ -207,6 +207,7 @@ def employee_advance_list(
                 "claim_amount": d.get("custom_claim_amount"),
                 "advance_amount": d.get("advance_amount"),
                 "status": d.get("workflow_state") or d.get("status"),
+                "workflow_state": d.get("workflow_state"),
                 "posting_date": formatdate(d.get("posting_date"), "dd-MM-yyyy") if d.get("posting_date") else "",
                 "enable": False,
             })
