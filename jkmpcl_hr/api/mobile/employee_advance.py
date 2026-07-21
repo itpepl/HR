@@ -119,13 +119,13 @@ def employee_advance_list(
         # ---- Workflow state constants (verify against your Workflow) ----
         PENDING = "Pending"
         REP_MGR_APPROVED = "Approved by Reporting Manager"
-        PCI_APPROVED = "Approve By PCI"
+        PIC_APPROVED = "Approve By PIC"
         CEO_GAO_PENDING = "CEO/GAO Approval"
         FINAL_APPROVED = "Final Approved"
         TERMINAL_STATES = {
             FINAL_APPROVED,
             "Rejected by Reporting Manager",
-            "Rejected By PCI",
+            "Rejected By PIC",
             "Rejected",
         }
  
@@ -175,13 +175,13 @@ def employee_advance_list(
                     enable = reporting_manager_map.get(emp, False)
  
                 elif wf == REP_MGR_APPROVED:
-                    # PCI acts second (Approve -> "Approve By PCI" / Reject)
-                    enable = "PCI" in user_roles
+                    # PIC acts second (Approve -> "Approve By PIC" / Reject)
+                    enable = "PIC" in user_roles
  
-                elif wf == PCI_APPROVED:
-                    # PCI acts again: Approve straight to Final (<10000)
+                elif wf == PIC_APPROVED:
+                    # PIC acts again: Approve straight to Final (<10000)
                     # or Send for Approval to CEO/GAO (>=10000)
-                    enable = "PCI" in user_roles
+                    enable = "PIC" in user_roles
  
                 elif wf == CEO_GAO_PENDING:
                     # Either CEO or GAO can close it out

@@ -99,9 +99,9 @@ def share_advance_doc(doc, method=None):
     branch = get_branch(doc)
 
     if doc.workflow_state == "Approved by Reporting Manager":
-        # PCI needs to review next - restrict to PCI users of this employee's branch
+        # PIC needs to review next - restrict to PIC users of this employee's branch
         if branch:
-            users.update(get_role_users_by_branch("PCI", branch))
+            users.update(get_role_users_by_branch("PIC", branch))
         else:
             frappe.log_error(
                 title="Advance Approval: Missing Branch",
@@ -112,8 +112,8 @@ def share_advance_doc(doc, method=None):
                 message=f"No branch found for employee on {doc.doctype} {doc.name}",
             )
 
-    elif doc.workflow_state == "Approve By PCI":
-        # Already approved by PCI - if amount crosses threshold, CEO/GAO also need access
+    elif doc.workflow_state == "Approve By PIC":
+        # Already approved by PIC - if amount crosses threshold, CEO/GAO also need access
         if doc.advance_amount >= 10000:
             users.update(get_approver_users(doc))
 
