@@ -627,9 +627,9 @@ def share_expense_claim(doc,method):
         ):
             users.update(get_role_users("CEO"))
 
-        # PCI
+        # PIC
         if frappe.session.user != "Administrator":
-            users.update(get_role_users("PCI"))
+            users.update(get_role_users("PIC"))
 
         # GAO
         if (

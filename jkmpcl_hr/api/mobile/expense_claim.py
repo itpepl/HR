@@ -19,7 +19,7 @@ REJECTED_STATE = "Rejected"
 
 # Final stage (Approved by HR -> Final Approved) is role-gated, not
 # employee-approver-gated, per the Workflow "Allowed" column.
-FINAL_APPROVER_ROLES = {"CEO", "PCI", "GAO"}
+FINAL_APPROVER_ROLES = {"CEO", "PIC", "GAO"}
 
 LTA_CLAIM_TYPE = "LTA"
 
@@ -82,7 +82,7 @@ def compute_enable_flag(user, workflow_state, docstatus, reporting_manager=None,
         return hr_manager == user
 
     elif workflow_state == APPROVED_BY_HR_STATE:
-        # Final approver acts last - role based (CEO / PCI / GAO).
+        # Final approver acts last - role based (CEO / PIC / GAO).
         return bool(user_roles & FINAL_APPROVER_ROLES)
 
     # REJECTED_BY_RM_STATE / REJECTED_BY_HR_STATE / REJECTED_STATE /
@@ -287,6 +287,7 @@ def create(**args):
         employee = args.get("employee")
         args["naming_series"] = "HR-LTA-.YYYY.-"
         args["custom_expense_claim_type"] = "LTA"
+        args["cost_center"] = "Main - JKMPCL"
         # -----------------------------
         # DATE CONVERSION
         # -----------------------------
@@ -319,6 +320,7 @@ def create(**args):
                 "description": row.get("description"),
                 "amount": row.get("amount"),
                 "sanctioned_amount":row.get("amount"),
+                "cost_center": "Main - JKMPCL"
             })
 
         if normalized_expenses:
