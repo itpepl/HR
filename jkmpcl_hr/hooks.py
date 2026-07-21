@@ -50,7 +50,9 @@ doctype_js = {
                 "Shift Request": "public/js/shift_request.js",
                 "HR Settings":"public/js/hr_settings.js",
                 "Leave Application":"public/js/leave_application.js",
-                "Leave Allocation": "public/js/leave_allocation.js"
+                "Leave Allocation": "public/js/leave_allocation.js",
+                "Expense Claim":"public/js/expense_claim.js",
+                "Employee Advance": "public/js/employee_advance.js",
             }
 # doctype_list_js = {"doctype" : "public/js/attendance_request_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -152,7 +154,9 @@ override_doctype_class = {
     "Attendance": "jkmpcl_hr.overrides.attendance.Attendance",
     "Salary Slip": "jkmpcl_hr.overrides.salary_slip_override.CustomSalarySlip",
     "Leave Application": "jkmpcl_hr.overrides.leave_application_override.CustomLeaveApplication",
-    "Shift Assignment": "jkmpcl_hr.overrides.shift_assignment_override.CustomShiftAssignment"
+    "Shift Assignment": "jkmpcl_hr.overrides.shift_assignment_override.CustomShiftAssignment",
+    "Expense Claim": "jkmpcl_hr.overrides.expense_claim.CustomExpenseClaim"
+
 }
 
 # Document Events
@@ -224,7 +228,9 @@ doc_events = {
         "validate": "jkmpcl_hr.py.branch.validate"
     },
     "Expense Claim":{
-        "validate":"jkmpcl_hr.py.expense_claim.validate"
+        "validate":"jkmpcl_hr.py.expense_claim.validate",
+        "on_update":"jkmpcl_hr.py.expense_claim.share_expense_claim",
+        # "on_submit":"jkmpcl_hr.py.expense_claim.on_submit",
     },
     "HR Settings":{
         "validate":"jkmpcl_hr.py.hr_settings.validate"
@@ -238,6 +244,11 @@ doc_events = {
     "Tour Request": {
         "on_update": "jkmpcl_hr.api.mobile.workflow_notification.workflow_notification"
     },
+    "Employee Advance": {
+        "before_insert":"jkmpcl_hr.py.employee_advance.before_insert",
+        "on_update":"jkmpcl_hr.py.employee_advance.share_advance_doc",
+        "validate":"jkmpcl_hr.py.employee_advance.validate",
+    }
     # "Salary Structure Assignment":{
     #     "validate":"jkmpcl_hr.py.salary_structure_assignment.calculate_leave_encashment_per_day"
     # }
