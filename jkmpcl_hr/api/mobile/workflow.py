@@ -16,7 +16,7 @@ from frappe.utils import flt
 
 
 @frappe.whitelist()
-def get_workflow_actions_for_doc(doctype, docname, advance_amount=None):
+def get_workflow_actions_for_doc(doctype, docname, advance_amount=None, custom_remarks=None):
     from frappe.model.workflow import get_transitions
 
     doc = frappe.get_doc(doctype, docname)
@@ -24,6 +24,7 @@ def get_workflow_actions_for_doc(doctype, docname, advance_amount=None):
     # Only for Employee Advance
     if doctype == "Employee Advance" and advance_amount:
         doc.db_set("advance_amount", frappe.utils.flt(advance_amount))
+        doc.db_set("custom_remarks", custom_remarks or "")
 
     transitions = get_transitions(doc)
 
@@ -63,7 +64,7 @@ def get_workflow_actions_for_doc(doctype, docname, advance_amount=None):
 #         }
 
 @frappe.whitelist()
-def apply_workflow_action(doctype, docname, action, advance_amount=None):
+def apply_workflow_action(doctype, docname, action, advance_amount=None, custom_remarks=None):
     try:
         from frappe.model.workflow import apply_workflow
 
@@ -75,6 +76,7 @@ def apply_workflow_action(doctype, docname, action, advance_amount=None):
             and advance_amount not in (None, "", "null")
         ):
             doc.advance_amount = flt(advance_amount)
+            doc.custom_remarks = custom_remarks or ""
             doc.save(ignore_permissions=True)
 
         # Apply workflow
