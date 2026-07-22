@@ -72,9 +72,11 @@ frappe.ui.form.on('Employee Advance', {
         validate_date_not_past(frm, 'custom_to_date');
     },
     validate: function(frm) {
-        // Runs automatically before save; return false / throw to block save
-        validate_date_not_past(frm, 'custom_from_date');
-        validate_date_not_past(frm, 'custom_to_date');
+        if (frm.is_new()) {
+            // Runs automatically before save; return false / throw to block save
+            validate_date_not_past(frm, 'custom_from_date');
+            validate_date_not_past(frm, 'custom_to_date');
+        }
     }
 });
 
