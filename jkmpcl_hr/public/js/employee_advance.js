@@ -79,12 +79,19 @@ frappe.ui.form.on('Employee Advance', {
 });
 
 function toggle_claim_advance_fields(frm) {
+    const is_creator = frm.doc.owner === frappe.session.user;
+
     if (frm.is_new()) {
         frm.set_df_property('custom_claim_amount', 'read_only', 0);
         frm.set_df_property('advance_amount', 'read_only', 1);
     } else {
         frm.set_df_property('custom_claim_amount', 'read_only', 1);
-        frm.set_df_property('advance_amount', 'read_only', 0);
+
+        if (is_creator) {
+            frm.set_df_property('advance_amount', 'read_only', 1);
+        } else {
+            frm.set_df_property('advance_amount', 'read_only', 0);
+        }
     }
     frm.refresh_field('custom_claim_amount');
     frm.refresh_field('advance_amount');
