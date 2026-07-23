@@ -60,6 +60,13 @@ def execute(filters=None):
             ledger_entries, opening_date
         )
 
+    # ── NEW: Holiday / Weekly-off exclusion setup ─────────────────────────────
+    leave_type_include_holiday = get_leave_type_holiday_inclusion(leave_types)
+    emp_holiday_list_map = get_employee_holiday_lists(employees, to_date_full_mth)
+    holiday_dates_map = get_holiday_dates_map(
+        set(emp_holiday_list_map.values()), opening_date, to_date_full_mth
+    )
+
     # ── Previous-month boundaries ─────────────────────────────────────────────
     # availed_prev_end  : last day of previous month  (None for first FY month)
     # prev_month_start  : first day of previous month (None for first FY month)
@@ -91,6 +98,10 @@ def execute(filters=None):
             "designation":   emp.designation,
         }
 
+        emp_holiday_dates = holiday_dates_map.get(
+            emp_holiday_list_map.get(emp.name), set()
+        )
+
         for lt in leave_types:
 
             prefix = get_prefix(lt)
@@ -100,6 +111,10 @@ def execute(filters=None):
             availed_till_last_mth = 0.0
             availed_current_mth   = 0.0
             deduction_current_mth = 0.0
+
+            exclude_holidays_for_lt = (
+                set() if leave_type_include_holiday.get(lt) else emp_holiday_dates
+            )
 
             # ──────────────────────────────────────────────────────────────────
             # PASS 1 — Ledger entries
@@ -196,7 +211,8 @@ def execute(filters=None):
                     availed_till_last_mth += get_leave_days_in_period(
                         leave_from, leave_to,
                         opening_date, availed_prev_end,
-                        half_day=leave.half_day
+                        half_day=leave.half_day,
+                        holiday_dates=exclude_holidays_for_lt,
                     )
 
                 # Availed Current Month
@@ -206,7 +222,8 @@ def execute(filters=None):
                 availed_current_mth += get_leave_days_in_period(
                     leave_from, leave_to,
                     from_date, to_date_full_mth,        # ← KEY FIX
-                    half_day=leave.half_day
+                    half_day=leave.half_day,
+                    holiday_dates=exclude_holidays_for_lt,
                 )
 
             # ── Derived columns ───────────────────────────────────────────────
@@ -235,31 +252,159 @@ def execute(filters=None):
 # HELPER: LEAVE DAYS IN PERIOD (cross-month pro-rating)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_leave_days_in_period(leave_from, leave_to, report_from, report_to, half_day=False):
-    """
-    Return the number of calendar days of a leave application that fall
-    within [report_from, report_to].
+# def get_leave_days_in_period(leave_from, leave_to, report_from, report_to, half_day=False):
+#     """
+#     Return the number of calendar days of a leave application that fall
+#     within [report_from, report_to].
 
-    Examples
-    --------
-    leave 06-Jun → 08-Jun, window 01-Jun → 30-Jun  : 3 days
-    leave 29-Jun → 02-Jul, window 01-Jun → 30-Jun  : 2 days  (29, 30 Jun)
-    leave 29-Jun → 02-Jul, window 01-Jul → 31-Jul  : 2 days  (01, 02 Jul)
-    leave 29-Jun → 02-Jul, window 01-Jun → 26-Jun  : 0 days  ← old bug
-    half-day leave on 15-Jun                       : 0.5 day
+#     Examples
+#     --------
+#     leave 06-Jun → 08-Jun, window 01-Jun → 30-Jun  : 3 days
+#     leave 29-Jun → 02-Jul, window 01-Jun → 30-Jun  : 2 days  (29, 30 Jun)
+#     leave 29-Jun → 02-Jul, window 01-Jul → 31-Jul  : 2 days  (01, 02 Jul)
+#     leave 29-Jun → 02-Jul, window 01-Jun → 26-Jun  : 0 days  ← old bug
+#     half-day leave on 15-Jun                       : 0.5 day
+#     """
+#     start = max(leave_from, report_from)
+#     end   = min(leave_to,   report_to)
+
+#     if start > end:
+#         return 0.0
+    
+#     days = (end - start).days + 1
+
+#     if half_day:
+#         return 0.5
+
+#     return days
+
+
+
+def get_leave_days_in_period(leave_from, leave_to, report_from, report_to,
+                              half_day=False, holiday_dates=None):
+    """
+    Return the number of leave days of a leave application that fall
+    within [report_from, report_to], EXCLUDING any date present in
+    holiday_dates (weekly offs / holidays), unless the leave type includes
+    holidays as leave (caller then passes an empty set).
     """
     start = max(leave_from, report_from)
     end   = min(leave_to,   report_to)
 
     if start > end:
         return 0.0
-    
-    days = (end - start).days + 1
 
     if half_day:
         return 0.5
 
-    return days
+    if not holiday_dates:
+        return float((end - start).days + 1)
+
+    days = 0
+    d = start
+    while d <= end:
+        if d not in holiday_dates:
+            days += 1
+        d += timedelta(days=1)
+
+    return float(days)
+
+
+def get_leave_type_holiday_inclusion(leave_types):
+    """dict: leave_type -> bool(include_holiday)"""
+    result = {}
+    for lt in leave_types:
+        include_holiday = frappe.db.get_value("Leave Type", lt, "include_holiday")
+        result[lt] = bool(include_holiday)
+    return result
+
+
+def get_employee_holiday_lists(employees, reference_date):
+    """
+    dict: employee -> holiday_list to use, resolved as:
+      1. Latest Holiday List Assignment (applicable_for='Employee') with
+         from_date <= reference_date
+      2. Employee.holiday_list
+      3. Company.default_holiday_list
+    """
+    if not employees:
+        return {}
+
+    emp_names = [e.name for e in employees]
+
+    assignment_rows = frappe.db.sql(
+        """
+        SELECT assigned_to AS employee, holiday_list
+        FROM `tabHoliday List Assignment`
+        WHERE applicable_for = 'Employee'
+          AND assigned_to IN %(names)s
+          AND from_date <= %(ref_date)s
+        ORDER BY assigned_to, from_date DESC
+        """,
+        {"names": emp_names, "ref_date": reference_date},
+        as_dict=True,
+    )
+
+    assignment_map = {}
+    for r in assignment_rows:
+        if r.employee not in assignment_map:
+            assignment_map[r.employee] = r.holiday_list
+
+    emp_rows = frappe.db.sql(
+        """
+        SELECT name, holiday_list, company
+        FROM `tabEmployee`
+        WHERE name IN %(names)s
+        """,
+        {"names": emp_names},
+        as_dict=True,
+    )
+    emp_field_map   = {r.name: r.holiday_list for r in emp_rows}
+    emp_company_map = {r.name: r.company for r in emp_rows}
+
+    companies = {c for c in emp_company_map.values() if c}
+    company_default_map = {}
+    if companies:
+        co_rows = frappe.db.sql(
+            """SELECT name, default_holiday_list FROM `tabCompany` WHERE name IN %(names)s""",
+            {"names": list(companies)}, as_dict=True,
+        )
+        company_default_map = {c.name: c.default_holiday_list for c in co_rows}
+
+    result = {}
+    for emp in emp_names:
+        holiday_list = (
+            assignment_map.get(emp)
+            or emp_field_map.get(emp)
+            or company_default_map.get(emp_company_map.get(emp))
+        )
+        result[emp] = holiday_list
+
+    return result
+
+
+def get_holiday_dates_map(holiday_lists, fetch_from, fetch_to):
+    """dict: holiday_list -> set(date) of every Holiday between fetch_from/fetch_to"""
+    holiday_lists = {h for h in holiday_lists if h}
+    if not holiday_lists:
+        return {}
+
+    rows = frappe.db.sql(
+        """
+        SELECT parent AS holiday_list, holiday_date
+        FROM `tabHoliday`
+        WHERE parent IN %(lists)s
+          AND holiday_date BETWEEN %(from_date)s AND %(to_date)s
+        """,
+        {"lists": list(holiday_lists), "from_date": fetch_from, "to_date": fetch_to},
+        as_dict=True,
+    )
+
+    result = {}
+    for r in rows:
+        result.setdefault(r.holiday_list, set()).add(getdate(r.holiday_date))
+
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
