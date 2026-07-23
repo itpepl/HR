@@ -539,25 +539,71 @@ def get_pending_leaves_app_id(employee, leave_type, from_date, to_date):
     return leave_app_ids
 
 
+# def custom_update_attendance(self):
+#     if self.status != "Approved":
+#         return
+
+#     for dt in daterange(getdate(self.from_date), getdate(self.to_date)):
+#         date = dt.strftime("%Y-%m-%d")
+
+#         attendance_name = frappe.db.exists(
+#             "Attendance",
+#             dict(
+#                 employee=self.employee,
+#                 attendance_date=date,
+#                 docstatus=("!=", 2),
+#             ),
+#         )
+
+#         # ALWAYS create/update attendance (no skipping)
+#         self.create_or_update_attendance(attendance_name, date) 
+    
+
 def custom_update_attendance(self):
     if self.status != "Approved":
         return
 
+    leave_type_name = frappe.db.get_value(
+        "Leave Type",
+        self.leave_type,
+        "custom_leave_type"
+    )
+
+    FORCE_LEAVE_TYPES = [
+        "Leave Without Pay",
+        "Maternity Leave",
+        "Special Maternity Leave",
+        "Child Adoption Leave",
+        "Medical Emergency Leave",
+    ]
+
+    SKIP_HOLIDAY_TYPES = [
+        "Casual Leave",
+        "Sick Leave",
+        "Privilege Leave",
+        "Compensatory Off",
+    ]
+
     for dt in daterange(getdate(self.from_date), getdate(self.to_date)):
         date = dt.strftime("%Y-%m-%d")
 
+        day_type = get_day_type(self.employee, date)
+
+        # Skip Holiday / Weekly Off / RH only for these leave types
+        if day_type and leave_type_name in SKIP_HOLIDAY_TYPES:
+            continue
+
         attendance_name = frappe.db.exists(
             "Attendance",
-            dict(
-                employee=self.employee,
-                attendance_date=date,
-                docstatus=("!=", 2),
-            ),
+            {
+                "employee": self.employee,
+                "attendance_date": date,
+                "docstatus": ["!=", 2],
+            },
         )
 
-        # ALWAYS create/update attendance (no skipping)
-        self.create_or_update_attendance(attendance_name, date) 
-    
+        self.create_or_update_attendance(attendance_name, date)
+        
 # def custom_create_or_update_attendance(self, attendance_name, date):
     
 #     day_type = get_day_type(self.employee, date)
@@ -630,10 +676,6 @@ def custom_create_or_update_attendance(self, attendance_name, date):
         "Special Maternity Leave",
         "Child Adoption Leave",
         "Medical Emergency Leave",
-        "Casual Leave",
-        "Sick Leave",
-        "Privilege Leave",
-        "Compensatory Off"
     ]
 
     leave_type_name = frappe.db.get_value("Leave Type", self.leave_type, "custom_leave_type")
