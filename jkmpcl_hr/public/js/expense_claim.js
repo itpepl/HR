@@ -22,7 +22,7 @@ frappe.ui.form.on('Expense Claim', {
         }
 
         frappe.call({
-            method: "jkmpcl_hr.py.expense_claim.get_fiscal_periods",
+            method: "jkmpcl_hr.py.expense_claim.get_calendar_periods",
             args: {
                 employee: frm.doc.employee,
                 expense_claim: frm.doc.name
