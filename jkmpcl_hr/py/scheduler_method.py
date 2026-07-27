@@ -5995,6 +5995,44 @@ def has_approved_tour_request(employee, att_date):
         }
     )
 
+FORCE_LEAVE_TYPES = [
+    "Leave Without Pay",
+    "Maternity Leave",
+    "Special Maternity Leave",
+    "Child Adoption Leave",
+    "Medical Emergency Leave",
+]
+
+def get_force_leave_application(employee, date):
+    """
+    Returns the Leave Application dict if an approved leave of a
+    FORCE_LEAVE_TYPES type covers this date, else None.
+    """
+    leave = frappe.db.get_value(
+        "Leave Application",
+        {
+            "employee": employee,
+            "status": "Approved",
+            "docstatus": 1,
+            "from_date": ("<=", date),
+            "to_date": (">=", date),
+        },
+        ["name", "half_day", "half_day_date", "leave_type"],
+        as_dict=True
+    )
+
+    if not leave:
+        return None
+
+    leave_type_name = frappe.db.get_value(
+        "Leave Type", leave.leave_type, "custom_leave_type"
+    )
+
+    if leave_type_name in FORCE_LEAVE_TYPES:
+        return leave
+
+    return None
+
 def mark_attendance(emp, att_date):
     # =====================================================
     # TRAVEL REQUEST LOGIC
@@ -6159,9 +6197,18 @@ def mark_attendance(emp, att_date):
             frappe.db.commit()
             return att.name
     
-    if has_approved_leave(emp, att_date):
-                return
+    # if has_approved_leave(emp, att_date):
+    #             return
     
+    leave = has_approved_leave(emp, att_date)
+    holiday_type = get_holiday_type(emp, att_date)
+
+    # If leave exists on a holiday/weekoff,
+    # continue so create_or_update_attendance()
+    # can decide the correct status.
+    if leave and not holiday_type:
+        return
+
     # ------- Sandwich Rule start-----------
     if apply_sandwich_rule(emp,att_date):
         return
@@ -6258,12 +6305,13 @@ def mark_attendance(emp, att_date):
                     off_day_approved=off_day_approved,
                     holiday_type=holiday_type
                 )
-                frappe.db.set_value(
-                    "Attendance",
-                    {"employee": emp, "attendance_date": att_date},
-                    "status",
-                    holiday_type
-                )
+                if not get_force_leave_application(emp, att_date):
+                    frappe.db.set_value(
+                        "Attendance",
+                        {"employee": emp, "attendance_date": att_date},
+                        "status",
+                        holiday_type
+                    )
                 return
 
             create_or_update_attendance(
@@ -6355,12 +6403,13 @@ def mark_attendance(emp, att_date):
                     off_day_approved=off_day_approved,
                     holiday_type=holiday_type
                 )
-                frappe.db.set_value(
-                    "Attendance",
-                    {"employee": emp, "attendance_date": att_date},
-                    "status",
-                    holiday_type
-                )
+                if not get_force_leave_application(emp, att_date):
+                    frappe.db.set_value(
+                        "Attendance",
+                        {"employee": emp, "attendance_date": att_date},
+                        "status",
+                        holiday_type
+                    )
                 return
 
             create_or_update_attendance(
@@ -6508,12 +6557,13 @@ def mark_attendance(emp, att_date):
                 holiday_type=holiday_type
             )
 
-            frappe.db.set_value(
-                "Attendance",
-                att_id,
-                "status",
-                holiday_type
-            )
+            if not get_force_leave_application(emp, att_date):
+                frappe.db.set_value(
+                    "Attendance",
+                    att_id,
+                    "status",
+                    holiday_type
+                )
             return
 
         create_or_update_attendance(
@@ -7346,7 +7396,7 @@ def create_or_update_attendance(
             ],
             as_dict=True
         )
-        
+
         leave = frappe.db.get_value(
             "Leave Application",
             {
@@ -7356,9 +7406,41 @@ def create_or_update_attendance(
                 "to_date": (">=", date),
                 "docstatus": 1
             },
-            ["name", "half_day", "half_day_date"],
+            ["name", "half_day", "half_day_date", "leave_type"],
             as_dict=True
         )
+
+        FORCE_LEAVE_TYPES = [
+            "Leave Without Pay",
+            "Maternity Leave",
+            "Special Maternity Leave",
+            "Child Adoption Leave",
+            "Medical Emergency Leave",
+        ]
+
+        SKIP_HOLIDAY_TYPES = [
+            "Casual Leave",
+            "Sick Leave",
+            "Privilege Leave",
+            "Compensatory Off",
+        ]
+
+        leave_type_name = None
+        force_leave_status = False
+        skip_holiday_leave = False
+
+        if leave:
+            leave_type_name = frappe.db.get_value(
+                "Leave Type",
+                leave.leave_type,
+                "custom_leave_type"
+            )
+
+            if leave_type_name in FORCE_LEAVE_TYPES:
+                force_leave_status = True
+
+            elif leave_type_name in SKIP_HOLIDAY_TYPES:
+                skip_holiday_leave = True
  
         is_half_day_leave = bool(
             leave and leave.half_day and leave.half_day_date == date
@@ -7447,17 +7529,37 @@ def create_or_update_attendance(
                 }
             ))
  
-        if holiday_type:
+        # if holiday_type:
+        #     if not off_day_approved:
+        #         # No approved off-day request → always holiday status
+        #         status = holiday_type
+        #     else:
+        #         # Has approval → Present only if full hours worked
+        #         if working_hours >= half_day_hours:
+        #             status = "Present"
+        #         else:
+        #             # Single checkin, partial hours, or no out-punch
+        #             # → still preserve holiday status, NOT Partially/Absent
+        #             status = holiday_type
+        # else:
+        #     if working_hours <= absent_hours:
+        #         status = "Absent"
+        #     elif working_hours < half_day_hours:
+        #         status = "Half Day"
+        #     else:
+        #         status = "Present"
+
+
+        if force_leave_status:
+            status = "Half Day" if is_half_day_leave else "On Leave"
+
+        elif holiday_type:
             if not off_day_approved:
-                # No approved off-day request → always holiday status
                 status = holiday_type
             else:
-                # Has approval → Present only if full hours worked
                 if working_hours >= half_day_hours:
                     status = "Present"
                 else:
-                    # Single checkin, partial hours, or no out-punch
-                    # → still preserve holiday status, NOT Partially/Absent
                     status = holiday_type
         else:
             if working_hours <= absent_hours:
@@ -7472,12 +7574,12 @@ def create_or_update_attendance(
  
         # ✅ Only override to Partially on NON-holiday dates
         # On holiday dates single checkin must never become Partially
-        if single_checkin and not is_half_day_leave and not holiday_type:
+        if single_checkin and not is_half_day_leave and not holiday_type and not force_leave_status:
             status = "Partially"
 
         #------------------------------------------
             
-        if status != "Absent":
+        if (status != "Absent" and not force_leave_status):
             if in_time and out_time and not skip_shift_time_rules and not is_holiday_work:
  
                 shift_start = combine_datetime(date, shift.start_time)
@@ -7527,13 +7629,22 @@ def create_or_update_attendance(
             ["employee_name", "department", "company", "branch"],
             as_dict=True
         )
+
+        frappe.log_error(
+            "DEBUG LEAVE",
+            f"""
+        leave={leave}
+        leave_type_name={leave_type_name if leave else None}
+        force_leave_status={force_leave_status}
+        skip_holiday_leave={skip_holiday_leave}
+        holiday_type={holiday_type}
+        status={status}
+        """
+        )
         
         if attendance_name:
             att_name = attendance_name
-            frappe.db.set_value(
-            "Attendance",
-            att_name,
-            {
+            values = {
                 "shift": shift_type,
                 "in_time": in_time,
                 "out_time": out_time,
@@ -7545,9 +7656,20 @@ def create_or_update_attendance(
                 "department": employee_details.department,
                 "company": employee_details.company,
                 "custom_branch": employee_details.branch,
-            },
-            update_modified=False
-        )
+            }
+
+            if force_leave_status:
+                values.update({
+                    "leave_application": leave.name,
+                    "leave_type": leave.leave_type,
+                })
+
+            frappe.db.set_value(
+                "Attendance",
+                att_name,
+                values,
+                update_modified=False,
+            )
         
         else:
             att_name = frappe.generate_hash(length=12)
@@ -7581,6 +7703,17 @@ def create_or_update_attendance(
                 frappe.session.user,
                 frappe.session.user,
             ))
+
+            if force_leave_status:
+                frappe.db.set_value(
+                    "Attendance",
+                    att_name,
+                    {
+                        "leave_application": leave.name,
+                        "leave_type": leave.leave_type,
+                    },
+                    update_modified=False,
+                )
  
             frappe.db.commit()
         if first_checkin_id:
@@ -7640,7 +7773,7 @@ def create_or_update_attendance(
             revert_penalty_leave(att_name)
         # Apply penalty only if checkin exists
                 
-        if not is_holiday_work and not holiday_type:
+        if not is_holiday_work and not holiday_type and not force_leave_status:
         
             if not is_half_day_leave:
                 if status == "Partially":
@@ -7694,14 +7827,67 @@ def create_or_update_attendance(
         # force it back to the correct holiday type.
         # This catches any edge case (single checkin, zero hours, etc.)
         # regardless of the path that set status above.
-        if holiday_type and status not in ("Present",):
-            frappe.db.set_value(
-                "Attendance",
-                att_name,
-                "status",
-                holiday_type,
-                update_modified=False
-            )
+        # if holiday_type and status not in ("Present",):
+        #     frappe.db.set_value(
+        #         "Attendance",
+        #         att_name,
+        #         "status",
+        #         holiday_type,
+        #         update_modified=False
+        #     )
+
+        # if holiday_type and not off_day_approved:
+        #     frappe.db.set_value(
+        #         "Attendance",
+        #         att_name,
+        #         {
+        #             "status": holiday_type,
+        #             "leave_application": None,
+        #             "leave_type": None,
+        #         },
+        #         update_modified=False
+        #     )
+
+        if holiday_type and not off_day_approved:
+
+            # Category-1 leaves remain On Leave
+            if force_leave_status:
+                frappe.db.set_value(
+                    "Attendance",
+                    att_name,
+                    {
+                        "status": "Half Day" if is_half_day_leave else "On Leave",
+                        "leave_application": leave.name,
+                        "leave_type": leave.leave_type,
+                    },
+                    update_modified=False,
+                )
+
+            # # Category-2 leaves become Holiday/Weekly Off/RH
+            # elif skip_holiday_leave:
+            #     frappe.db.set_value(
+            #         "Attendance",
+            #         att_name,
+            #         {
+            #             "status": holiday_type,
+            #             "leave_application": None,
+            #             "leave_type": None,
+            #         },
+            #         update_modified=False,
+            #     )
+
+            # Category-2 leaves become Holiday/Weekly Off/RH and Normal attendance
+            else:
+                frappe.db.set_value(
+                    "Attendance",
+                    att_name,
+                    {
+                        "status": holiday_type,
+                        "leave_application": None,
+                        "leave_type": None,
+                    },
+                    update_modified=False,
+                )
         
         # if old_status in ("Absent", "Half Day","Partially") and status == "Present":
         #     revert_penalty_leave(att_name)

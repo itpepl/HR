@@ -8,7 +8,14 @@ def before_insert(doc, method):
     doc.advance_amount = doc.custom_claim_amount
 
 def validate(doc, method):
-    validate_dates_not_in_past(doc)
+    if doc.is_new():
+        validate_dates_not_in_past(doc)
+
+    old_doc = doc.get_doc_before_save()
+    
+    if old_doc:
+        if (doc.custom_from_date != old_doc.custom_from_date or doc.custom_to_date != old_doc.custom_to_date):
+            validate_dates_not_in_past(doc)
     doc.advance_account = "Debtors - JKMPCL"
 
 def validate_dates_not_in_past(doc):

@@ -443,21 +443,100 @@ def create(**args):
             "data": None,
         }
     
+# def get_fiscal_year_bounds(date):
+#     date = getdate(date)
+
+#     if date.month >= 4:
+#         start = getdate(f"{date.year}-04-01")
+#         end = getdate(f"{date.year + 1}-03-31")
+#     else:
+#         start = getdate(f"{date.year - 1}-04-01")
+#         end = getdate(f"{date.year}-03-31")
+
+#     return start, end
+
+
+# @frappe.whitelist()
+# def get_lta_fiscal_period(employee_code=None, expense_claim=None):
+#     try:
+#         # Get Employee
+#         if employee_code:
+#             employee = employee_code
+#         else:
+#             employee = frappe.db.get_value(
+#                 "Employee",
+#                 {"user_id": frappe.session.user},
+#                 "name"
+#             )
+
+#             if not employee:
+#                 frappe.throw(("Employee not found for the logged-in user."))
+
+#         today = getdate()
+
+#         current_start, current_end = get_fiscal_year_bounds(today)
+#         prev_start, prev_end = get_fiscal_year_bounds(
+#             current_start - timedelta(days=1)
+#         )
+
+#         response = {
+#             "employee": employee,
+#             "lta_period_from": current_start,
+#             "lta_period_to": current_end,
+#             "last_availed_from": None,
+#             "last_availed_to": None,
+#         }
+
+#         conditions = """
+#             employee = %s
+#             AND docstatus != 2
+#             AND custom_period_of_leave_from IS NOT NULL
+#             AND custom_period_of_leave_to IS NOT NULL
+#             AND custom_period_of_leave_to BETWEEN %s AND %s
+#         """
+
+#         values = [employee, current_start, current_end]
+
+#         if expense_claim:
+#             conditions += " AND name != %s"
+#             values.append(expense_claim)
+
+#         claim_exists = frappe.db.sql(
+#             f"""
+#             SELECT name
+#             FROM `tabExpense Claim`
+#             WHERE {conditions}
+#             LIMIT 1
+#             """,
+#             tuple(values),
+#             as_dict=True,
+#         )
+
+#         if claim_exists:
+#             response["last_availed_from"] = prev_start
+#             response["last_availed_to"] = prev_end
+        
+#         return {
+#             "success": True,
+#             "message": "LTA fiscal periods fetched successfully.",
+#             "data": response,
+#         }
+#     except:
+#         return {
+#             "success": False,
+#             "message": str(frappe.get_traceback())
+#         }
+
+
+
 def get_fiscal_year_bounds(date):
     date = getdate(date)
-
-    if date.month >= 4:
-        start = getdate(f"{date.year}-04-01")
-        end = getdate(f"{date.year + 1}-03-31")
-    else:
-        start = getdate(f"{date.year - 1}-04-01")
-        end = getdate(f"{date.year}-03-31")
-
+    start = getdate(f"{date.year}-01-01")
+    end = getdate(f"{date.year}-12-31")
     return start, end
 
-
 @frappe.whitelist()
-def get_lta_fiscal_period(employee_code=None, expense_claim=None):
+def get_lta_fiscal_period(employee_code= None, expense_claim=None):
     try:
         # Get Employee
         if employee_code:
@@ -506,6 +585,7 @@ def get_lta_fiscal_period(employee_code=None, expense_claim=None):
             SELECT name
             FROM `tabExpense Claim`
             WHERE {conditions}
+            ORDER BY custom_period_of_leave_to DESC
             LIMIT 1
             """,
             tuple(values),
@@ -513,8 +593,11 @@ def get_lta_fiscal_period(employee_code=None, expense_claim=None):
         )
 
         if claim_exists:
-            response["last_availed_from"] = prev_start
-            response["last_availed_to"] = prev_end
+            leave_to = getdate(claim_exists[0].custom_period_of_leave_to)
+            fy_start, fy_end = get_fiscal_year_bounds(leave_to)
+
+            response["last_availed_from"] = fy_start
+            response["last_availed_to"] = fy_end
         
         return {
             "success": True,
