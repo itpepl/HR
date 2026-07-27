@@ -17,10 +17,11 @@ def get_employee_info(employee_code):
     hr_settings = frappe.get_single("HR Settings")
 
     employee_department = employee.department
+    employee_source = employee.custom_attendance_source
     punch_limit_settings = []
 
     for row in hr_settings.custom_punch_limit_setting:
-        if row.department == employee_department:
+        if row.department == employee_department and row.attendnace_source == employee_source:
             punch_limit_settings.append({
                 "department": row.department,
                 "attendance_source": row.attendnace_source,
@@ -59,7 +60,7 @@ def get_employee_info(employee_code):
                 "enable": False,
                 "punch_limit_settings": punch_limit_settings,
                 "checkin_summary": {
-                    "date": today,
+                    "date": today(),
                     "in_count": in_count,
                     "out_count": out_count,
                     "total_punches": in_count + out_count
