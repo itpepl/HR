@@ -40,7 +40,7 @@ class TourRequest(Document):
             FROM `tabTour Request`
             WHERE employee = %s
                 AND name != %s
-                AND docstatus != 2
+                AND docstatus = 1
                 AND from_date <= %s
                 AND to_date >= %s
             LIMIT 1
