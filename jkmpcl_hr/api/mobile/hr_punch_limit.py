@@ -179,6 +179,7 @@ def get_employee_info(employee_code):
     
 
     geo_fence_radius = hr_settings.custom_geo_fence_radius
+    geolocation_interval = hr_settings.custom_geolocation_interval_in_minutes
 
     return {
         "status": "success",
@@ -189,6 +190,7 @@ def get_employee_info(employee_code):
                 "employee_name": employee.employee_name,
                 "head_quarter_type": hq_type,
             },
+            "geolocation_interval" : geolocation_interval,
             "location_info": location_info,
             "geo_fence_radius": geo_fence_radius,
             "punch_limit_settings": punch_limit_settings,

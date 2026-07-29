@@ -46,6 +46,11 @@ def log_employee_location(
     # Get Previous Location
     # -----------------------------------------
 
+    hr_settings = frappe.get_single("HR Settings")
+    
+    geolocation_min_distaance = float(hr_settings.custom_geolocation_minimum_distance_in_meters)
+    convert_into_km = round(geolocation_min_distaance / 1000, 2)
+
     if type != "S":
 
       previous = frappe.get_all(
@@ -83,7 +88,7 @@ def log_employee_location(
           ).km
 
           # Ignore GPS drift
-          if distance < 0.01:
+          if distance < convert_into_km:
               return
 
           total_distance = (
