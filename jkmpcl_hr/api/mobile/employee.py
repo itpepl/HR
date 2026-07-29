@@ -9,6 +9,8 @@ from jkmpcl_hr.py.utils import get_emp_reporting_manager
 def get_employee_details(email):
 
     try:
+        hr_settings = frappe.get_single("HR Settings")
+
         employee = frappe.get_all(
             "Employee",
             filters={"user_id": email},
@@ -93,6 +95,8 @@ def get_employee_details(email):
             else False
         )
 
+        geolocation_interval = hr_settings.custom_geolocation_interval_in_minutes
+
         data = {
             "company_info": {
                 "company": employee.get("company", "N/A"),
@@ -100,6 +104,11 @@ def get_employee_details(email):
                 "branch": employee.get("branch", "N/A"),
                
             },
+            "lat_long_interval": {
+                "geolocation_interval": geolocation_interval,
+                
+            },
+
             "employee_info": {
                 "name": employee_name,
                 "grade": employee.get("grade", "N/A"),
