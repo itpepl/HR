@@ -41,7 +41,7 @@ def create_employee_activity():
         contact_person = data.get("contact_person_name")
         latitude = data.get("latitude")
         longitude = data.get("longitude")
-        vehicle_type = data.get("vehicle_type")
+        custom_ta_da_mode = data.get("custom_ta_da_mode")
         purpose = data.get("purpose")
         visit_location = data.get("visit_location")
         activity_details = data.get("activity_details")
@@ -57,7 +57,7 @@ def create_employee_activity():
             "contact_person": contact_person,
             "latitude": latitude,
             "longitude": longitude,
-            "vehicle_type": vehicle_type,
+            "custom_ta_da_mode": custom_ta_da_mode,
             "purpose": purpose,
             "visit_location": visit_location,
             "activity_details": activity_details,
