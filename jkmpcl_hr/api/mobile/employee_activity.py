@@ -1,8 +1,13 @@
 import frappe
 from frappe import _
-from frappe.utils import get_datetime
+from frappe.utils import get_datetime, flt
 from frappe.utils.file_manager import save_file
+from geopy.geocoders import Nominatim
 
+
+geolocator = Nominatim(
+    user_agent="employee_activity"
+)
 
 def save_image(doctype, docname):
     """
@@ -47,6 +52,28 @@ def create_employee_activity():
         activity_details = data.get("activity_details")
         remarks = data.get("remarks")
 
+        emp_latitude = flt(latitude)
+        emp_longitude = flt(longitude)
+
+        custom_location = ""
+        
+        try:
+    
+            location = geolocator.reverse(
+                f"{emp_latitude},{emp_longitude}",
+                exactly_one=True
+            )
+    
+            if location:
+                custom_location = location.address
+    
+        except Exception:
+    
+            frappe.log_error(
+                frappe.get_traceback(),
+                "Employee Activity Reverse Geocoding"
+            )
+
         if not employee:
             frappe.throw(_("Employee is mandatory."))
 
@@ -60,6 +87,7 @@ def create_employee_activity():
             "custom_ta_da_mode": custom_ta_da_mode,
             "purpose": purpose,
             "visit_location": visit_location,
+            "custom_location": custom_location,
             "activity_details": activity_details,
             "remarks": remarks,
         })
