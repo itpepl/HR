@@ -101,37 +101,37 @@ def get_data(filters):
 	out = []
 	for emp in employees:
 		emp_rows = []
-		totals = {"visit_points": 0, "distance": 0.0, "tada_flat": 0.0,
-			"plant_vehicle_used": 0.0, "total_ta_km": 0.0}
+		# totals = {"visit_points": 0, "distance": 0.0, "tada_flat": 0.0,
+		# 	"plant_vehicle_used": 0.0, "total_ta_km": 0.0}
 
 		for day in date_list:
 			row = build_row(emp, day, bike_rate, attendance_map)
 			emp_rows.append(row)
-			totals["visit_points"] += cint(row["visit_points"])
-			totals["distance"] += flt(row["distance"])
-			totals["tada_flat"] += flt(row["tada_flat"])
-			totals["plant_vehicle_used"] += flt(row["plant_vehicle_used"])
-			totals["total_ta_km"] += flt(row["total_ta_km"])
+			# totals["visit_points"] += cint(row["visit_points"])
+			# totals["distance"] += flt(row["distance"])
+			# totals["tada_flat"] += flt(row["tada_flat"])
+			# totals["plant_vehicle_used"] += flt(row["plant_vehicle_used"])
+			# totals["total_ta_km"] += flt(row["total_ta_km"])
 
 		out.extend(emp_rows)
 
-		out.append({
-			"employee": "",
-			"employee_name": "",
-			"date": _("Total"),
-			"start_time": "",
-			"end_time": "",
-			"visit_points": totals["visit_points"],
-			"duration": "",
-			"distance": flt(totals["distance"], 2),
-			"visit_type": "",
-			"ta_da_mode": "",
-			"tada_flat": flt(totals["tada_flat"], 2),
-			"plant_vehicle_used": flt(totals["plant_vehicle_used"], 2),
-			"total_ta_km": flt(totals["total_ta_km"], 2),
-			"photo_status": "",
-			"is_total_row": 1,
-		})
+		# out.append({
+		# 	"employee": "",
+		# 	"employee_name": "",
+		# 	"date": _("Total"),
+		# 	"start_time": "",
+		# 	"end_time": "",
+		# 	"visit_points": totals["visit_points"],
+		# 	"duration": "",
+		# 	"distance": flt(totals["distance"], 2),
+		# 	"visit_type": "",
+		# 	"ta_da_mode": "",
+		# 	"tada_flat": flt(totals["tada_flat"], 2),
+		# 	"plant_vehicle_used": flt(totals["plant_vehicle_used"], 2),
+		# 	"total_ta_km": flt(totals["total_ta_km"], 2),
+		# 	"photo_status": "",
+		# 	"is_total_row": 1,
+		# })
 
 	return out
 
@@ -305,6 +305,18 @@ def build_row(emp, day, bike_rate, attendance_map):
 
 	visit_points = len(day_activities)
 
+	cutoff_time = day_start + timedelta(hours=7)
+
+	before_7am_visits = [
+			d for d in day_activities
+			if d.request_date and get_datetime(d.request_date) < cutoff_time
+	]
+
+	eligible_for_tada = (
+			visit_points >= 2 and
+			len(before_7am_visits) == 1
+	)
+
 	tada_flat = 0.0
 	plant_vehicle_used = 0.0
 	total_ta_km = 0.0
@@ -313,7 +325,7 @@ def build_row(emp, day, bike_rate, attendance_map):
 	if day_activities:
 		ta_da_mode = day_activities[0].custom_ta_da_mode or ""
 
-	if day_activities and visit_points > 1:
+	if eligible_for_tada:
 		is_low_grade = emp.grade in LOW_GRADES
 		ta_mode = ta_da_mode
 
