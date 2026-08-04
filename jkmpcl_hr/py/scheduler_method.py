@@ -5989,7 +5989,7 @@ def has_approved_tour_request(employee, att_date):
         {
             "employee": employee,
             "docstatus": 1,
-            "workflow_state": "Approved by HR",
+            # "workflow_state": "Final Approved",
             "from_date": ["<=", att_date],
             "to_date": [">=", att_date]
         }
