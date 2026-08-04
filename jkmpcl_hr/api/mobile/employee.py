@@ -364,3 +364,24 @@ def get_upcoming_holidays(employeeId=None):
             "message": "Year-wise holidays loaded successfully",
             "data": final_result
         }
+
+
+@frappe.whitelist()
+def get_employee_status_details(employee_code):
+    employee = frappe.get_doc("Employee", employee_code)
+    if not employee:
+        frappe.throw("Employee not found")
+
+    employee_status = employee.status
+
+    return {
+        "status": "success",
+        "data": {
+            "enable": True,
+            "employee": {
+                "employee_code": employee_code,
+                "employee_name": employee.employee_name,
+                "employee_status": employee_status
+            },
+        }
+    }
