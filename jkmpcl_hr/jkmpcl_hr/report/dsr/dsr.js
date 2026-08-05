@@ -123,7 +123,17 @@ frappe.query_reports["DSR"] = {
 
 	refresh: function(report) {
 		set_default_dates(report);
+	},
+
+	formatter: function (value, row, column, data, default_formatter) {
+	value = default_formatter(value, row, column, data);
+
+	if (data && data.is_total_row) {
+		value = "<b>" + value + "</b>";
 	}
+
+	return value;
+}
 };
 
 function set_default_dates(report) {

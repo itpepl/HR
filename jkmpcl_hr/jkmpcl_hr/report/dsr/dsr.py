@@ -269,6 +269,23 @@ def execute(filters=None):
 	columns = get_columns()
 	data = get_data(filters)
 
+	grand_total = sum(
+		flt(row.get("km_calculation", 0)) for row in data if not row.get("is_total_row")
+	)
+
+	data.append({
+		"employee": "",
+		"employee_name": "",
+		"datetime": "",
+		"event_type": _("Grand Total"),
+		"km_calculation": grand_total,
+		"address": "",
+		"subject": "",
+		"message": "",
+		"photos": "",
+		"is_total_row": 1
+	})
+
 	return columns, data
 
 
@@ -311,6 +328,7 @@ def get_data(filters):
 				continue
 
 			emp_has_data = True
+			day_total = 0.0
 
 			# ---- Start Row (custom_type = S) ----
 			if start_record:
@@ -319,17 +337,19 @@ def get_data(filters):
 					"employee_name": emp.employee_name,
 					"datetime": format_datetime_value(start_record.timestamp),
 					"event_type": start_record.custom_type,
-					"km_calculation": flt(start_record.total_distance),
+					"km_calculation": flt(start_record.distance_from_previous),
 					"address": start_record.address,
 					"subject": "",
 					"message": "",
 					"photos": ""
 				})
 
+				day_total += flt(start_record.distance_from_previous)
+
 			# ---- Activity Rows (event_type always "FN") ----
 			for activity in activities:
 				matched_geo = get_matching_geo_record(emp.name, date, activity.request_date)
-				km_value = flt(matched_geo.total_distance) if matched_geo else 0.0
+				km_value = flt(matched_geo.distance_from_previous) if matched_geo else 0.0
 
 				emp_rows.append({
 					"employee": emp.name,
@@ -342,6 +362,7 @@ def get_data(filters):
 					"message": activity.activity_details,
 					"photos": get_photo_html(activity.name)
 				})
+				day_total += km_value
 
 			# ---- End Row (custom_type = E) ----
 			if end_record:
@@ -350,12 +371,26 @@ def get_data(filters):
 					"employee_name": emp.employee_name,
 					"datetime": format_datetime_value(end_record.timestamp),
 					"event_type": end_record.custom_type,
-					"km_calculation": flt(end_record.total_distance),
+					"km_calculation": flt(end_record.distance_from_previous),
 					"address": end_record.address,
 					"subject": "",
 					"message": "",
 					"photos": ""
 				})
+				day_total += flt(end_record.distance_from_previous)
+
+			emp_rows.append({
+				"employee": "",
+				"employee_name": "",
+				"datetime": "",
+				"event_type": _("Sub Total"),
+				"km_calculation": flt(day_total, 2),
+				"address": "",
+				"subject": "",
+				"message": "",
+				"photos": "",
+				"is_total_row": 1
+			})
 
 		if emp_has_data:
 			data.extend(emp_rows)
@@ -398,7 +433,7 @@ def get_geo_records(employee, date):
 			"employee": employee,
 			"timestamp": ["between", ["{0} 00:00:00".format(date), "{0} 23:59:59".format(date)]]
 		},
-		fields=["name", "timestamp", "custom_type", "total_distance", "address"],
+		fields=["name", "timestamp", "custom_type", "distance_from_previous", "address"],
 		order_by="timestamp asc"
 	)
 
@@ -445,7 +480,7 @@ def get_matching_geo_record(employee, date, request_date):
 			"employee": employee,
 			"timestamp": ["between", ["{0} 00:00:00".format(date), cstr(request_date)]]
 		},
-		fields=["name", "timestamp", "total_distance"],
+		fields=["name", "timestamp", "distance_from_previous"],
 		order_by="timestamp desc",
 		limit_page_length=1
 	)
