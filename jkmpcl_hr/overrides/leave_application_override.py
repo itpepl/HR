@@ -557,7 +557,84 @@ def get_pending_leaves_app_id(employee, leave_type, from_date, to_date):
 
 #         # ALWAYS create/update attendance (no skipping)
 #         self.create_or_update_attendance(attendance_name, date) 
-    
+
+
+def get_day_type(employee, date):
+    holiday_list = get_holiday_list_for_employee(employee, as_on=date)
+ 
+    if not holiday_list:
+        return None
+ 
+    date = getdate(date)
+ 
+    holiday = frappe.db.get_value(
+        "Holiday",
+        {
+            "parent": holiday_list,
+            "holiday_date": date,
+        },
+        [
+            "weekly_off",
+            "custom_is_restricted_holiday",
+            "custom_restricted_holiday_date",
+        ],
+        as_dict=True,
+    )
+ 
+    if not holiday:
+        return None
+ 
+    # PRIORITY: Weekly Off > Holiday > Restricted Holiday
+    if holiday.weekly_off:
+        return "Weekly Off"
+ 
+    if not holiday.custom_is_restricted_holiday:
+        return "Holiday"
+ 
+    pair_date = holiday.get("custom_restricted_holiday_date")
+ 
+    # No pair configured on this row -> fall back to old behaviour unchanged
+    if not pair_date:
+        return "Restricted Holiday"
+ 
+    pair_date = getdate(pair_date)
+ 
+    first_pair_date = min(date, pair_date)
+    second_pair_date = max(date, pair_date)
+ 
+    # * FIRST RH PAIR DATE -> leave application is already blocked here via
+    #   custom_get_holidays(). Attendance for this date always stays
+    #   "Restricted Holiday" by default. Unchanged behaviour.
+    if date == first_pair_date:
+        return "Restricted Holiday"
+ 
+    # * SECOND RH PAIR DATE (date == second_pair_date) -> look at the first
+    #   pair date's attendance to decide if this day is still "free"
+    #   (Restricted Holiday) or becomes compulsory.
+    first_pair_status = frappe.db.get_value(
+        "Attendance",
+        {
+            "employee": employee,
+            "attendance_date": first_pair_date,
+            "docstatus": ["!=", 2],
+        },
+        "status",
+    )
+ 
+    # If the first pair date has no attendance yet, or is still sitting at the
+    # default "Restricted Holiday" status (i.e. employee didn't use it),
+    # the second pair date becomes compulsory: returning None here makes the
+    # callers (custom_update_attendance / custom_create_or_update_attendance,
+    # and any other daily attendance marking that reuses get_day_type) treat
+    # it as a normal working day -> Present if checked in, On Leave if leave
+    # applied (with leave_type/leave_application linked), else Absent.
+    if not first_pair_status or first_pair_status == "Restricted Holiday":
+        return None
+ 
+    # First pair date was already utilised (Present / On Leave / Half Day /
+    # Weekly Off etc.) -> second pair date remains an optional Restricted
+    # Holiday, same as today.
+    return "Restricted Holiday"  
 
 def custom_update_attendance(self):
     if self.status != "Approved":
@@ -1162,32 +1239,34 @@ def custom_get_holiday_dates_for_employee(employee, start_date, end_date):
 
 
 
-def get_day_type(employee, date):
-    holiday_list = get_holiday_list_for_employee(employee, as_on=date)
+# def get_day_type(employee, date):
+#     holiday_list = get_holiday_list_for_employee(employee, as_on=date)
 
-    if not holiday_list:
-        return None
+#     if not holiday_list:
+#         return None
 
-    holiday = frappe.db.get_value(
-        "Holiday",
-        {
-            "parent": holiday_list,
-            "holiday_date": date,
-        },
-        [
-            "weekly_off",
-            "custom_is_restricted_holiday",
-        ],
-        as_dict=True,
-    )
+#     holiday = frappe.db.get_value(
+#         "Holiday",
+#         {
+#             "parent": holiday_list,
+#             "holiday_date": date,
+#         },
+#         [
+#             "weekly_off",
+#             "custom_is_restricted_holiday",
+#         ],
+#         as_dict=True,
+#     )
 
-    if not holiday:
-        return None
+#     if not holiday:
+#         return None
 
-    # PRIORITY: Weekly Off > Holiday > Restricted Holiday
-    if holiday.weekly_off:
-        return "Weekly Off"
-    elif holiday.custom_is_restricted_holiday:
-        return "Restricted Holiday"
-    else:
-        return "Holiday"
+#     # PRIORITY: Weekly Off > Holiday > Restricted Holiday
+#     if holiday.weekly_off:
+#         return "Weekly Off"
+#     elif holiday.custom_is_restricted_holiday:
+#         return "Restricted Holiday"
+#     else:
+#         return "Holiday"
+
+
