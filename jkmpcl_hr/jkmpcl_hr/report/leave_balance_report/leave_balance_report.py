@@ -191,6 +191,15 @@ def execute(filters=None):
                 ):
                     deduction_current_mth += abs(leaves)
 
+                elif (
+                    prev_month_start is not None
+                    and availed_prev_end is not None
+                    and opening_date <= e_date <= availed_prev_end
+                    and txn_type == "Leave Allocation"
+                    and is_penalty
+                ):
+                    availed_till_last_mth += abs(leaves)
+
             # ──────────────────────────────────────────────────────────────────
             # PASS 2 — Leave Applications (availed figures, ALL leave types)
             #
