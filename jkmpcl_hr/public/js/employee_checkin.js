@@ -43,9 +43,28 @@ function render_map(frm) {
     // Create map container
     field.$wrapper.html(`
         <div id="employee_route_map"
-             style="height:500px;width:100%;border-radius:8px;margin-bottom:10px;border:1px solid #ccc;">
+             style="height:500px;width:100%;border-radius:8px;margin-top:20px;margin-bottom:10px;border:1px solid #ccc;postition:relative;z-index:1;overflow:hidden;">
         </div>
     `);
+
+    // Make sure Leaflet's internal controls never escape this container
+    // and never exceed Frappe's page-head z-index (Frappe's .page-head is z-index: 6-15 depending on version)
+    if (!document.getElementById('employee-route-map-style-fix')) {
+        let style = document.createElement('style');
+        style.id = 'employee-route-map-style-fix';
+        style.innerHTML = `
+            #employee_route_map .leaflet-pane,
+            #employee_route_map .leaflet-top,
+            #employee_route_map .leaflet-control {
+                z-index: 2 !important;
+            }
+                
+            #employee_route_map {
+                isolation: isolate; /* creates its own stacking context so nothing inside can escape */
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
     // Destroy previous map instance if the form refreshes
     const container = L.DomUtil.get("employee_route_map");
