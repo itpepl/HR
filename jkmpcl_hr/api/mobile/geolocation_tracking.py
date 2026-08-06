@@ -49,6 +49,7 @@ def log_employee_location(
     hr_settings = frappe.get_single("HR Settings")
     
     geolocation_min_distaance = float(hr_settings.custom_geolocation_minimum_distance_in_meters)
+    geolocation_interval = float(hr_settings.custom_geolocation_interval_in_minutes)
     convert_into_km = round(geolocation_min_distaance / 1000, 2)
 
     if type != "S":
@@ -155,5 +156,6 @@ def log_employee_location(
             "distance_from_previous": round(distance, 3),
             "total_distance": round(total_distance, 3),
             "address": address,
+            "geolocation_interval": geolocation_interval
         },
     }
