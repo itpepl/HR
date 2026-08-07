@@ -1,4 +1,4 @@
-# ---------------------------------------- Leave Required Report Updated Code (08-04-2026) ----------------------------------------
+# ---------------------------------------- Leave Required Report Updated Code (08-05-2026) ----------------------------------------
 
 # ----------------------------- Latest UPDATED CODE (08-04-2026) -------------------------------
 
@@ -60,11 +60,21 @@ def execute(filters=None):
             ledger_entries, opening_date
         )
 
-    # ── NEW: Holiday / Weekly-off exclusion setup ─────────────────────────────
-    leave_type_include_holiday = get_leave_type_holiday_inclusion(leave_types)
+    # ── Holiday / Weekly-off exclusion setup ───────────────────────────────────
+    # NOTE: We no longer look at the Leave Type's "include_holiday" checkbox to
+    # decide whether a holiday-list date should be excluded from availed count.
+    # That was a static, per-leave-type setting and couldn't tell the difference
+    # between "this holiday was never taken as leave" vs "this holiday was
+    # actually approved as leave" (e.g. the 2nd Restricted Holiday pair date).
+    # Instead we now check the Attendance record for that exact date: if it's
+    # marked "On Leave" (linked to a Leave Application of this leave type), the
+    # date is counted as availed regardless of it being a holiday-list date.
     emp_holiday_list_map = get_employee_holiday_lists(employees, to_date_full_mth)
     holiday_dates_map = get_holiday_dates_map(
         set(emp_holiday_list_map.values()), opening_date, to_date_full_mth
+    )
+    on_leave_attendance_map = get_on_leave_attendance_dates(
+        employees, leave_types, opening_date, to_date_full_mth
     )
 
     # ── Previous-month boundaries ─────────────────────────────────────────────
@@ -112,8 +122,13 @@ def execute(filters=None):
             availed_current_mth   = 0.0
             deduction_current_mth = 0.0
 
-            exclude_holidays_for_lt = (
-                set() if leave_type_include_holiday.get(lt) else emp_holiday_dates
+            # Holiday-list dates are excluded from availed count by default;
+            # the exception is any date where Attendance actually shows
+            # "On Leave" for this employee + leave type (e.g. a leave taken
+            # on the 2nd Restricted Holiday pair date).
+            exclude_holidays_for_lt = emp_holiday_dates
+            on_leave_dates_for_lt   = on_leave_attendance_map.get(
+                (emp.name, lt), set()
             )
 
             # ──────────────────────────────────────────────────────────────────
@@ -176,6 +191,15 @@ def execute(filters=None):
                 ):
                     deduction_current_mth += abs(leaves)
 
+                elif (
+                    prev_month_start is not None
+                    and availed_prev_end is not None
+                    and opening_date <= e_date <= availed_prev_end
+                    and txn_type == "Leave Allocation"
+                    and is_penalty
+                ):
+                    availed_till_last_mth += abs(leaves)
+
             # ──────────────────────────────────────────────────────────────────
             # PASS 2 — Leave Applications (availed figures, ALL leave types)
             #
@@ -195,6 +219,10 @@ def execute(filters=None):
             # 3. get_leave_days_in_period clips to the overlap of the leave
             #    period and the window, so cross-month leaves are correctly
             #    split — e.g. leave 29-Jun to 02-Jul in June window gives 2 days.
+            #
+            # 4. Holiday-list dates are excluded UNLESS Attendance shows the
+            #    date was actually taken "On Leave" (on_leave_dates_for_lt) —
+            #    see comment above where exclude_holidays_for_lt is set.
             # ──────────────────────────────────────────────────────────────────
 
             for leave in leave_applications:
@@ -213,6 +241,7 @@ def execute(filters=None):
                         opening_date, availed_prev_end,
                         half_day=leave.half_day,
                         holiday_dates=exclude_holidays_for_lt,
+                        on_leave_dates=on_leave_dates_for_lt,
                     )
 
                 # Availed Current Month
@@ -224,6 +253,7 @@ def execute(filters=None):
                     from_date, to_date_full_mth,        # ← KEY FIX
                     half_day=leave.half_day,
                     holiday_dates=exclude_holidays_for_lt,
+                    on_leave_dates=on_leave_dates_for_lt,
                 )
 
             # ── Derived columns ───────────────────────────────────────────────
@@ -252,41 +282,16 @@ def execute(filters=None):
 # HELPER: LEAVE DAYS IN PERIOD (cross-month pro-rating)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# def get_leave_days_in_period(leave_from, leave_to, report_from, report_to, half_day=False):
-#     """
-#     Return the number of calendar days of a leave application that fall
-#     within [report_from, report_to].
-
-#     Examples
-#     --------
-#     leave 06-Jun → 08-Jun, window 01-Jun → 30-Jun  : 3 days
-#     leave 29-Jun → 02-Jul, window 01-Jun → 30-Jun  : 2 days  (29, 30 Jun)
-#     leave 29-Jun → 02-Jul, window 01-Jul → 31-Jul  : 2 days  (01, 02 Jul)
-#     leave 29-Jun → 02-Jul, window 01-Jun → 26-Jun  : 0 days  ← old bug
-#     half-day leave on 15-Jun                       : 0.5 day
-#     """
-#     start = max(leave_from, report_from)
-#     end   = min(leave_to,   report_to)
-
-#     if start > end:
-#         return 0.0
-    
-#     days = (end - start).days + 1
-
-#     if half_day:
-#         return 0.5
-
-#     return days
-
-
-
 def get_leave_days_in_period(leave_from, leave_to, report_from, report_to,
-                              half_day=False, holiday_dates=None):
+                              half_day=False, holiday_dates=None, on_leave_dates=None):
     """
     Return the number of leave days of a leave application that fall
     within [report_from, report_to], EXCLUDING any date present in
-    holiday_dates (weekly offs / holidays), unless the leave type includes
-    holidays as leave (caller then passes an empty set).
+    holiday_dates (weekly offs / holidays / restricted holidays) UNLESS
+    that specific date is present in on_leave_dates — meaning Attendance
+    actually recorded the employee as "On Leave" (linked to a Leave
+    Application of this leave type) on that date, e.g. a leave taken on
+    the 2nd Restricted Holiday pair date.
     """
     start = max(leave_from, report_from)
     end   = min(leave_to,   report_to)
@@ -294,7 +299,14 @@ def get_leave_days_in_period(leave_from, leave_to, report_from, report_to,
     if start > end:
         return 0.0
 
+    holiday_dates  = holiday_dates or set()
+    on_leave_dates = on_leave_dates or set()
+
     if half_day:
+        # Single-day half-day leave: only exclude if it's a holiday-list
+        # date AND Attendance doesn't confirm it was actually taken as leave.
+        if start in holiday_dates and start not in on_leave_dates:
+            return 0.0
         return 0.5
 
     if not holiday_dates:
@@ -303,7 +315,7 @@ def get_leave_days_in_period(leave_from, leave_to, report_from, report_to,
     days = 0
     d = start
     while d <= end:
-        if d not in holiday_dates:
+        if d not in holiday_dates or d in on_leave_dates:
             days += 1
         d += timedelta(days=1)
 
@@ -311,11 +323,62 @@ def get_leave_days_in_period(leave_from, leave_to, report_from, report_to,
 
 
 def get_leave_type_holiday_inclusion(leave_types):
-    """dict: leave_type -> bool(include_holiday)"""
+    """dict: leave_type -> bool(include_holiday)
+
+    NOTE: No longer used to decide holiday exclusion in the report — kept
+    here in case it's still useful elsewhere. See on_leave_attendance_map /
+    get_on_leave_attendance_dates for the current (Attendance-driven) logic.
+    """
     result = {}
     for lt in leave_types:
         include_holiday = frappe.db.get_value("Leave Type", lt, "include_holiday")
         result[lt] = bool(include_holiday)
+    return result
+
+
+def get_on_leave_attendance_dates(employees, leave_types, fetch_from, fetch_to):
+    """
+    dict: (employee, leave_type) -> set(date) for every date on which
+    Attendance is submitted with status "On Leave" (or "Half Day", which
+    also gets linked to a Leave Application/Leave Type), for that employee
+    and leave type, within [fetch_from, fetch_to].
+
+    This is the authoritative source for "was this specific date actually
+    consumed as leave" — including holiday-list dates such as the 2nd
+    Restricted Holiday pair date, where Attendance is correctly updated to
+    "On Leave" (see get_day_type / custom_create_or_update_attendance).
+    """
+    if not employees or not leave_types:
+        return {}
+
+    emp_names = [e.name for e in employees]
+
+    rows = frappe.db.sql(
+        """
+        SELECT employee, leave_type, attendance_date
+        FROM `tabAttendance`
+        WHERE docstatus = 1
+          AND status IN ('On Leave', 'Half Day')
+          AND leave_application IS NOT NULL
+          AND leave_application != ''
+          AND employee IN %(employees)s
+          AND leave_type IN %(leave_types)s
+          AND attendance_date BETWEEN %(from_date)s AND %(to_date)s
+        """,
+        {
+            "employees": emp_names,
+            "leave_types": leave_types,
+            "from_date": fetch_from,
+            "to_date": fetch_to,
+        },
+        as_dict=True,
+    )
+
+    result = {}
+    for r in rows:
+        key = (r.employee, r.leave_type)
+        result.setdefault(key, set()).add(getdate(r.attendance_date))
+
     return result
 
 

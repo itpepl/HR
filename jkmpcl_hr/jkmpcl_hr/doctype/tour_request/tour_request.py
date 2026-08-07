@@ -40,7 +40,7 @@ class TourRequest(Document):
             FROM `tabTour Request`
             WHERE employee = %s
                 AND name != %s
-                AND docstatus = 1
+                AND workflow_state in ('Pending', 'Approved by Reporting Manager', 'Approved by Review Manager', 'Final Approved')
                 AND from_date <= %s
                 AND to_date >= %s
             LIMIT 1

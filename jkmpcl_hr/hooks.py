@@ -53,6 +53,7 @@ doctype_js = {
                 "Leave Allocation": "public/js/leave_allocation.js",
                 "Expense Claim":"public/js/expense_claim.js",
                 "Employee Advance": "public/js/employee_advance.js",
+                "Employee Checkin": "public/js/employee_checkin.js",
             }
 # doctype_list_js = {"doctype" : "public/js/attendance_request_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
