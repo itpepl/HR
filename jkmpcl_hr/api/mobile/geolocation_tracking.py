@@ -52,7 +52,7 @@ def log_employee_location(
     geolocation_interval = float(hr_settings.custom_geolocation_interval_in_minutes)
     convert_into_km = round(geolocation_min_distaance / 1000, 2)
 
-    if type != "S":
+    if custom_type != "S":
 
       previous = frappe.get_all(
           "Geolocation Tracking",
@@ -142,7 +142,7 @@ def log_employee_location(
     doc.address = address
     doc.distance_from_previous = round(distance, 3)
     doc.total_distance = round(total_distance, 3)
-    doc.custom_type = type
+    doc.custom_type = custom_type
 
     doc.insert(ignore_permissions=True)
 

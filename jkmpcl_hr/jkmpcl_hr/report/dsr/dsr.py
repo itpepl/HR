@@ -337,20 +337,25 @@ def get_data(filters):
 					"employee_name": emp.employee_name,
 					"datetime": format_datetime_value(start_record.timestamp),
 					"event_type": start_record.custom_type,
-					"km_calculation": flt(start_record.distance_from_previous),
+					"km_calculation": flt(start_record.total_distance),
 					"address": start_record.address,
 					"subject": "",
 					"message": "",
 					"photos": ""
 				})
 
-				day_total += flt(start_record.distance_from_previous)
+				day_total += flt(start_record.total_distance)
 
 			# ---- Activity Rows (event_type always "FN") ----
+			previous_activity_km = 0.0
+			
 			for activity in activities:
 				matched_geo = get_matching_geo_record(emp.name, date, activity.request_date)
-				km_value = flt(matched_geo.distance_from_previous) if matched_geo else 0.0
+				km_value = flt(matched_geo.total_distance) if matched_geo else 0.0
 
+				if previous_activity_km > 0:
+					km_value -= previous_activity_km
+									
 				emp_rows.append({
 					"employee": emp.name,
 					"employee_name": emp.employee_name,
@@ -362,22 +367,25 @@ def get_data(filters):
 					"message": activity.activity_details,
 					"photos": get_photo_html(activity.name)
 				})
+				
 				day_total += km_value
+				previous_activity_km += km_value
 
 			# ---- End Row (custom_type = E) ----
 			if end_record:
+				end_km = flt(end_record.total_distance) - flt(previous_activity_km)
 				emp_rows.append({
 					"employee": emp.name,
 					"employee_name": emp.employee_name,
 					"datetime": format_datetime_value(end_record.timestamp),
 					"event_type": end_record.custom_type,
-					"km_calculation": flt(end_record.distance_from_previous),
+					"km_calculation": end_km,
 					"address": end_record.address,
 					"subject": "",
 					"message": "",
 					"photos": ""
 				})
-				day_total += flt(end_record.distance_from_previous)
+				day_total += flt(end_km)
 
 			emp_rows.append({
 				"employee": "",
@@ -433,7 +441,7 @@ def get_geo_records(employee, date):
 			"employee": employee,
 			"timestamp": ["between", ["{0} 00:00:00".format(date), "{0} 23:59:59".format(date)]]
 		},
-		fields=["name", "timestamp", "custom_type", "distance_from_previous", "address"],
+		fields=["name", "timestamp", "custom_type", "total_distance", "address"],
 		order_by="timestamp asc"
 	)
 
@@ -478,10 +486,11 @@ def get_matching_geo_record(employee, date, request_date):
 		"Geolocation Tracking",
 		filters={
 			"employee": employee,
-			"timestamp": ["between", ["{0} 00:00:00".format(date), cstr(request_date)]]
+			"timestamp": [">=", cstr(request_date)],
+			"custom_type": ["not in", ["S", "E"]]
 		},
-		fields=["name", "timestamp", "distance_from_previous"],
-		order_by="timestamp desc",
+		fields=["name", "timestamp", "total_distance"],
+		order_by="timestamp asc",
 		limit_page_length=1
 	)
 	return records[0] if records else None
