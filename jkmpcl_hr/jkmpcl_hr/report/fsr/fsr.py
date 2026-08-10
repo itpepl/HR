@@ -14,7 +14,12 @@
 #     (by request_date ascending) decides the TA/DA mode for that day.
 #   - HR Settings (Single) has custom_bike_rate_per_km (Float).
 
+import json
+import io
+import xlsxwriter
 import frappe
+import re
+from html import unescape
 from frappe import _
 from frappe.utils import (
 	flt,
@@ -25,6 +30,7 @@ from frappe.utils import (
 	add_days,
 	date_diff,
 	formatdate,
+	strip_html
 )
 from datetime import datetime, timedelta
 
@@ -135,13 +141,34 @@ def get_data(filters):
 
 	return out
 
+def get_user_permitted_branch():
+	"""
+	Returns the branch the current user should be restricted to, or None
+	if the user has full/all-branch access (e.g. System Manager, HR Manager).
+
+	Adjust `full_access_roles` to match whichever roles in your system are
+	meant to see all branches.
+	"""
+	user = frappe.session.user
+
+	if user == "Administrator":
+		return None
+
+	return frappe.db.get_value("User", user, "custom_branch")
+
 
 def get_employees(filters):
 	emp_filters = {"status": "Active"}
+
+	user_branch = get_user_permitted_branch()
+
+	if user_branch:
+		emp_filters["branch"] = user_branch
+	elif filters.get("branch"):
+		emp_filters["branch"] = filters.branch
+
 	if filters.get("employee"):
 		emp_filters["name"] = filters.employee
-	if filters.get("branch"):
-		emp_filters["branch"] = filters.branch
 
 	return frappe.get_all(
 		"Employee",
@@ -385,3 +412,733 @@ def get_photo_status(day_activities, day_start):
 			return _("Uploaded")
 
 	return _("Not Uploaded")
+
+
+def clean_excel_value(value):
+    """
+    Convert HTML / Rich Text values into plain text
+    before writing them into Excel.
+    """
+
+    if not isinstance(value, str):
+        return value
+
+    if not value:
+        return value
+
+    # Convert HTML line breaks into actual new lines
+    value = re.sub(
+        r"<br\s*/?>",
+        "\n",
+        value,
+        flags=re.IGNORECASE
+    )
+
+    # Remove HTML tags
+    value = strip_html(value)
+
+    # Convert HTML entities
+    value = unescape(value)
+
+    # Replace non-breaking spaces
+    value = value.replace("\xa0", " ")
+
+    return value.strip()
+
+
+@frappe.whitelist()
+def export_excel_with_header(filters=None):
+    """
+    Export the FSR TA/DA report to Excel with:
+
+    - Dynamic branch location based on logged-in user
+    - Company header
+    - Applied filters
+    - Report data
+    - Grand total row
+    - HTML/Rich Text converted to plain text
+
+    This export does not affect the normal report view.
+    """
+
+    # ---------------------------------------------------------
+    # GET FILTERS
+    # ---------------------------------------------------------
+
+    if isinstance(filters, str):
+        filters = json.loads(filters)
+
+    filters = frappe._dict(filters or {})
+
+    # ---------------------------------------------------------
+    # VALIDATE FILTERS
+    # ---------------------------------------------------------
+
+    validate_filters(filters)
+
+    from_date = getdate(filters.from_date)
+    to_date = getdate(filters.to_date)
+
+    # ---------------------------------------------------------
+    # GET REPORT DATA
+    # ---------------------------------------------------------
+
+    columns, data = execute(filters)
+
+    # ---------------------------------------------------------
+    # CREATE EXCEL WORKBOOK
+    # ---------------------------------------------------------
+
+    output = io.BytesIO()
+
+    workbook = xlsxwriter.Workbook(
+        output,
+        {
+            "in_memory": True
+        }
+    )
+
+    worksheet = workbook.add_worksheet("FSR TA DA")
+
+    # ---------------------------------------------------------
+    # FORMATS
+    # ---------------------------------------------------------
+
+    company_format = workbook.add_format({
+        "bold": True,
+        "font_size": 14,
+        "align": "center",
+        "valign": "vcenter",
+    })
+
+    address_format = workbook.add_format({
+        "font_size": 11,
+        "align": "center",
+        "valign": "vcenter",
+    })
+
+    contact_format = workbook.add_format({
+        "font_size": 10,
+        "align": "center",
+        "valign": "vcenter",
+    })
+
+    title_format = workbook.add_format({
+        "bold": True,
+        "font_size": 12,
+        "align": "center",
+        "valign": "vcenter",
+    })
+
+    date_format = workbook.add_format({
+        "bold": True,
+        "font_size": 11,
+        "align": "center",
+        "valign": "vcenter",
+    })
+
+    filter_format = workbook.add_format({
+        "font_size": 10,
+        "align": "left",
+        "valign": "vcenter",
+        "text_wrap": True,
+    })
+
+    separator_format = workbook.add_format({
+        "bottom": 1,
+    })
+
+    column_header_format = workbook.add_format({
+        "bold": True,
+        "border": 1,
+        "align": "center",
+        "valign": "vcenter",
+        "text_wrap": True,
+    })
+
+    cell_format = workbook.add_format({
+        "border": 1,
+        "valign": "vcenter",
+    })
+
+    number_format = workbook.add_format({
+        "border": 1,
+        "valign": "vcenter",
+        "num_format": "0.00",
+    })
+
+    currency_format = workbook.add_format({
+        "border": 1,
+        "valign": "vcenter",
+        "num_format": "#,##0.00",
+    })
+
+    # ---------------------------------------------------------
+    # TOTAL FORMATS
+    # ---------------------------------------------------------
+
+    total_format = workbook.add_format({
+        "bold": True,
+        "border": 1,
+        "valign": "vcenter",
+    })
+
+    total_number_format = workbook.add_format({
+        "bold": True,
+        "border": 1,
+        "valign": "vcenter",
+        "num_format": "0.00",
+    })
+
+    total_currency_format = workbook.add_format({
+        "bold": True,
+        "border": 1,
+        "valign": "vcenter",
+        "num_format": "#,##0.00",
+    })
+
+    # ---------------------------------------------------------
+    # CHECK COLUMNS
+    # ---------------------------------------------------------
+
+    total_columns = len(columns)
+
+    if total_columns == 0:
+        workbook.close()
+        frappe.throw(_("No columns found for this report."))
+
+    last_column = total_columns - 1
+
+    # ---------------------------------------------------------
+    # GET LOGGED-IN USER BRANCH
+    # ---------------------------------------------------------
+
+    logged_in_user = frappe.session.user
+
+    user_branch = frappe.db.get_value(
+        "User",
+        logged_in_user,
+        "custom_branch"
+    )
+
+    # ---------------------------------------------------------
+    # DETERMINE BRANCH LOCATION
+    # ---------------------------------------------------------
+
+    branch_location = "Milk Plant, Cheshmashahi, Srinagar-190001"
+
+    if user_branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
+        branch_location = "Milk Plant, Cheshmashahi, Srinagar-190001"
+    else:
+        branch_location = "Milk Plant, Satwari, Jammu-180004"
+
+    # if user_branch:
+    #     branch_value = str(user_branch).strip().lower()
+
+    #     if "jammu" in branch_value:
+    #         branch_location = "Satwari, Jammu-180004"
+
+    #     elif "srinagar" in branch_value:
+    #         branch_location = "Cheshmashahi, Srinagar-190001"
+
+    # ---------------------------------------------------------
+    # COMPANY HEADER
+    # ---------------------------------------------------------
+
+    worksheet.set_row(0, 24)
+    worksheet.set_row(1, 20)
+    worksheet.set_row(2, 20)
+    worksheet.set_row(4, 22)
+    worksheet.set_row(5, 20)
+
+    worksheet.merge_range(
+        0,
+        0,
+        0,
+        last_column,
+        "JAMMU & KASHMIR MILK PRODUCERS CO-OPERATIVE LIMITED",
+        company_format
+    )
+
+    # Dynamic branch/location
+    worksheet.merge_range(
+        1,
+        0,
+        1,
+        last_column,
+        branch_location,
+        address_format
+    )
+
+    worksheet.merge_range(
+        2,
+        0,
+        2,
+        last_column,
+        "Tele/Fax : 0194-2501786, Email: info@jkmpcl.coop",
+        contact_format
+    )
+
+    # ---------------------------------------------------------
+    # REPORT TITLE
+    # ---------------------------------------------------------
+
+    worksheet.merge_range(
+        4,
+        0,
+        4,
+        last_column,
+        "TA/DA Bill (for claim on fortnightly/monthly basis)",
+        title_format
+    )
+
+    worksheet.merge_range(
+        5,
+        0,
+        5,
+        last_column,
+        f"From {formatdate(from_date, 'dd/mm/yyyy')} "
+        f"To {formatdate(to_date, 'dd/mm/yyyy')}",
+        date_format
+    )
+
+    # ---------------------------------------------------------
+    # APPLIED FILTERS
+    # ---------------------------------------------------------
+
+    filter_values = []
+
+    employee = filters.get("employee")
+    branch = filters.get("branch")
+    from_date_filter = filters.get("from_date")
+    to_date_filter = filters.get("to_date")
+
+    # Employee filter
+    if employee:
+        employee_name = frappe.db.get_value(
+            "Employee",
+            employee,
+            "employee_name"
+        )
+
+        if employee_name:
+            filter_values.append(
+                f"Employee: {employee_name} ({employee})"
+            )
+        else:
+            filter_values.append(
+                f"Employee: {employee}"
+            )
+
+    # Branch filter
+    if branch:
+        filter_values.append(
+            f"Branch: {branch}"
+        )
+
+    # From Date filter
+    if from_date_filter:
+        filter_values.append(
+            f"From Date: "
+            f"{formatdate(from_date_filter, 'dd/mm/yyyy')}"
+        )
+
+    # To Date filter
+    if to_date_filter:
+        filter_values.append(
+            f"To Date: "
+            f"{formatdate(to_date_filter, 'dd/mm/yyyy')}"
+        )
+
+    # ---------------------------------------------------------
+    # WRITE APPLIED FILTERS
+    # ---------------------------------------------------------
+
+    worksheet.write(
+        6,
+        0,
+        "Applied Filters:",
+        filter_format
+    )
+
+    worksheet.merge_range(
+        6,
+        1,
+        6,
+        last_column,
+        " | ".join(filter_values)
+        if filter_values
+        else "All",
+        filter_format
+    )
+
+    worksheet.set_row(6, 30)
+
+    # ---------------------------------------------------------
+    # SEPARATOR
+    # ---------------------------------------------------------
+
+    for col_idx in range(total_columns):
+        worksheet.write_blank(
+            7,
+            col_idx,
+            None,
+            separator_format
+        )
+
+    # ---------------------------------------------------------
+    # REPORT TABLE START
+    #
+    # Excel row 9 = zero-based row 8
+    # ---------------------------------------------------------
+
+    start_row = 8
+
+    # ---------------------------------------------------------
+    # COLUMN HEADERS
+    # ---------------------------------------------------------
+
+    for col_idx, column in enumerate(columns):
+
+        if isinstance(column, dict):
+            label = (
+                column.get("label")
+                or column.get("fieldname")
+                or ""
+            )
+        else:
+            label = str(column)
+
+        worksheet.write(
+            start_row,
+            col_idx,
+            label,
+            column_header_format
+        )
+
+    # ---------------------------------------------------------
+    # GRAND TOTAL VARIABLES
+    # ---------------------------------------------------------
+
+    grand_totals = {
+        "visit_points": 0,
+        "distance": 0.0,
+        "tada_flat": 0.0,
+        "plant_vehicle_used": 0.0,
+        "total_ta_km": 0.0,
+    }
+
+    # ---------------------------------------------------------
+    # WRITE REPORT DATA
+    # ---------------------------------------------------------
+
+    for row_idx, row in enumerate(data, start=1):
+
+        excel_row = start_row + row_idx
+
+        for col_idx, column in enumerate(columns):
+
+            if isinstance(column, dict):
+                fieldname = column.get("fieldname")
+                fieldtype = column.get("fieldtype")
+            else:
+                fieldname = None
+                fieldtype = None
+
+            value = ""
+
+            # -------------------------------------------------
+            # GET VALUE FROM ROW
+            # -------------------------------------------------
+
+            if isinstance(row, dict):
+
+                if fieldname:
+                    value = row.get(
+                        fieldname,
+                        ""
+                    )
+
+            elif isinstance(row, (list, tuple)):
+
+                if col_idx < len(row):
+                    value = row[col_idx]
+
+            # -------------------------------------------------
+            # CALCULATE GRAND TOTALS
+            # -------------------------------------------------
+
+            if isinstance(row, dict):
+
+                if fieldname == "visit_points":
+                    grand_totals["visit_points"] += cint(
+                        row.get("visit_points") or 0
+                    )
+
+                elif fieldname == "distance":
+                    grand_totals["distance"] += flt(
+                        row.get("distance") or 0
+                    )
+
+                elif fieldname == "tada_flat":
+                    grand_totals["tada_flat"] += flt(
+                        row.get("tada_flat") or 0
+                    )
+
+                elif fieldname == "plant_vehicle_used":
+                    grand_totals["plant_vehicle_used"] += flt(
+                        row.get("plant_vehicle_used") or 0
+                    )
+
+                elif fieldname == "total_ta_km":
+                    grand_totals["total_ta_km"] += flt(
+                        row.get("total_ta_km") or 0
+                    )
+
+            # -------------------------------------------------
+            # CLEAN HTML / RICH TEXT
+            # -------------------------------------------------
+
+            value = clean_excel_value(value)
+
+            if value is None:
+                value = ""
+
+            # -------------------------------------------------
+            # SELECT NORMAL CELL FORMAT
+            # -------------------------------------------------
+
+            if fieldtype == "Currency":
+
+                format_to_use = currency_format
+
+            elif fieldtype == "Float":
+
+                format_to_use = number_format
+
+            elif fieldtype in ("Int", "Check"):
+
+                format_to_use = cell_format
+
+            else:
+
+                format_to_use = cell_format
+
+            # -------------------------------------------------
+            # WRITE NORMAL DATA
+            # -------------------------------------------------
+
+            worksheet.write(
+                excel_row,
+                col_idx,
+                value,
+                format_to_use
+            )
+
+    # ---------------------------------------------------------
+    # GRAND TOTAL ROW
+    # ---------------------------------------------------------
+
+    total_row = start_row + len(data) + 1
+
+    for col_idx, column in enumerate(columns):
+
+        if isinstance(column, dict):
+            fieldname = column.get("fieldname")
+            fieldtype = column.get("fieldtype")
+        else:
+            fieldname = None
+            fieldtype = None
+
+        # -----------------------------------------------------
+        # TOTAL VALUE
+        # -----------------------------------------------------
+
+        if col_idx == 0:
+
+            value = "TOTAL"
+
+        elif fieldname == "visit_points":
+
+            value = grand_totals["visit_points"]
+
+        elif fieldname == "distance":
+
+            value = round(
+                grand_totals["distance"],
+                2
+            )
+
+        elif fieldname == "tada_flat":
+
+            value = round(
+                grand_totals["tada_flat"],
+                2
+            )
+
+        elif fieldname == "plant_vehicle_used":
+
+            value = round(
+                grand_totals["plant_vehicle_used"],
+                2
+            )
+
+        elif fieldname == "total_ta_km":
+
+            value = round(
+                grand_totals["total_ta_km"],
+                2
+            )
+
+        else:
+
+            value = ""
+
+        # -----------------------------------------------------
+        # TOTAL ROW FORMAT
+        # -----------------------------------------------------
+
+        if fieldtype == "Currency":
+
+            format_to_use = total_currency_format
+
+        elif fieldtype == "Float":
+
+            format_to_use = total_number_format
+
+        elif fieldtype in ("Int", "Check"):
+
+            format_to_use = total_format
+
+        else:
+
+            format_to_use = total_format
+
+        # -----------------------------------------------------
+        # WRITE TOTAL CELL
+        # -----------------------------------------------------
+
+        worksheet.write(
+            total_row,
+            col_idx,
+            value,
+            format_to_use
+        )
+
+    # ---------------------------------------------------------
+    # TOTAL ROW HEIGHT
+    # ---------------------------------------------------------
+
+    worksheet.set_row(
+        total_row,
+        22
+    )
+
+    # ---------------------------------------------------------
+    # COLUMN WIDTHS
+    # ---------------------------------------------------------
+
+    for col_idx, column in enumerate(columns):
+
+        width = 15
+
+        if isinstance(column, dict):
+
+            width = column.get("width") or 15
+
+            try:
+                width = int(width / 7)
+            except (TypeError, ValueError):
+                width = 15
+
+            width = max(
+                10,
+                min(width, 40)
+            )
+
+        worksheet.set_column(
+            col_idx,
+            col_idx,
+            width
+        )
+
+    # ---------------------------------------------------------
+    # FREEZE REPORT HEADER
+    # ---------------------------------------------------------
+
+    worksheet.freeze_panes(
+        start_row + 1,
+        0
+    )
+
+    # ---------------------------------------------------------
+    # PRINT SETTINGS
+    # ---------------------------------------------------------
+
+    worksheet.set_landscape()
+
+    worksheet.fit_to_pages(
+        1,
+        0
+    )
+
+    worksheet.set_margins(
+        left=0.25,
+        right=0.25,
+        top=0.50,
+        bottom=0.50
+    )
+
+    # ---------------------------------------------------------
+    # REPEAT COLUMN HEADER ON EVERY PRINTED PAGE
+    # ---------------------------------------------------------
+
+    worksheet.repeat_rows(
+        start_row,
+        start_row
+    )
+
+    # ---------------------------------------------------------
+    # PAGE FOOTER
+    # ---------------------------------------------------------
+
+    worksheet.set_footer(
+        "&CPage &P of &N"
+    )
+
+    # ---------------------------------------------------------
+    # PRINT AREA
+    # ---------------------------------------------------------
+
+    worksheet.print_area(
+        0,
+        0,
+        total_row,
+        last_column
+    )
+
+    # ---------------------------------------------------------
+    # CLOSE WORKBOOK
+    # ---------------------------------------------------------
+
+    workbook.close()
+
+    output.seek(0)
+
+    # ---------------------------------------------------------
+    # FILE NAME
+    # ---------------------------------------------------------
+
+    filename = (
+        f"FSR_Report_"
+        f"({formatdate(from_date, 'dd-mm-yyyy')}-"
+        f"{formatdate(to_date, 'dd-mm-yyyy')}).xlsx"
+    )
+
+    # ---------------------------------------------------------
+    # SEND FILE TO BROWSER
+    # ---------------------------------------------------------
+
+    frappe.response["filename"] = filename
+    frappe.response["filecontent"] = output.getvalue()
+    frappe.response["type"] = "binary"
