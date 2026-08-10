@@ -34,7 +34,48 @@ frappe.query_reports["FSR"] = {
 	],
 
 	onload: function(report) {
+		console.log("===== FSR JS LOADED =====");
 		set_default_dates(report);
+		report.page.add_inner_button(
+    __("Export Excel"),
+    	function() {
+
+        const filters = report.get_values();
+
+        const form = document.createElement("form");
+
+        form.method = "POST";
+
+        form.action =
+            "/api/method/jkmpcl_hr.jkmpcl_hr.report.fsr.fsr.export_excel_with_header";
+
+        form.target = "_blank";
+
+        // Filters
+        const filtersInput = document.createElement("input");
+
+        filtersInput.type = "hidden";
+        filtersInput.name = "filters";
+        filtersInput.value = JSON.stringify(filters);
+
+        form.appendChild(filtersInput);
+
+        // CSRF Token
+        const csrfInput = document.createElement("input");
+
+        csrfInput.type = "hidden";
+        csrfInput.name = "csrf_token";
+        csrfInput.value = frappe.csrf_token;
+
+        form.appendChild(csrfInput);
+
+        document.body.appendChild(form);
+
+        form.submit();
+
+        form.remove();
+    	}
+		);
 	},
 
 	refresh: function(report) {
