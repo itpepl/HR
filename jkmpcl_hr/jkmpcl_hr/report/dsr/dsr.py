@@ -583,16 +583,278 @@ def get_photo_export_status(value):
     return ""
 
 
+# @frappe.whitelist()
+# def export_excel_with_header(filters=None):
+#     """
+#     Export the DSR (Geo Tracking / Activity Log) report to Excel with:
+
+#     - Dynamic branch location based on logged-in user
+#     - Company header
+#     - Applied filters
+#     - Report data (Sub Total / Grand Total rows bolded)
+#     - HTML/Rich Text converted to plain text; photo links extracted as URLs
+
+#     This export does not affect the normal report view.
+#     """
+
+#     # ---------------------------------------------------------
+#     # GET / VALIDATE FILTERS
+#     # ---------------------------------------------------------
+
+#     if isinstance(filters, str):
+#         filters = json.loads(filters)
+
+#     filters = frappe._dict(filters or {})
+
+#     if not filters.get("from_date") or not filters.get("to_date"):
+#         frappe.throw(_("Please select From Date and To Date"))
+
+#     from_date = getdate(filters.from_date)
+#     to_date = getdate(filters.to_date)
+
+#     # ---------------------------------------------------------
+#     # GET REPORT DATA
+#     # ---------------------------------------------------------
+
+#     columns, data = execute(filters)
+
+#     # ---------------------------------------------------------
+#     # CREATE EXCEL WORKBOOK
+#     # ---------------------------------------------------------
+
+#     output = io.BytesIO()
+#     workbook = xlsxwriter.Workbook(output, {"in_memory": True})
+#     worksheet = workbook.add_worksheet("DSR Report")
+
+#     # ---------------------------------------------------------
+#     # FORMATS
+#     # ---------------------------------------------------------
+
+#     company_format = workbook.add_format({
+#         "bold": True, "font_size": 14, "align": "center", "valign": "vcenter",
+#     })
+#     address_format = workbook.add_format({
+#         "font_size": 11, "align": "center", "valign": "vcenter",
+#     })
+#     contact_format = workbook.add_format({
+#         "font_size": 10, "align": "center", "valign": "vcenter",
+#     })
+#     title_format = workbook.add_format({
+#         "bold": True, "font_size": 12, "align": "center", "valign": "vcenter",
+#     })
+#     date_format = workbook.add_format({
+#         "bold": True, "font_size": 11, "align": "center", "valign": "vcenter",
+#     })
+#     filter_format = workbook.add_format({
+#         "font_size": 10, "align": "left", "valign": "vcenter", "text_wrap": True,
+#     })
+#     separator_format = workbook.add_format({"bottom": 1})
+#     column_header_format = workbook.add_format({
+#         "bold": True, "border": 1, "align": "center", "valign": "vcenter", "text_wrap": True,
+#     })
+#     cell_format = workbook.add_format({"border": 1, "valign": "vcenter", "text_wrap": True})
+#     number_format = workbook.add_format({
+#         "border": 1, "valign": "vcenter", "num_format": "0.00",
+#     })
+#     total_format = workbook.add_format({"bold": True, "border": 1, "valign": "vcenter"})
+#     total_number_format = workbook.add_format({
+#         "bold": True, "border": 1, "valign": "vcenter", "num_format": "0.00",
+#     })
+
+#     # ---------------------------------------------------------
+#     # CHECK COLUMNS
+#     # ---------------------------------------------------------
+
+#     total_columns = len(columns)
+#     if total_columns == 0:
+#         workbook.close()
+#         frappe.throw(_("No columns found for this report."))
+
+#     last_column = total_columns - 1
+
+#     # ---------------------------------------------------------
+#     # DYNAMIC BRANCH LOCATION (SAME LOGIC AS FSR EXPORT)
+#     # ---------------------------------------------------------
+
+#     logged_in_user = frappe.session.user
+#     user_branch = frappe.db.get_value("User", logged_in_user, "custom_branch")
+
+#     branch_location = "Milk Plant, Cheshmashahi, Srinagar-190001"
+
+#     if user_branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
+#         branch_location = "Milk Plant, Cheshmashahi, Srinagar-190001"
+#     else:
+#         branch_location = "Milk Plant, Satwari, Jammu-180004"
+
+#     # ---------------------------------------------------------
+#     # COMPANY HEADER
+#     # ---------------------------------------------------------
+
+#     worksheet.set_row(0, 24)
+#     worksheet.set_row(1, 20)
+#     worksheet.set_row(2, 20)
+#     worksheet.set_row(4, 22)
+#     worksheet.set_row(5, 20)
+
+#     worksheet.merge_range(
+#         0, 0, 0, last_column,
+#         "JAMMU & KASHMIR MILK PRODUCERS CO-OPERATIVE LIMITED",
+#         company_format
+#     )
+#     worksheet.merge_range(1, 0, 1, last_column, branch_location, address_format)
+#     worksheet.merge_range(
+#         2, 0, 2, last_column,
+#         "Tele/Fax : 0194-2501786, Email: info@jkmpcl.coop",
+#         contact_format
+#     )
+
+#     # ---------------------------------------------------------
+#     # REPORT TITLE
+#     # ---------------------------------------------------------
+
+#     worksheet.merge_range(
+#         4, 0, 4, last_column,
+#         "Daily Movement Report (Geo-Tracking & Activity Log)",
+#         title_format
+#     )
+#     worksheet.merge_range(
+#         5, 0, 5, last_column,
+#         f"From {formatdate(from_date, 'dd/mm/yyyy')} To {formatdate(to_date, 'dd/mm/yyyy')}",
+#         date_format
+#     )
+
+#     # ---------------------------------------------------------
+#     # APPLIED FILTERS
+#     # ---------------------------------------------------------
+
+#     filter_values = []
+
+#     employee = filters.get("employee")
+#     branch = filters.get("branch")
+
+#     if employee:
+#         employee_name = frappe.db.get_value("Employee", employee, "employee_name")
+#         filter_values.append(
+#             f"Employee: {employee_name} ({employee})" if employee_name else f"Employee: {employee}"
+#         )
+
+#     if branch:
+#         filter_values.append(f"Branch: {branch}")
+
+#     filter_values.append(f"From Date: {formatdate(from_date, 'dd/mm/yyyy')}")
+#     filter_values.append(f"To Date: {formatdate(to_date, 'dd/mm/yyyy')}")
+
+#     worksheet.write(6, 0, "Applied Filters:", filter_format)
+#     worksheet.merge_range(
+#         6, 1, 6, last_column,
+#         " | ".join(filter_values) if filter_values else "All",
+#         filter_format
+#     )
+#     worksheet.set_row(6, 30)
+
+#     # ---------------------------------------------------------
+#     # SEPARATOR
+#     # ---------------------------------------------------------
+
+#     for col_idx in range(total_columns):
+#         worksheet.write_blank(7, col_idx, None, separator_format)
+
+#     # ---------------------------------------------------------
+#     # REPORT TABLE START
+#     # ---------------------------------------------------------
+
+#     start_row = 8
+
+#     for col_idx, column in enumerate(columns):
+#         label = column.get("label") or column.get("fieldname") or ""
+#         worksheet.write(start_row, col_idx, label, column_header_format)
+
+#     # ---------------------------------------------------------
+#     # WRITE REPORT DATA
+#     # (Sub Total / Grand Total rows already exist in `data` - bold them)
+#     # ---------------------------------------------------------
+
+#     for row_idx, row in enumerate(data, start=1):
+#         excel_row = start_row + row_idx
+#         is_total_row = bool(row.get("is_total_row"))
+
+#         for col_idx, column in enumerate(columns):
+#             fieldname = column.get("fieldname")
+#             fieldtype = column.get("fieldtype")
+
+#             value = row.get(fieldname, "") if fieldname else ""
+
+#             if fieldname == "photos":
+#                 value = get_photo_export_status(value)
+#             else:
+#                 value = clean_excel_value(value)
+
+#             if value is None:
+#                 value = ""
+
+#             if fieldtype == "Float":
+#                 format_to_use = total_number_format if is_total_row else number_format
+#             else:
+#                 format_to_use = total_format if is_total_row else cell_format
+
+#             worksheet.write(excel_row, col_idx, value, format_to_use)
+
+#         if is_total_row:
+#             worksheet.set_row(excel_row, 18)
+
+#     # ---------------------------------------------------------
+#     # COLUMN WIDTHS
+#     # ---------------------------------------------------------
+
+#     for col_idx, column in enumerate(columns):
+#         width = column.get("width") or 15
+#         try:
+#             width = int(width / 7)
+#         except (TypeError, ValueError):
+#             width = 15
+#         width = max(10, min(width, 40))
+#         worksheet.set_column(col_idx, col_idx, width)
+
+#     # ---------------------------------------------------------
+#     # FREEZE / PRINT SETTINGS
+#     # ---------------------------------------------------------
+
+#     worksheet.freeze_panes(start_row + 1, 0)
+#     worksheet.set_landscape()
+#     worksheet.fit_to_pages(1, 0)
+#     worksheet.set_margins(left=0.25, right=0.25, top=0.50, bottom=0.50)
+#     worksheet.repeat_rows(start_row, start_row)
+#     worksheet.set_footer("&CPage &P of &N")
+#     worksheet.print_area(0, 0, start_row + len(data), last_column)
+
+#     # ---------------------------------------------------------
+#     # CLOSE + SEND
+#     # ---------------------------------------------------------
+
+#     workbook.close()
+#     output.seek(0)
+
+#     filename = (
+#         f"DSR_Report_"
+#         f"({formatdate(from_date, 'dd-mm-yyyy')}-"
+#         f"{formatdate(to_date, 'dd-mm-yyyy')}).xlsx"
+#     )
+
+#     frappe.response["filename"] = filename
+#     frappe.response["filecontent"] = output.getvalue()
+#     frappe.response["type"] = "binary"
+
+
 @frappe.whitelist()
 def export_excel_with_header(filters=None):
     """
     Export the DSR (Geo Tracking / Activity Log) report to Excel with:
 
+    - FSR-style header (logo, Courier New fonts, title + separator line)
     - Dynamic branch location based on logged-in user
-    - Company header
     - Applied filters
     - Report data (Sub Total / Grand Total rows bolded)
-    - HTML/Rich Text converted to plain text; photo links extracted as URLs
+    - HTML/Rich Text converted to plain text; photo links extracted as status
 
     This export does not affect the normal report view.
     """
@@ -627,24 +889,9 @@ def export_excel_with_header(filters=None):
     worksheet = workbook.add_worksheet("DSR Report")
 
     # ---------------------------------------------------------
-    # FORMATS
+    # FORMATS (data table formats - unchanged from DSR)
     # ---------------------------------------------------------
 
-    company_format = workbook.add_format({
-        "bold": True, "font_size": 14, "align": "center", "valign": "vcenter",
-    })
-    address_format = workbook.add_format({
-        "font_size": 11, "align": "center", "valign": "vcenter",
-    })
-    contact_format = workbook.add_format({
-        "font_size": 10, "align": "center", "valign": "vcenter",
-    })
-    title_format = workbook.add_format({
-        "bold": True, "font_size": 12, "align": "center", "valign": "vcenter",
-    })
-    date_format = workbook.add_format({
-        "bold": True, "font_size": 11, "align": "center", "valign": "vcenter",
-    })
     filter_format = workbook.add_format({
         "font_size": 10, "align": "left", "valign": "vcenter", "text_wrap": True,
     })
@@ -662,6 +909,31 @@ def export_excel_with_header(filters=None):
     })
 
     # ---------------------------------------------------------
+    # HEADER FORMATS (from FSR)
+    # ---------------------------------------------------------
+
+    header_company_format = workbook.add_format({
+        "bold": True, "font_name": "Courier New", "font_size": 14,
+        "align": "center", "valign": "vcenter",
+    })
+    header_address_format = workbook.add_format({
+        "font_name": "Courier New", "font_size": 11,
+        "align": "center", "valign": "vcenter",
+    })
+    header_contact_format = workbook.add_format({
+        "font_name": "Courier New", "font_size": 10,
+        "align": "center", "valign": "vcenter",
+    })
+    header_title_format = workbook.add_format({
+        "bold": True, "font_name": "Courier New", "font_size": 11,
+        "align": "center", "valign": "vcenter",
+    })
+    header_separator_format = workbook.add_format({
+        "font_name": "Courier New", "font_size": 10,
+        "align": "left", "valign": "vcenter",
+    })
+
+    # ---------------------------------------------------------
     # CHECK COLUMNS
     # ---------------------------------------------------------
 
@@ -673,13 +945,11 @@ def export_excel_with_header(filters=None):
     last_column = total_columns - 1
 
     # ---------------------------------------------------------
-    # DYNAMIC BRANCH LOCATION (SAME LOGIC AS FSR EXPORT)
+    # DYNAMIC BRANCH LOCATION
     # ---------------------------------------------------------
 
     logged_in_user = frappe.session.user
     user_branch = frappe.db.get_value("User", logged_in_user, "custom_branch")
-
-    branch_location = "Milk Plant, Cheshmashahi, Srinagar-190001"
 
     if user_branch == "Jammu and Kashmir Milk Producers Co-operative Ltd Cheshmashahi Srinagar":
         branch_location = "Milk Plant, Cheshmashahi, Srinagar-190001"
@@ -687,40 +957,65 @@ def export_excel_with_header(filters=None):
         branch_location = "Milk Plant, Satwari, Jammu-180004"
 
     # ---------------------------------------------------------
-    # COMPANY HEADER
+    # COMPANY HEADER (FSR style)
     # ---------------------------------------------------------
 
-    worksheet.set_row(0, 24)
-    worksheet.set_row(1, 20)
-    worksheet.set_row(2, 20)
-    worksheet.set_row(4, 22)
-    worksheet.set_row(5, 20)
+    worksheet.set_row(0, 28)
+    worksheet.set_row(1, 22)
+    worksheet.set_row(2, 22)
+    worksheet.set_row(3, 22)
+    worksheet.set_row(4, 18)
 
     worksheet.merge_range(
         0, 0, 0, last_column,
         "JAMMU & KASHMIR MILK PRODUCERS CO-OPERATIVE LIMITED",
-        company_format
+        header_company_format,
     )
-    worksheet.merge_range(1, 0, 1, last_column, branch_location, address_format)
+
+    worksheet.merge_range(1, 0, 1, last_column, branch_location, header_address_format)
+
     worksheet.merge_range(
         2, 0, 2, last_column,
         "Tele/Fax : 0194-2501786, Email: info@jkmpcl.coop",
-        contact_format
+        header_contact_format,
     )
 
     # ---------------------------------------------------------
-    # REPORT TITLE
+    # REPORT TITLE (DSR wording, FSR layout/format)
     # ---------------------------------------------------------
 
     worksheet.merge_range(
-        4, 0, 4, last_column,
-        "Daily Movement Report (Geo-Tracking & Activity Log)",
-        title_format
+        3, 0, 3, last_column,
+        (
+            "Daily Movement Report (Geo-Tracking & Activity Log)    "
+            f"From {formatdate(from_date, 'dd/mm/yyyy')} "
+            f"To {formatdate(to_date, 'dd/mm/yyyy')}"
+        ),
+        header_title_format,
     )
-    worksheet.merge_range(
-        5, 0, 5, last_column,
-        f"From {formatdate(from_date, 'dd/mm/yyyy')} To {formatdate(to_date, 'dd/mm/yyyy')}",
-        date_format
+
+    separator_text = "-" * 150
+
+    worksheet.merge_range(4, 0, 4, last_column, separator_text, header_separator_format)
+
+    # ---------------------------------------------------------
+    # INSERT COMPANY LOGO
+    # ---------------------------------------------------------
+
+    logo_path = frappe.get_app_path(
+        "jkmpcl_hr",
+        "public",
+        "comp_logo",
+        "JKMPCL.png"
+    )
+
+    worksheet.insert_image(
+        0, 0, logo_path,
+        {
+            "x_scale": 0.15, "y_scale": 0.15,
+            "x_offset": 12, "y_offset": 10,
+            "object_position": 2,
+        }
     )
 
     # ---------------------------------------------------------
@@ -744,34 +1039,33 @@ def export_excel_with_header(filters=None):
     filter_values.append(f"From Date: {formatdate(from_date, 'dd/mm/yyyy')}")
     filter_values.append(f"To Date: {formatdate(to_date, 'dd/mm/yyyy')}")
 
-    worksheet.write(6, 0, "Applied Filters:", filter_format)
+    worksheet.write(5, 0, "Applied Filters:", filter_format)
     worksheet.merge_range(
-        6, 1, 6, last_column,
+        5, 1, 5, last_column,
         " | ".join(filter_values) if filter_values else "All",
-        filter_format
+        filter_format,
     )
-    worksheet.set_row(6, 30)
+    worksheet.set_row(5, 30)
 
     # ---------------------------------------------------------
     # SEPARATOR
     # ---------------------------------------------------------
 
     for col_idx in range(total_columns):
-        worksheet.write_blank(7, col_idx, None, separator_format)
+        worksheet.write_blank(6, col_idx, None, separator_format)
 
     # ---------------------------------------------------------
     # REPORT TABLE START
     # ---------------------------------------------------------
 
-    start_row = 8
+    start_row = 7
 
     for col_idx, column in enumerate(columns):
         label = column.get("label") or column.get("fieldname") or ""
         worksheet.write(start_row, col_idx, label, column_header_format)
 
     # ---------------------------------------------------------
-    # WRITE REPORT DATA
-    # (Sub Total / Grand Total rows already exist in `data` - bold them)
+    # WRITE REPORT DATA (DSR logic - unchanged)
     # ---------------------------------------------------------
 
     for row_idx, row in enumerate(data, start=1):
@@ -813,6 +1107,12 @@ def export_excel_with_header(filters=None):
         except (TypeError, ValueError):
             width = 15
         width = max(10, min(width, 40))
+
+        if col_idx == 0:
+            width = 12
+        elif col_idx == 1:
+            width = 12
+
         worksheet.set_column(col_idx, col_idx, width)
 
     # ---------------------------------------------------------
