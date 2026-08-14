@@ -245,10 +245,14 @@ frappe.query_reports["FSR"] = {
 	onload: function(report) {
 		console.log("===== FSR JS LOADED =====");
 		inject_fsr_error_css();
-		ensure_default_dates(report);
+		force_default_dates(report);
 		set_date_limits(report);
 		bind_generate_validation(report);
 		patch_report_refresh(report);
+
+		report.page.wrapper.on("show", function () {
+			force_default_dates(report);
+		});
 
 		report.page.add_inner_button(
 			__("Export Excel"),
@@ -341,24 +345,20 @@ frappe.query_reports["FSR"] = {
 	}
 };
 
-// -------------------------------------------------------------
-// Re-populate from_date / to_date if they come back empty
-// (e.g. after navigating away and back to the report)
-// -------------------------------------------------------------
 function ensure_default_dates(report) {
-	const from = report.get_filter("from_date");
-	const to = report.get_filter("to_date");
-
-	if (!from || !to) {
+	if (!report || typeof report.set_filter_value !== "function") {
 		return;
 	}
 
-	if (!from.get_value()) {
-		from.set_value(frappe.datetime.month_start());
-	}
+	const from_val = report.get_filter_value("from_date");
+	const to_val = report.get_filter_value("to_date");
 
-	if (!to.get_value()) {
-		to.set_value(frappe.datetime.get_today());
+	const updates = {};
+	if (!from_val) updates.from_date = frappe.datetime.month_start();
+	if (!to_val) updates.to_date = frappe.datetime.get_today();
+
+	if (Object.keys(updates).length) {
+		report.set_filter_value(updates);
 	}
 }
 
@@ -526,4 +526,27 @@ function set_date_limits(report) {
 
 	from.refresh();
 	to.refresh();
+}
+
+
+// -------------------------------------------------------------
+// Forcibly reset from_date / to_date to their defaults.
+// Uses the report's own set_filter_value() API (instead of
+// manually calling control.set_value() + control.refresh()),
+// since manual refresh right after an async set_value() creates
+// a race condition. That race silently corrupts the filter
+// control's internal state, which then crashes the datepicker
+// re-init the next time the report page is revisited (the
+// query-report page is a singleton and reuses controls instead
+// of recreating them on navigation).
+// -------------------------------------------------------------
+function force_default_dates(report) {
+	if (!report || typeof report.set_filter_value !== "function") {
+		return;
+	}
+
+	report.set_filter_value({
+		from_date: frappe.datetime.month_start(),
+		to_date: frappe.datetime.get_today(),
+	});
 }

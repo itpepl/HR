@@ -1,5 +1,5 @@
 {
- "add_total_row": 1,
+ "add_total_row": 0,
  "add_translate_data": 0,
  "columns": [],
  "creation": "2026-07-30 11:39:10.757648",
@@ -10,7 +10,7 @@
  "idx": 0,
  "is_standard": "Yes",
  "letter_head": null,
- "modified": "2026-07-30 11:39:10.757648",
+ "modified": "2026-08-13 16:03:20.548165",
  "modified_by": "Administrator",
  "module": "JKMPCL HR",
  "name": "FSR",
