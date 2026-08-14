@@ -625,9 +625,7 @@ def validate(self, method):
     from_date = getdate(self.custom_period_of_leave_from)
     to_date = getdate(self.custom_period_of_leave_to)
     today_date = getdate(today())
-    date = getdate("2026-01-01")
-    # min_allowed_date = add_days(today_date, -30)
-    min_allowed_date = add_days(date, -30)
+    min_allowed_date = add_days(today_date, -30)
 
     # From Date cannot be in the future
     if from_date > today_date:
