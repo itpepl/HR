@@ -326,6 +326,11 @@ frappe.query_reports["FSR"] = {
 
 	refresh: function(report) {
 		// Runs every time the report re-renders (including navigating back to it)
+		if (is_fsr_filter_broken(report)) {
+			console.warn("FSR: filter controls corrupted, forcing full reload.");
+			window.location.reload();
+			return;
+		}
 		inject_fsr_error_css();
 		ensure_default_dates(report);
 		set_date_limits(report);
@@ -350,13 +355,9 @@ function ensure_default_dates(report) {
 		return;
 	}
 
-	const from_val = report.get_filter_value("from_date");
-	const to_val = report.get_filter_value("to_date");
-
 	const updates = {};
-	if (!from_val) updates.from_date = frappe.datetime.month_start();
-	if (!to_val) updates.to_date = frappe.datetime.get_today();
-
+	if (!report.get_filter_value("from_date")) updates.from_date = frappe.datetime.month_start();
+	if (!report.get_filter_value("to_date")) updates.to_date = frappe.datetime.get_today();
 	if (Object.keys(updates).length) {
 		report.set_filter_value(updates);
 	}
@@ -549,4 +550,30 @@ function force_default_dates(report) {
 		from_date: frappe.datetime.month_start(),
 		to_date: frappe.datetime.get_today(),
 	});
+}
+
+
+// -------------------------------------------------------------
+// Returns true if the to_date (or from_date) filter control
+// failed to render properly - i.e. the control object is
+// missing, or its input element never got attached to the DOM.
+// This is what happens when the query-report singleton page's
+// cached filter state gets corrupted between SPA navigations.
+// -------------------------------------------------------------
+function is_fsr_filter_broken(report) {
+	const to_ctrl = report.get_filter("to_date");
+	const from_ctrl = report.get_filter("from_date");
+
+	if (!to_ctrl || !from_ctrl) {
+		return true;
+	}
+
+	if (!to_ctrl.$input || !to_ctrl.$input.length) {
+		return true;
+	}
+	if (!from_ctrl.$input || !from_ctrl.$input.length) {
+		return true;
+	}
+
+	return false;
 }
