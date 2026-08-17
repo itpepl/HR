@@ -28,6 +28,7 @@ def log_employee_location(
     latitude
     longitude
     timestamp
+    type -> S / E / A
     """
 
     latitude = flt(latitude)
@@ -47,64 +48,98 @@ def log_employee_location(
     # -----------------------------------------
 
     hr_settings = frappe.get_single("HR Settings")
-    
-    geolocation_min_distaance = float(hr_settings.custom_geolocation_minimum_distance_in_meters)
-    geolocation_interval = float(hr_settings.custom_geolocation_interval_in_minutes)
-    convert_into_km = round(geolocation_min_distaance / 1000, 2)
 
-    if custom_type != "S":
+    geolocation_min_distaance = float(
+        hr_settings.custom_geolocation_minimum_distance_in_meters
+    )
 
-      previous = frappe.get_all(
-          "Geolocation Tracking",
-          filters={
-              "employee": employee
-          },
-          fields=[
-              "latitude",
-              "longitude",
-              "total_distance"
-          ],
-          order_by="timestamp desc",
-          limit=1
-      )
+    geolocation_interval = float(
+        hr_settings.custom_geolocation_interval_in_minutes
+    )
 
-      distance = 0
-      total_distance = 0
+    convert_into_km = round(
+        geolocation_min_distaance / 1000,
+        2
+    )
 
-      if previous:
+    distance = 0
+    total_distance = 0
 
-          previous_point = (
-              previous[0].latitude,
-              previous[0].longitude,
-          )
+    # -----------------------------------------
+    # Get Previous Location
+    # -----------------------------------------
+    # For S, E and A:
+    # Always log the record, regardless of distance.
+    #
+    # For other types:
+    # Apply minimum distance validation.
+    # -----------------------------------------
 
-          current_point = (
-              latitude,
-              longitude,
-          )
+    previous = frappe.get_all(
+        "Geolocation Tracking",
+        filters={
+            "employee": employee
+        },
+        fields=[
+            "latitude",
+            "longitude",
+            "total_distance"
+        ],
+        order_by="timestamp desc",
+        limit=1
+    )
 
-          distance = geodesic(
-              previous_point,
-              current_point
-          ).km
+    if previous:
 
-          # Ignore GPS drift
-          if distance < convert_into_km:
-              return
+        previous_point = (
+            previous[0].latitude,
+            previous[0].longitude,
+        )
 
-          total_distance = (
-              flt(previous[0].total_distance)
-              + distance
-          )
+        current_point = (
+            latitude,
+            longitude,
+        )
 
-      else:
-          distance = 0
-          total_distance = 0
+        distance = geodesic(
+            previous_point,
+            current_point
+        ).km
+
+        total_distance = (
+            flt(previous[0].total_distance)
+            + distance
+        )
+
+        # -----------------------------------------
+        # Minimum Distance Validation
+        # -----------------------------------------
+        # Ignore this condition for S, E and A.
+        # -----------------------------------------
+
+        if custom_type not in ("S", "E", "A"):
+
+            if distance < convert_into_km:
+
+                return {
+                    "success": True,
+                    "message": (
+                        "Distance from previous point is less than the minimum distance. Location not logged."
+                    ),
+                    "data": {
+                        "employee": employee,
+                        "distance_from_previous": round(distance, 3),
+                        "total_distance": round(
+                            flt(previous[0].total_distance),
+                            3
+                        ),
+                        "geolocation_interval": geolocation_interval
+                    },
+                }
 
     else:
-      distance = 0
-      total_distance = 0
-    
+        distance = 0
+        total_distance = 0
 
     # -----------------------------------------
     # Reverse Geocode
