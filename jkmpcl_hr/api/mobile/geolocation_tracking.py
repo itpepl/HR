@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import get_datetime, flt
+from frappe.utils import get_datetime, flt, today
 from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
 
@@ -34,6 +34,11 @@ def log_employee_location(
     latitude = flt(latitude)
     longitude = flt(longitude)
     timestamp = get_datetime(timestamp)
+    print("Timestamp:", timestamp)
+    today_start = get_datetime(today() + " 00:00:00")
+    today_end = get_datetime(today() + " 23:59:59")
+    print("Today Start:", today_start)
+    print("Today End:", today_end)
     custom_type = type
 
     # -----------------------------------------
@@ -78,7 +83,8 @@ def log_employee_location(
     previous = frappe.get_all(
         "Geolocation Tracking",
         filters={
-            "employee": employee
+            "employee": employee,
+            "timestamp": ["between", [today_start, today_end]]
         },
         fields=[
             "latitude",
