@@ -157,7 +157,8 @@ def log_employee_location(
 
         location = geolocator.reverse(
             f"{latitude},{longitude}",
-            exactly_one=True
+            exactly_one=True,
+            timeout=5
         )
 
         if location:
