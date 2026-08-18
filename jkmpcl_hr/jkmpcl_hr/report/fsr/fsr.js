@@ -547,6 +547,8 @@ function force_default_dates(report) {
 	}
 
 	report.set_filter_value({
+		employee: null,
+		branch: null,
 		from_date: frappe.datetime.month_start(),
 		to_date: frappe.datetime.get_today(),
 	});
