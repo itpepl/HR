@@ -61,7 +61,8 @@ def create_employee_activity():
     
             location = geolocator.reverse(
                 f"{emp_latitude},{emp_longitude}",
-                exactly_one=True
+                exactly_one=True,
+                timeout=5
             )
     
             if location:
